@@ -4,7 +4,7 @@ defmodule Lingo.Api.Client do
   import Bitwise
 
   @base_url "https://discord.com/api/v10"
-  @user_agent "DiscordBot (https://github.com/iruizsalinas/lingo, 0.1.0)"
+  @user_agent "DiscordBot (https://github.com/iruizsalinas/lingo, 0.1.1)"
   @max_retries 3
   @discord_epoch 1_420_070_400_000
 

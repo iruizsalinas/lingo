@@ -14,7 +14,7 @@ Add lingo to your dependencies in `mix.exs`:
 ```elixir
 defp deps do
   [
-    {:lingo, "~> 0.1.0"}
+    {:lingo, "~> 0.1.1"}
   ]
 end
 ```
