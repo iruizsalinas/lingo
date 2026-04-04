@@ -4,6 +4,7 @@ defmodule Lingo.Type.Member do
   alias Lingo.Type.User
 
   @type t :: %__MODULE__{
+          guild_id: String.t() | nil,
           user: User.t() | nil,
           nick: String.t() | nil,
           avatar: String.t() | nil,
@@ -20,6 +21,7 @@ defmodule Lingo.Type.Member do
         }
 
   defstruct [
+    :guild_id,
     :user,
     :nick,
     :avatar,
@@ -39,6 +41,7 @@ defmodule Lingo.Type.Member do
 
   def new(data) when is_map(data) do
     %__MODULE__{
+      guild_id: data["guild_id"],
       user: User.new(data["user"]),
       nick: data["nick"],
       avatar: data["avatar"],
