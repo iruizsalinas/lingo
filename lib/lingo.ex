@@ -665,6 +665,12 @@ defmodule Lingo do
   defdelegate message_deletable?(channel_id, message_id), to: Lingo.Helpers
   defdelegate message_url(guild_id, channel_id, message_id), to: Lingo.Helpers
 
+  # Formatting
+  defdelegate timestamp(datetime, style \\ :short_datetime), to: Lingo.Format
+  defdelegate mention_user(id), to: Lingo.Format
+  defdelegate mention_channel(id), to: Lingo.Format
+  defdelegate mention_role(id), to: Lingo.Format
+
   # Collectors
   defdelegate await_component(message_id, opts \\ []), to: Lingo.Collector
   defdelegate await_reaction(channel_id, message_id, opts \\ []), to: Lingo.Collector

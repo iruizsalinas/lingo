@@ -168,3 +168,43 @@ Collect all matching reactions during a time window. Returns `{:ok, [reaction_ev
 |--------|------|---------|-------------|
 | `filter` | function | matches all | `fn reaction -> bool end` |
 | `timeout` | integer | **required** | Milliseconds to collect for |
+
+## Formatting
+
+### `timestamp(datetime, style \\ :short_datetime)`
+
+Format a DateTime or unix timestamp for Discord's rendered timestamps. Discord displays these in the user's local timezone.
+
+```elixir
+Lingo.timestamp(DateTime.utc_now())                # short date/time (default)
+Lingo.timestamp(DateTime.utc_now(), :relative)      # "just now", "2 hours ago"
+Lingo.timestamp(DateTime.utc_now(), :long_date)     # "4 April 2026"
+Lingo.timestamp(DateTime.utc_now(), :short_time)    # "16:20"
+Lingo.timestamp(DateTime.utc_now(), :long_time)     # "16:20:30"
+Lingo.timestamp(DateTime.utc_now(), :short_date)    # "04/04/2026"
+Lingo.timestamp(DateTime.utc_now(), :long_datetime) # "Friday, 4 April 2026 16:20"
+```
+
+Also accepts a unix timestamp as an integer:
+
+```elixir
+Lingo.timestamp(1_712_246_400, :relative)
+```
+
+### `mention_user(id)`
+
+```elixir
+Lingo.mention_user(user_id)  # <@123456789>
+```
+
+### `mention_channel(id)`
+
+```elixir
+Lingo.mention_channel(channel_id)  # <#123456789>
+```
+
+### `mention_role(id)`
+
+```elixir
+Lingo.mention_role(role_id)  # <@&123456789>
+```
