@@ -30,4 +30,4 @@ Run `mix format` before committing. The project uses the default Elixir formatte
 - Tests for new features or bug fixes are appreciated
 - Make sure `mix test` and `mix format --check-formatted` pass
 
-Don't worry about getting everything perfect -- we can always iterate on a PR together.
+Don't worry about getting everything perfect, we can always iterate on a PR together.

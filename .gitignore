@@ -1,7 +1,8 @@
 # Main
 _build
-.exixir_ls
+.elixir_ls
 deps
+doc
 .env*
 
 # Docs

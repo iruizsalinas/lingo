@@ -1,6 +1,8 @@
 # Lingo
 
-An Elixir library for interacting with the Discord API.
+An Elixir library for interacting with the Discord API. It provides a macro-based DSL for defining commands, events, components, and modals, and handles the gateway, sharding, caching, and rate limiting out of the box.
+
+Check out the [docs](https://iruizsalinas.github.io/lingo/) for guides and the full API reference.
 
 ## Install
 
@@ -40,5 +42,3 @@ defmodule MyApp.Application do
   end
 end
 ```
-
-Check out the [docs](https://iruizsalinas.github.io/lingo/) for guides and the full API reference.
