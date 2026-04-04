@@ -1,0 +1,10 @@
+# Main
+_build
+.exixir_ls
+deps
+.env*
+
+# Docs
+docs/node_modules
+docs/.vitepress/cache
+docs/.vitepress/dist
