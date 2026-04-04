@@ -214,12 +214,14 @@ defmodule Lingo.Command.Context do
     end
   end
 
-  @spec reply(t(), String.t() | map()) :: {:ok, t()} | {:error, any()}
+  @spec reply(t(), String.t() | keyword() | map()) :: {:ok, t()} | {:error, any()}
   def reply(ctx, content) when is_binary(content) do
     reply(ctx, %{content: content})
   end
 
-  def reply(ctx, data) when not is_binary(data) do
+  def reply(ctx, opts) when is_list(opts), do: reply(ctx, Map.new(opts))
+
+  def reply(ctx, data) when is_map(data) do
     cond do
       ctx.deferred ->
         case InteractionApi.edit_original_response(
@@ -251,7 +253,7 @@ defmodule Lingo.Command.Context do
     end
   end
 
-  @spec reply!(t(), String.t() | map()) :: t()
+  @spec reply!(t(), String.t() | keyword() | map()) :: t()
   def reply!(ctx, content) do
     case reply(ctx, content) do
       {:ok, ctx} -> ctx
@@ -259,8 +261,9 @@ defmodule Lingo.Command.Context do
     end
   end
 
-  @spec update(t(), String.t() | map()) :: {:ok, t()} | {:error, any()}
+  @spec update(t(), String.t() | keyword() | map()) :: {:ok, t()} | {:error, any()}
   def update(ctx, content) when is_binary(content), do: update(ctx, %{content: content})
+  def update(ctx, opts) when is_list(opts), do: update(ctx, Map.new(opts))
 
   def update(ctx, data) when is_map(data) do
     case InteractionApi.create_response(
@@ -275,7 +278,7 @@ defmodule Lingo.Command.Context do
     end
   end
 
-  @spec update!(t(), String.t() | map()) :: t()
+  @spec update!(t(), String.t() | keyword() | map()) :: t()
   def update!(ctx, content) do
     case update(ctx, content) do
       {:ok, ctx} -> ctx
