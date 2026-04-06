@@ -17,7 +17,7 @@ Check out the [docs](https://iruizsalinas.github.io/lingo/) for guides and the f
 ## Install
 
 ```elixir
-{:lingo, "~> 0.1.1"}
+{:lingo, "~> 0.2.0"}
 ```
 
 ## Quick start
