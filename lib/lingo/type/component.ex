@@ -81,8 +81,8 @@ defmodule Lingo.Type.Component do
 
   # Flag
 
-  @spec components_v2_flag() :: integer()
-  def components_v2_flag, do: @components_v2
+  @spec v2() :: integer()
+  def v2, do: @components_v2
 
   # V1 builders
 

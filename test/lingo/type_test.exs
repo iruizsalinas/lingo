@@ -324,8 +324,8 @@ defmodule Lingo.TypeTest do
       refute Map.has_key?(btn, :custom_id)
     end
 
-    test "components_v2_flag returns correct value" do
-      assert Component.components_v2_flag() == 32768
+    test "v2 returns correct value" do
+      assert Component.v2() == 32768
     end
 
     test "user_select builder" do

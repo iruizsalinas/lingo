@@ -641,7 +641,7 @@ defmodule Lingo do
   defdelegate unfurled_media(url), to: Lingo.Type.Component
   defdelegate select_option(label, value, opts \\ []), to: Lingo.Type.Component
   defdelegate default_value(id, type), to: Lingo.Type.Component
-  defdelegate components_v2_flag(), to: Lingo.Type.Component
+  defdelegate v2(), to: Lingo.Type.Component
 
   # Snowflakes
   defdelegate snowflake_timestamp(snowflake), to: Lingo.Type.Snowflake, as: :timestamp
