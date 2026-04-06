@@ -41,7 +41,10 @@ defmodule Lingo.MixProject do
   defp package do
     [
       licenses: ["MIT"],
-      links: %{"GitHub" => @source_url},
+      links: %{
+        "GitHub" => @source_url,
+        "Docs" => "https://iruizsalinas.github.io/lingo/"
+      },
       files: ~w(lib mix.exs README.md LICENSE .formatter.exs)
     ]
   end
