@@ -29,6 +29,7 @@ defmodule Lingo.CDN do
   end
 
   def member_avatar(%{avatar: nil}), do: nil
+  def member_avatar(%{user: nil}), do: nil
 
   def member_avatar(%{guild_id: gid, user: %{id: uid}, avatar: hash}) do
     "#{@base}/guilds/#{gid}/users/#{uid}/avatars/#{hash}.#{ext(hash)}"
