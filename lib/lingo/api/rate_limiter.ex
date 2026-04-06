@@ -49,7 +49,7 @@ defmodule Lingo.Api.RateLimiter do
             Process.sleep(resume_at - now + 10)
           end
 
-          :ets.delete(@global_table, :paused_until)
+          :ets.select_delete(@global_table, [{{:paused_until, resume_at}, [], [true]}])
           :ok
 
         [] ->
