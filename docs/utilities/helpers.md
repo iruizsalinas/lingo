@@ -126,41 +126,25 @@ Lingo.message_url(guild_id, channel_id, message_id)
 
 Wait for interactions or reactions inline, without separate handler macros. See the [Interactions guide](/interactions#collectors) for usage examples.
 
-### await_component
+### `await_component(message_id, opts \\ [])`
 
-```elixir
-Lingo.await_component(message_id, opts \\ [])
-```
-
-Block until a component interaction (button click, select menu) arrives on the given message. Returns `{:ok, interaction}` or `:timeout`.
-
-The matched interaction is consumed and won't reach your `component` handlers.
+Block until a component interaction (button click, select menu) arrives on the given message. Returns `{:ok, interaction}` or `:timeout`. The matched interaction is consumed and won't reach your `component` handlers.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `filter` | function | matches all | `fn interaction -> bool end` |
 | `timeout` | integer | `60_000` | Milliseconds to wait |
 
-### await_reaction
+### `await_reaction(channel_id, message_id, opts \\ [])`
 
-```elixir
-Lingo.await_reaction(channel_id, message_id, opts \\ [])
-```
-
-Block until a reaction is added to the message. Returns `{:ok, reaction}` or `:timeout`.
-
-The reaction is **not** consumed, so your `handle :message_reaction_add` still fires.
+Block until a reaction is added to the message. Returns `{:ok, reaction}` or `:timeout`. The reaction is **not** consumed, so your `handle :message_reaction_add` still fires.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `filter` | function | matches all | `fn reaction -> bool end` |
 | `timeout` | integer | `60_000` | Milliseconds to wait |
 
-### collect_reactions
-
-```elixir
-Lingo.collect_reactions(channel_id, message_id, opts)
-```
+### `collect_reactions(channel_id, message_id, opts)`
 
 Collect all matching reactions during a time window. Returns `{:ok, [reaction_events]}`.
 
@@ -168,6 +152,44 @@ Collect all matching reactions during a time window. Returns `{:ok, [reaction_ev
 |--------|------|---------|-------------|
 | `filter` | function | matches all | `fn reaction -> bool end` |
 | `timeout` | integer | **required** | Milliseconds to collect for |
+
+## Embeds
+
+### `embed(opts)`
+
+Build an embed from a keyword list. Accepts `title`, `description`, `url`, `color`, `timestamp`, `image`, `thumbnail`, `footer`, `author`, and `fields`.
+
+`image` and `thumbnail` can be a URL string (gets wrapped into `%{url: url}`), or a full map. `footer` can be a string (becomes `%{text: text}`), or a map. Same for `author` (string becomes `%{name: name}`).
+
+```elixir
+Lingo.send_message(channel_id, %{
+  embeds: [
+    Lingo.embed(
+      title: "User banned",
+      description: "#{user.username} was banned for spamming.",
+      color: 0xFF0000,
+      footer: "Banned by #{mod.username}",
+      thumbnail: Lingo.user_avatar(user)
+    )
+  ]
+})
+```
+
+## Snowflakes
+
+### `snowflake_timestamp(snowflake)`
+
+Convert a snowflake ID to a `DateTime`.
+
+### `snowflake_from_timestamp(datetime)`
+
+Convert a `DateTime` to a snowflake ID.
+
+## Emoji Formatting
+
+### `format_emoji(emoji)`
+
+Returns the string you'd use in message content: unicode character for standard emojis, `<:name:id>` or `<a:name:id>` for custom.
 
 ## Formatting
 

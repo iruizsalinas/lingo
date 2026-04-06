@@ -125,14 +125,6 @@ Delete 2-100 messages (must be less than 14 days old). Handles chunking for you.
 Lingo.crosspost_message(channel_id, message_id)
 ```
 
-### search_messages
-
-```elixir
-Lingo.search_messages(guild_id, opts \\ [])
-```
-
-Options: `content`, `author_id`, `mentions`, `has`, `min_id`, `max_id`, `channel_id`, `pinned`, `limit`, `offset`, `sort_by`, `sort_order`.
-
 ## Pins
 
 ### list_pins

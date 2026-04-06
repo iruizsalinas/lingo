@@ -71,57 +71,11 @@ handle :rate_limit, info do
 end
 ```
 
-## Common Endpoints
+## API Reference
 
-Some frequently used functions. See the [API Reference](/api-guilds) for more.
+For the full list of functions by resource:
 
-### Messages
-
-```elixir
-Lingo.send_message(channel_id, content: "text")
-Lingo.send_message(channel_id, %{embeds: [embed], components: [row]})
-Lingo.edit_message(channel_id, message_id, content: "new text")
-Lingo.delete_message(channel_id, message_id)
-Lingo.list_messages(channel_id, limit: 10)
-```
-
-### Members
-
-```elixir
-Lingo.get_member(guild_id, user_id)
-Lingo.edit_member(guild_id, user_id, %{nick: "New Nick"}, reason: "Requested")
-Lingo.kick_member(guild_id, user_id, reason: "Inactive")
-Lingo.add_member_role(guild_id, user_id, role_id, reason: "Auto role")
-Lingo.remove_member_role(guild_id, user_id, role_id)
-```
-
-### Roles
-
-```elixir
-Lingo.create_role(guild_id, %{name: "Moderator", color: 0xFF0000, permissions: perms})
-Lingo.edit_role(guild_id, role_id, %{name: "New Name"})
-Lingo.delete_role(guild_id, role_id)
-```
-
-### Bans
-
-```elixir
-Lingo.ban_member(guild_id, user_id, delete_message_seconds: 86400, reason: "Spam")
-Lingo.unban_member(guild_id, user_id, reason: "Appeal accepted")
-Lingo.bulk_ban(guild_id, user_ids, delete_message_seconds: 86400)
-```
-
-### Reactions
-
-```elixir
-Lingo.add_reaction(channel_id, message_id, "thumbsup")
-Lingo.add_reaction(channel_id, message_id, "custom_emoji:123456789")
-Lingo.remove_all_reactions(channel_id, message_id)
-```
-
-### Threads
-
-```elixir
-Lingo.start_thread(channel_id, %{name: "Discussion", auto_archive_duration: 1440})
-Lingo.start_thread_from_message(channel_id, message_id, %{name: "Thread"})
-```
+- [Guilds, Members & Roles](/api/guilds)
+- [Channels & Messages](/api/channels)
+- [Interactions & Commands](/api/interactions)
+- [Other Resources](/api/resources)

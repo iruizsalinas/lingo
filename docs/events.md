@@ -62,7 +62,7 @@ handle :message_delete, data do
 end
 ```
 
-See the [Events Reference](/event-list) for the exact data shape of every event.
+See the [Events Reference](/gateway/event-list) for the exact data shape of every event.
 
 ## Common Patterns
 
@@ -123,46 +123,26 @@ end
 
 ## Intents
 
-You only receive events for the intents you've enabled. If a handler never fires, make sure the right intent is in your `intents` list:
-
-```elixir
-{Lingo,
- bot: MyBot.Bot,
- token: token,
- intents: [:guilds, :guild_members, :guild_messages, :message_content]}
-```
-
-See the [Intents Reference](/intents) for which intent gates which events.
-
-Three intents are **privileged** and require extra setup: `:guild_members`, `:guild_presences`, and `:message_content`.
+You only receive events for the intents you've enabled. If a handler never fires, check that the right intent is in your config. See the [Intents Reference](/gateway/intents) for which intent gates which events.
 
 ## The `ready` Event
 
-`:ready` fires when the bot connects to the gateway. The data is a raw map with `"user"`, `"guilds"`, `"session_id"`, and an injected `"shard_id"` key:
+`:ready` fires once when **all shards** have connected to the gateway:
 
 ```elixir
 handle :ready, data do
+  IO.puts("All #{data.shard_count} shard(s) connected!")
+end
+```
+
+For per-shard connection events, use `:shard_ready`. The data is a raw map with `"user"`, `"guilds"`, `"session_id"`, and `"shard_id"`:
+
+```elixir
+handle :shard_ready, data do
   IO.puts("Shard #{data["shard_id"]} ready!")
 end
 ```
 
 ## Internal Events
 
-Lingo dispatches a few extra events that don't come from the gateway:
-
-| Event | Data | When |
-|-------|------|------|
-| `:shard_reconnecting` | `%{shard_id: id}` | A shard is about to reconnect |
-| `:shard_disconnect` | `%{shard_id: id, code: code}` | A shard disconnected (recoverable) |
-| `:shard_error` | `%{shard_id: id, code: code}` | A shard got a fatal close code |
-| `:rate_limit` | `%{method: m, path: p, retry_after: ms, global: bool}` | The API returned a 429 |
-
-Handle them the same way:
-
-```elixir
-handle :rate_limit, info do
-  if info.global do
-    IO.puts("Global rate limit hit for #{info.retry_after}ms")
-  end
-end
-```
+Lingo also dispatches internal events (`:shard_reconnecting`, `:shard_disconnect`, `:shard_error`, `:rate_limit`). Handle them the same way as gateway events. See the [Event List: Shard](/gateway/event-list#shard) for the full list and data shapes.

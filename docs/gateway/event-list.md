@@ -193,14 +193,20 @@ Gateway events and the data shape your `handle` block receives.
 
 | Event | Data |
 |-------|------|
-| `:ready` | Raw map with `"user"`, `"guilds"`, `"session_id"`, `"shard_id"` |
-| `:resumed` | `%{shard_id: integer}` |
+| `:ready` | `%{shard_count: integer}`, fires once when all shards are connected |
 
-## Lingo Internal Events
+## Shard
 
 | Event | Data |
 |-------|------|
+| `:shard_ready` | Raw map with `"user"`, `"guilds"`, `"session_id"`, `"shard_id"` |
+| `:shard_resumed` | `%{shard_id: integer}` |
 | `:shard_reconnecting` | `%{shard_id: integer}` |
 | `:shard_disconnect` | `%{shard_id: integer, code: integer}` |
 | `:shard_error` | `%{shard_id: integer, code: integer}` |
+
+## Rate Limit
+
+| Event | Data |
+|-------|------|
 | `:rate_limit` | `%{method: atom, path: string, retry_after: integer, global: boolean}` |

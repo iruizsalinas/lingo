@@ -14,7 +14,7 @@ The first argument is the command name, the second is the description shown in t
 
 ## Options
 
-Add options with the `options:` keyword. Use the [option builder functions](/option-builders) to define each one:
+Add options with the `options:` keyword. Use the [option builder functions](/commands/option-builders) to define each one:
 
 ```elixir
 command "ban", "Ban a user",
@@ -32,59 +32,9 @@ command "ban", "Ban a user",
 end
 ```
 
-`option(ctx, :name)` retrieves the value of an option by name. For `user`, `role`, `channel`, and `mentionable` types, the value is a snowflake ID. Use the `get_*` shortcuts to resolve the full object:
+`option(ctx, :name)` retrieves the value of an option by name. For `user`, `role`, `channel`, and `mentionable` types, the value is a snowflake ID. Use the `get_*` shortcuts to resolve the full object, see [Context: Resolved Data](/commands/context#resolved-data) for details.
 
-```elixir
-user_obj = get_user(ctx, :target)      # Lingo.Type.User or nil
-role_obj = get_role(ctx, :role)        # Lingo.Type.Role or nil
-channel_obj = get_channel(ctx, :channel) # Lingo.Type.Channel or nil
-member_obj = get_member(ctx, :target)  # Lingo.Type.Member or nil
-```
-
-## Option Types
-
-| Builder | Discord Type | Value |
-|---------|-------------|-------|
-| `string/3` | String | `String.t()` |
-| `integer/3` | Integer | `integer()` |
-| `number/3` | Number | `float()` |
-| `boolean/3` | Boolean | `boolean()` |
-| `user/3` | User | snowflake ID |
-| `role/3` | Role | snowflake ID |
-| `channel/3` | Channel | snowflake ID |
-| `mentionable/3` | Mentionable | snowflake ID |
-| `attachment/3` | Attachment | snowflake ID |
-
-All option builders accept these keyword options:
-
-| Option | Type | Default |
-|--------|------|---------|
-| `required` | `boolean` | `false` |
-| `choices` | `list` | `[]` |
-| `autocomplete` | `boolean` | `false` |
-| `min_value` / `max_value` | `number` | `nil` |
-| `min_length` / `max_length` | `integer` | `nil` |
-| `channel_types` | `list` | `[]` |
-
-## Choices
-
-Lock an option to a fixed set of values:
-
-```elixir
-command "color", "Pick a color",
-  options: [
-    string("color", "Your color",
-      required: true,
-      choices: [
-        %{"name" => "Red", "value" => "red"},
-        %{"name" => "Blue", "value" => "blue"},
-        %{"name" => "Green", "value" => "green"}
-      ]
-    )
-  ] do
-  reply!(ctx, "You picked #{option(ctx, :color)}.")
-end
-```
+See [Option Builders](/commands/option-builders) for the full list of builder functions, keyword options, and choices format.
 
 ## Subcommands
 
@@ -170,21 +120,7 @@ Context menu commands have no description or options. Use `ctx.target_id` to get
 
 ## Response Helpers
 
-These are available inside command blocks:
-
-| Function | What it does |
-|----------|-------------|
-| `reply!(ctx, data)` | Send a response. Raises on failure. |
-| `reply(ctx, data)` | Send a response. Returns `{:ok, ctx}` or `{:error, reason}`. |
-| `ephemeral(ctx, data)` | Send an ephemeral response (only the user sees it). |
-| `defer!(ctx)` | Acknowledge the interaction. Follow up with `reply!` later. |
-| `defer!(ctx, ephemeral: true)` | Defer with an ephemeral loading state. |
-| `update!(ctx, data)` | Edit the message a component is attached to. |
-| `show_modal!(ctx, modal)` | Pop open a modal dialog. |
-
-`data` can be a string (sent as `content`) or a map with any combination of `content`, `embeds`, `components`, `flags`, `files`, etc.
-
-After calling `reply!` once, any further `reply!` calls send followup messages.
+See [Context: Responding](/commands/context#responding) for the full list of response functions (`reply!`, `defer!`, `ephemeral`, `update!`, `show_modal!`, etc.).
 
 ## Registering Commands
 

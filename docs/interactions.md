@@ -34,37 +34,20 @@ end
 
 The `ctx` in a component handler is the same `Lingo.Command.Context` struct. Use `update!/2` to edit the message the button lives on, or `reply!/2` to send a new message.
 
-### Button Styles
-
-| Style | Look |
-|-------|------|
-| `:primary` | Blurple |
-| `:secondary` | Grey |
-| `:success` | Green |
-| `:danger` | Red |
-| `:link` | Grey with link icon (needs `url`, no `custom_id`) |
-| `:premium` | Blurple with premium badge (needs `sku_id`) |
-
-```elixir
-Lingo.button(custom_id: "my_btn", label: "Click", style: :primary)
-Lingo.button(url: "https://example.com", label: "Visit", style: :link)
-Lingo.button(custom_id: "my_btn", emoji: %{name: "fire", id: "123"})
-```
+See [Message Components: Buttons](/commands/message-components#buttons) for all styles and options.
 
 ## Select Menus
 
 ```elixir
-command "pick-color", "Pick a color" do
+command "pick", "Pick a color" do
   reply!(ctx, %{
-    content: "Choose a color:",
+    content: "Pick one:",
     components: [
       Lingo.action_row([
         Lingo.string_select("color_select",
-          placeholder: "Pick one...",
           options: [
-            Lingo.select_option("Red", "red", description: "A warm color"),
-            Lingo.select_option("Blue", "blue", description: "A cool color"),
-            Lingo.select_option("Green", "green")
+            Lingo.select_option("Red", "red"),
+            Lingo.select_option("Blue", "blue")
           ]
         )
       ])
@@ -80,17 +63,7 @@ end
 
 `ctx.values` is a list of selected values. For single-select it has one element.
 
-### Select Menu Types
-
-| Builder | What the user picks |
-|---------|-------------------|
-| `Lingo.string_select/2` | From your predefined options |
-| `Lingo.user_select/2` | Users |
-| `Lingo.role_select/2` | Roles |
-| `Lingo.mentionable_select/2` | Users or roles |
-| `Lingo.channel_select/2` | Channels |
-
-Auto-populated selects (user, role, etc.) don't need `options`. They return snowflake IDs in `ctx.values`.
+See [Message Components: Select Menus](/commands/message-components#select-menus) for all select types.
 
 ## Modals
 
@@ -98,32 +71,20 @@ Show a modal form from a command or component interaction:
 
 ```elixir
 command "feedback", "Send feedback" do
-  show_modal!(ctx, Lingo.modal("feedback_modal", "Send Feedback", [
-    Lingo.action_row([
-      Lingo.text_input("subject", "Subject", required: true, max_length: 100)
-    ]),
-    Lingo.action_row([
-      Lingo.text_input("body", "Your feedback", style: :paragraph, required: true)
-    ])
+  show_modal!(ctx, Lingo.modal("feedback_modal", "Feedback", [
+    Lingo.label("Subject", Lingo.text_input("subject", required: true)),
+    Lingo.label("Details", Lingo.text_input("body", style: :paragraph))
   ]))
 end
-```
 
-Handle submissions with `modal`:
-
-```elixir
 modal "feedback_modal", ctx do
   subject = modal_value(ctx, :subject)
   body = modal_value(ctx, :body)
-  reply!(ctx, "Thanks for your feedback on **#{subject}**!")
+  reply!(ctx, "#{subject}: #{body}")
 end
 ```
 
-`modal_value(ctx, :field_id)` gets a text input's value by its custom ID.
-
-### Text Input Styles
-
-Default is `:short` (single line). Use `style: :paragraph` for multi-line.
+`modal_value(ctx, :field_id)` gets a field's value by its custom ID. See [Modal Components](/commands/modal-components) for all modal component types.
 
 ## Autocomplete
 
@@ -134,17 +95,15 @@ command "search", "Search for something",
   options: [
     string("query", "Search query", required: true, autocomplete: true)
   ] do
-  query = option(ctx, :query)
-  reply!(ctx, "You searched for: #{query}")
+  reply!(ctx, "You searched for: #{option(ctx, :query)}")
 end
 
 autocomplete "search", ctx do
   {_name, value} = focused_option(ctx)
 
   results =
-    all_items()
-    |> Enum.filter(&String.contains?(String.downcase(&1), String.downcase(value)))
-    |> Enum.take(25)
+    ["Elixir", "Rust", "Go", "TypeScript"]
+    |> Enum.filter(&String.starts_with?(String.downcase(&1), String.downcase(value)))
     |> Enum.map(&%{name: &1, value: &1})
 
   autocomplete_result(ctx, results)
@@ -155,60 +114,14 @@ end
 
 The autocomplete handler has 3 seconds to respond.
 
-## Deferring
-
-If your handler needs more than 3 seconds, defer the interaction first:
-
-```elixir
-command "slow", "This takes a while" do
-  ctx = defer!(ctx)
-  Process.sleep(5000)
-  reply!(ctx, "Done!")
-end
-```
-
-After deferring, the user sees a "thinking..." indicator. Call `reply!` to send the real response.
-
-For ephemeral deferred responses:
-
-```elixir
-ctx = defer!(ctx, ephemeral: true)
-```
-
-For component interactions that need to defer an update:
-
-```elixir
-component "slow_button", ctx do
-  ctx = defer!(ctx, update: true)
-  Process.sleep(3000)
-  update!(ctx, %{content: "Updated after delay."})
-end
-```
-
-## Ephemeral Messages
-
-Send a response only the invoking user can see:
-
-```elixir
-command "secret", "Secret info" do
-  ephemeral(ctx, "Only you can see this.")
-end
-```
-
-Or with richer content:
-
-```elixir
-ephemeral(ctx, %{content: "Only you.", embeds: [embed]})
-```
-
 ## Collectors
 
-Sometimes you want to wait for a button click or reaction right inside a command handler, without setting up a separate `component` macro. Collectors do that.
+Wait for a button click or reaction inside a command handler, without a separate `component` macro.
 
 ### Awaiting a Component
 
 ```elixir
-command "confirm", "Delete all messages?" do
+command "confirm", "Delete messages?" do
   {:ok, msg} = reply(ctx, %{
     content: "Are you sure?",
     components: [
@@ -231,7 +144,7 @@ command "confirm", "Delete all messages?" do
 end
 ```
 
-`await_component/2` blocks until someone clicks a button or select menu on that message. When it fires, the interaction is consumed and won't reach your `component` handlers.
+`await_component/2` blocks until someone clicks a button or select menu on that message. The interaction is consumed and won't reach your `component` handlers.
 
 Pass a `:filter` function to only match specific interactions:
 
@@ -263,8 +176,8 @@ Unlike component collectors, reaction collectors don't consume the event, so you
   timeout: 10_000,
   filter: fn r -> r.user_id != bot_id end
 )
-
-IO.puts("Got #{length(reactions)} reactions in 10 seconds")
 ```
 
 `collect_reactions/3` gathers all matching reactions during the timeout window and returns them as a list.
+
+See [Helpers: Collectors](/utilities/helpers#collectors) for the full option tables.

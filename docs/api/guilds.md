@@ -131,6 +131,14 @@ Lingo.begin_prune(guild_id, params \\ %{}, opts \\ [])
 
 `get_prune_count` options: `days`, `include_roles`. `begin_prune` supports `reason`.
 
+### search_messages
+
+```elixir
+Lingo.search_messages(guild_id, opts \\ [])
+```
+
+Options: `content`, `author_id`, `mentions`, `has`, `min_id`, `max_id`, `channel_id`, `pinned`, `limit`, `offset`, `sort_by`, `sort_order`.
+
 ### get_audit_log
 
 ```elixir

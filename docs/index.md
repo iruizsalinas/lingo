@@ -80,6 +80,17 @@ mix run --no-halt
 
 Type `/ping` in your server and the bot replies with "Pong!".
 
+## Configuration
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `bot` | module | **required** | Bot module with `use Lingo.Bot` |
+| `token` | string | **required** | Bot token |
+| `intents` | `[atom] \| integer` | `[:guilds, :guild_messages]` | Gateway intents (see [Intents](/gateway/intents)) |
+| `cache` | `keyword \| false` | `[]` | Cache config, or `false` to disable (see [Cache](/cache#configuration)) |
+| `sharding` | keyword | `[]` | Sharding config (see [Sharding](/gateway/sharding#configuration)) |
+| `presence` | keyword | `[]` | Initial presence (see [Presence](/gateway/presence#initial-presence)) |
+
 ## Next Steps
 
 - [Commands](/commands): options, subcommands, permissions, context menus

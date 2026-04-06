@@ -4,7 +4,7 @@ All on the `Lingo` module. Return `{:ok, data}` or `{:error, reason}` unless not
 
 ## Interaction Responses
 
-Most of the time you'll use the [context helpers](/context) (`reply!`, `defer!`, `update!`, `show_modal!`). These are the lower-level functions underneath them.
+Most of the time you'll use the [context helpers](/commands/context) (`reply!`, `defer!`, `update!`, `show_modal!`). These are the lower-level functions underneath them.
 
 ### create_interaction_response
 

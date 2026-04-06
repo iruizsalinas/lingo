@@ -21,7 +21,7 @@ Defines a slash command.
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `options` | list | List of [option builders](/option-builders) |
+| `options` | list | List of [option builders](/commands/option-builders) |
 | `default_member_permissions` | integer | Permission bitfield required to use this command |
 | `nsfw` | boolean | Restrict to age-gated channels. Default `false` |
 | `integration_types` | list | Where the command can be installed |
