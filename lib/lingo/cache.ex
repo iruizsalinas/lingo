@@ -279,9 +279,15 @@ defmodule Lingo.Cache do
       str_key = Atom.to_string(field)
 
       case Map.fetch(data, str_key) do
-        {:ok, value} -> Map.put(acc, field, value)
+        {:ok, value} -> Map.put(acc, field, merge_field(Map.get(acc, field), value))
         :error -> acc
       end
     end)
   end
+
+  defp merge_field(%_{} = existing, value) when is_map(value) and not is_struct(value) do
+    merge_into_struct(existing, value)
+  end
+
+  defp merge_field(_existing, value), do: value
 end
