@@ -45,7 +45,7 @@ defmodule Lingo.Gateway.CompressionTest do
 
       # split right before the 4-byte sync flush suffix
       split_at = byte_size(compressed) - 4
-      <<part1::binary-size(split_at), part2::binary>> = compressed
+      <<part1::binary-size(^split_at), part2::binary>> = compressed
 
       ctx = Compression.new()
 
