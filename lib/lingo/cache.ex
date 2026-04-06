@@ -279,8 +279,8 @@ defmodule Lingo.Cache do
       str_key = Atom.to_string(field)
 
       case Map.fetch(data, str_key) do
-        {:ok, value} when not is_nil(value) -> Map.put(acc, field, value)
-        _ -> acc
+        {:ok, value} -> Map.put(acc, field, value)
+        :error -> acc
       end
     end)
   end
