@@ -259,14 +259,13 @@ defmodule Lingo.Api.Client do
   end
 
   def build_multipart(json, files) do
-    payload_part = {"payload_json", Jason.encode!(json), [{"content-type", "application/json"}]}
+    payload_part = {"payload_json", {Jason.encode!(json), content_type: "application/json"}}
 
     file_parts =
       files
       |> Enum.with_index()
       |> Enum.map(fn {{filename, data}, idx} ->
-        {"files[#{idx}]", data,
-         [{"content-disposition", "form-data; name=\"files[#{idx}]\"; filename=\"#{filename}\""}]}
+        {"files[#{idx}]", {data, filename: filename}}
       end)
 
     [payload_part | file_parts]
