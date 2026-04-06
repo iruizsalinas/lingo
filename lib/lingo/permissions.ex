@@ -121,15 +121,23 @@ defmodule Lingo.Permissions do
     if band(base, @admin_flag) == @admin_flag do
       @all_flags
     else
-      apply_overwrites(base, member_role_ids, overwrites, member_id)
+      guild_id = everyone_role_id(roles)
+      apply_overwrites(base, guild_id, member_role_ids, overwrites, member_id)
     end
   end
 
-  defp apply_overwrites(perms, _role_ids, [], _member_id), do: perms
+  defp everyone_role_id(roles) do
+    case Enum.find(roles, fn r -> r.position == 0 end) do
+      nil -> nil
+      role -> role.id
+    end
+  end
 
-  defp apply_overwrites(perms, role_ids, overwrites, member_id) do
-    # @everyone overwrite (id == guild_id, which is the first role)
-    everyone_ow = Enum.find(overwrites, fn ow -> ow.type == :role and ow.id not in role_ids end)
+  defp apply_overwrites(perms, _guild_id, _role_ids, [], _member_id), do: perms
+
+  defp apply_overwrites(perms, guild_id, role_ids, overwrites, member_id) do
+    # @everyone overwrite (id == guild_id)
+    everyone_ow = Enum.find(overwrites, fn ow -> ow.type == :role and ow.id == guild_id end)
 
     perms =
       if everyone_ow do
