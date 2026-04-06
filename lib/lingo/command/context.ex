@@ -266,15 +266,26 @@ defmodule Lingo.Command.Context do
   def update(ctx, opts) when is_list(opts), do: update(ctx, Map.new(opts))
 
   def update(ctx, data) when is_map(data) do
-    case InteractionApi.create_response(
-           ctx.interaction_id,
-           ctx.interaction_token,
-           :update_message,
-           data
-         ) do
-      :ok -> {:ok, %{ctx | replied: true}}
-      {:ok, _} -> {:ok, %{ctx | replied: true}}
-      error -> error
+    if ctx.deferred do
+      case InteractionApi.edit_original_response(
+             ctx.application_id,
+             ctx.interaction_token,
+             data
+           ) do
+        {:ok, _} -> {:ok, %{ctx | replied: true}}
+        error -> error
+      end
+    else
+      case InteractionApi.create_response(
+             ctx.interaction_id,
+             ctx.interaction_token,
+             :update_message,
+             data
+           ) do
+        :ok -> {:ok, %{ctx | replied: true}}
+        {:ok, _} -> {:ok, %{ctx | replied: true}}
+        error -> error
+      end
     end
   end
 
