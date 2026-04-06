@@ -265,18 +265,21 @@ defmodule Lingo.Gateway.Connection do
     application_id = get_in(data, ["application", "id"])
     if application_id, do: Lingo.Config.put(:application_id, application_id)
 
-    %{
+    state = %{
       state
       | session_id: data["session_id"],
         resume_gateway_url: data["resume_gateway_url"],
         state: :connected
     }
-    |> dispatch_event(:ready, Map.put(data, "shard_id", state.shard_id))
+
+    state = dispatch_event(state, :shard_ready, Map.put(data, "shard_id", state.shard_id))
+    Lingo.Gateway.ShardManager.shard_ready(state.shard_id)
+    state
   end
 
   defp handle_dispatch("RESUMED", _data, state) do
     %{state | state: :connected}
-    |> dispatch_event(:resumed, %{shard_id: state.shard_id})
+    |> dispatch_event(:shard_resumed, %{shard_id: state.shard_id})
   end
 
   defp handle_dispatch(event_type, data, state) do
@@ -430,8 +433,8 @@ defmodule Lingo.Gateway.Connection do
   end
 
   @known_events %{
-    "READY" => :ready,
-    "RESUMED" => :resumed,
+    "READY" => :shard_ready,
+    "RESUMED" => :shard_resumed,
     "APPLICATION_COMMAND_PERMISSIONS_UPDATE" => :application_command_permissions_update,
     "AUTO_MODERATION_RULE_CREATE" => :auto_moderation_rule_create,
     "AUTO_MODERATION_RULE_UPDATE" => :auto_moderation_rule_update,

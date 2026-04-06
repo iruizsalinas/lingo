@@ -17,7 +17,10 @@ defmodule Lingo.Gateway.ShardManager do
     configured_ids: :all,
     presence: [],
     shards: %{},
-    shard_refs: %{}
+    shard_refs: %{},
+    ready_shards: %{},
+    ready_fired: false,
+    expected_shard_count: 0
   ]
 
   def start_link(opts) do
@@ -60,6 +63,10 @@ defmodule Lingo.Gateway.ShardManager do
     GenServer.cast(__MODULE__, :reshard)
   end
 
+  def shard_ready(shard_id) do
+    GenServer.cast(__MODULE__, {:shard_ready, shard_id})
+  end
+
   @impl true
   def init(opts) do
     token = Keyword.fetch!(opts, :token)
@@ -95,7 +102,7 @@ defmodule Lingo.Gateway.ShardManager do
           ids = resolve_ids(state.configured_ids, count)
           state = %{state | gateway_url: url}
           state = start_shards(state, count, ids, max_concurrency)
-          {:noreply, %{state | shard_count: count}}
+          {:noreply, %{state | shard_count: count, expected_shard_count: length(ids)}}
         end
 
       {:error, _reason} ->
@@ -113,7 +120,8 @@ defmodule Lingo.Gateway.ShardManager do
         state = %{
           state
           | shard_refs: Map.delete(state.shard_refs, ref),
-            shards: Map.delete(state.shards, shard_id)
+            shards: Map.delete(state.shards, shard_id),
+            ready_shards: Map.delete(state.ready_shards, shard_id)
         }
 
         Process.send_after(self(), {:restart_dead_shard, shard_id}, 5_000)
@@ -186,6 +194,21 @@ defmodule Lingo.Gateway.ShardManager do
     {:noreply, state}
   end
 
+  def handle_cast({:shard_ready, shard_id}, state) do
+    ready_shards = Map.put(state.ready_shards, shard_id, true)
+    state = %{state | ready_shards: ready_shards}
+
+    state =
+      if not state.ready_fired and map_size(ready_shards) == state.expected_shard_count do
+        Lingo.Gateway.Dispatcher.dispatch(:ready, %{shard_count: state.shard_count})
+        %{state | ready_fired: true}
+      else
+        state
+      end
+
+    {:noreply, state}
+  end
+
   def handle_cast(:reshard, %{configured_count: n} = state) when is_integer(n) do
     {:noreply, state}
   end
@@ -197,7 +220,18 @@ defmodule Lingo.Gateway.ShardManager do
       {:ok, url, new_count, max_concurrency, remaining, _reset_after} ->
         if remaining >= new_count do
           ids = resolve_ids(state.configured_ids, new_count)
-          new_state = %{state | shard_count: new_count, gateway_url: url, shards: %{}}
+
+          new_state = %{
+            state
+            | shard_count: new_count,
+              gateway_url: url,
+              shards: %{},
+              shard_refs: %{},
+              ready_shards: %{},
+              ready_fired: false,
+              expected_shard_count: length(ids)
+          }
+
           new_state = start_shards(new_state, new_count, ids, max_concurrency)
 
           Enum.each(old_shards, fn {_id, old_pid} ->

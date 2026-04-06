@@ -277,7 +277,7 @@ defmodule Lingo.Gateway.Dispatcher do
     %{old: old, new: u}
   end
 
-  defp update_and_parse(:ready, data) do
+  defp update_and_parse(:shard_ready, data) do
     if user_data = data["user"] do
       Cache.put_current_user(User.new(user_data))
     end
@@ -342,10 +342,14 @@ defmodule Lingo.Gateway.Dispatcher do
   defp dispatch_to_bot(event, data) do
     bot_module = Lingo.Config.bot_module()
 
-    if bot_module && function_exported?(bot_module, :__handle_event__, 2) do
-      Task.start(fn ->
-        bot_module.__handle_event__(event, data)
-      end)
+    if bot_module do
+      Code.ensure_loaded(bot_module)
+
+      if function_exported?(bot_module, :__handle_event__, 2) do
+        Task.start(fn ->
+          bot_module.__handle_event__(event, data)
+        end)
+      end
     end
   end
 end
