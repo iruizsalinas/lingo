@@ -229,7 +229,7 @@ defmodule Lingo.Command.Context do
                ctx.interaction_token,
                data
              ) do
-          {:ok, _} -> {:ok, %{ctx | replied: true}}
+          {:ok, _} -> {:ok, %{ctx | deferred: false, replied: true}}
           error -> error
         end
 
@@ -272,7 +272,7 @@ defmodule Lingo.Command.Context do
              ctx.interaction_token,
              data
            ) do
-        {:ok, _} -> {:ok, %{ctx | replied: true}}
+        {:ok, _} -> {:ok, %{ctx | deferred: false, replied: true}}
         error -> error
       end
     else
