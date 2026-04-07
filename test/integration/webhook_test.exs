@@ -112,7 +112,9 @@ defmodule Lingo.Integration.WebhookTest do
                  webhook_token,
                  %{
                    content: "hello from webhook"
-                 }, wait: true)
+                 },
+                 wait: true
+               )
 
       assert is_binary(msg.id)
       assert msg.content == "hello from webhook"
@@ -130,7 +132,9 @@ defmodule Lingo.Integration.WebhookTest do
           webhook_token,
           %{
             content: "lifecycle test"
-          }, wait: true)
+          },
+          wait: true
+        )
 
       # get the message
       assert {:ok, fetched} = Lingo.Api.Webhook.get_message(webhook_id, webhook_token, msg.id)
