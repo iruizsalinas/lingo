@@ -372,7 +372,7 @@ defmodule Lingo.Gateway.ShardManager do
   defp fetch_gateway_bot(token) do
     headers = [
       {"authorization", "Bot #{token}"},
-      {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.2.0)"}
+      {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.2.1)"}
     ]
 
     case Req.get("https://discord.com/api/v10/gateway/bot", headers: headers) do

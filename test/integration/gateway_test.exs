@@ -8,7 +8,7 @@ defmodule Lingo.Integration.GatewayTest do
 
       headers = [
         {"authorization", "Bot #{token}"},
-        {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.2.0)"}
+        {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.2.1)"}
       ]
 
       {:ok, %{body: body}} = Req.get("https://discord.com/api/v10/gateway/bot", headers: headers)
@@ -51,7 +51,7 @@ defmodule Lingo.Integration.GatewayTest do
 
       headers = [
         {"authorization", "Bot #{token}"},
-        {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.2.0)"}
+        {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.2.1)"}
       ]
 
       {:ok, %{body: body}} = Req.get("https://discord.com/api/v10/gateway/bot", headers: headers)
@@ -102,7 +102,7 @@ defmodule Lingo.Integration.GatewayTest do
 
       headers = [
         {"authorization", "Bot #{token}"},
-        {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.2.0)"}
+        {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.2.1)"}
       ]
 
       {:ok, %{body: body}} = Req.get("https://discord.com/api/v10/gateway/bot", headers: headers)

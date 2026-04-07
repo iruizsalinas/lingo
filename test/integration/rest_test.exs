@@ -31,7 +31,7 @@ defmodule Lingo.Integration.RestTest do
 
       headers = [
         {"authorization", "Bot #{token}"},
-        {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.2.0)"}
+        {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.2.1)"}
       ]
 
       assert {:ok, %{status: 200, body: body}} =
@@ -54,7 +54,7 @@ defmodule Lingo.Integration.RestTest do
         Req.get("https://discord.com/api/v10/applications/@me",
           headers: [
             {"authorization", "Bot #{Lingo.Config.token()}"},
-            {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.2.0)"}
+            {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.2.1)"}
           ]
         )
 
@@ -70,7 +70,7 @@ defmodule Lingo.Integration.RestTest do
         Req.get("https://discord.com/api/v10/voice/regions",
           headers: [
             {"authorization", "Bot #{Lingo.Config.token()}"},
-            {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.2.0)"}
+            {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.2.1)"}
           ]
         )
 
@@ -146,7 +146,7 @@ defmodule Lingo.Integration.RestTest do
         Req.get("https://discord.com/api/v10/users/@me",
           headers: [
             {"authorization", "Bot #{Lingo.Config.token()}"},
-            {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.2.0)"}
+            {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.2.1)"}
           ]
         )
 
