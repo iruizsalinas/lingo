@@ -4,6 +4,8 @@ defmodule Lingo.Api.Reaction do
   alias Lingo.Api.Client
   alias Lingo.Type.User
 
+  @custom_emoji_markdown ~r/^<a?:([A-Za-z0-9_]{2,32}):(\d+)>$/
+
   def create(channel_id, message_id, emoji) do
     Client.request(
       :put,
@@ -52,6 +54,22 @@ defmodule Lingo.Api.Reaction do
     )
   end
 
-  defp encode_emoji(emoji) when is_binary(emoji), do: URI.encode(emoji)
-  defp encode_emoji(%{id: id, name: name}), do: "#{name}:#{id}"
+  @doc false
+  def encode_emoji(emoji) when is_binary(emoji) do
+    emoji
+    |> normalize_custom_emoji_markdown()
+    |> URI.encode(&reaction_path_char?/1)
+  end
+
+  def encode_emoji(%{id: id, name: name}), do: encode_emoji("#{name}:#{id}")
+
+  defp normalize_custom_emoji_markdown(emoji) do
+    case Regex.run(@custom_emoji_markdown, emoji) do
+      [_, name, id] -> "#{name}:#{id}"
+      _ -> emoji
+    end
+  end
+
+  defp reaction_path_char?(?:), do: true
+  defp reaction_path_char?(char), do: URI.char_unreserved?(char)
 end
