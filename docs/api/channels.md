@@ -202,7 +202,7 @@ Lingo.start_thread_from_message(channel_id, message_id, params, opts \\ [])
 Lingo.start_thread(channel_id, params, opts \\ [])
 ```
 
-Start a thread without a parent message. `params`: `%{name: "Thread", type: 11}`. Supports `reason`.
+Start a thread without a parent message. `params`: `%{name: "Thread", type: 11}`. Forum/media thread params may include `message`, `applied_tags`, and file attachments. Supports `reason`.
 
 ### join_thread / leave_thread
 

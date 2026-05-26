@@ -133,6 +133,22 @@ defmodule Lingo.TypeTest do
       assert member_ow.type == :member
       assert role_ow.allow == "1024"
     end
+
+    test "parses nested forum thread message" do
+      channel =
+        Channel.new(%{
+          "id" => "1",
+          "type" => 11,
+          "message" => %{
+            "id" => "m1",
+            "channel_id" => "1",
+            "content" => "forum starter"
+          }
+        })
+
+      assert channel.message.id == "m1"
+      assert channel.message.content == "forum starter"
+    end
   end
 
   describe "Message" do

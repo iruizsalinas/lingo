@@ -1,6 +1,8 @@
 defmodule Lingo.Type.Channel do
   @moduledoc false
 
+  alias Lingo.Type.Message
+
   @type channel_type ::
           :guild_text
           | :dm
@@ -48,7 +50,8 @@ defmodule Lingo.Type.Channel do
           default_reaction_emoji: map() | nil,
           default_thread_rate_limit_per_user: integer() | nil,
           default_sort_order: integer() | nil,
-          default_forum_layout: integer() | nil
+          default_forum_layout: integer() | nil,
+          message: Message.t() | nil
         }
 
   defstruct [
@@ -78,6 +81,7 @@ defmodule Lingo.Type.Channel do
     :default_thread_rate_limit_per_user,
     :default_sort_order,
     :default_forum_layout,
+    :message,
     permission_overwrites: [],
     recipients: [],
     nsfw: false,
@@ -138,7 +142,8 @@ defmodule Lingo.Type.Channel do
       default_reaction_emoji: data["default_reaction_emoji"],
       default_thread_rate_limit_per_user: data["default_thread_rate_limit_per_user"],
       default_sort_order: data["default_sort_order"],
-      default_forum_layout: data["default_forum_layout"]
+      default_forum_layout: data["default_forum_layout"],
+      message: Message.new(data["message"])
     }
   end
 end

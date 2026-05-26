@@ -14,14 +14,20 @@ defmodule Lingo.Api.Thread do
     end
   end
 
-  def start_without_message(channel_id, params, opts \\ []) do
+  def start_without_message(channel_id, params, opts \\ [])
+
+  def start_without_message(channel_id, params, opts) when is_map(params) do
+    {files, json} = Map.pop(params, :files)
+    request_opts = [reason: opts[:reason]] ++ body_opts(json, files)
+
     with {:ok, data} <-
-           Client.request(:post, "/channels/#{channel_id}/threads",
-             json: params,
-             reason: opts[:reason]
-           ) do
+           Client.request(:post, "/channels/#{channel_id}/threads", request_opts) do
       {:ok, Channel.new(data)}
     end
+  end
+
+  def start_without_message(channel_id, params, opts) when is_list(params) do
+    start_without_message(channel_id, Map.new(params), opts)
   end
 
   def join(channel_id) do
@@ -82,4 +88,7 @@ defmodule Lingo.Api.Thread do
       params: params
     )
   end
+
+  defp body_opts(json, nil), do: [json: json]
+  defp body_opts(json, files), do: [multipart: Client.build_multipart(json, files)]
 end
