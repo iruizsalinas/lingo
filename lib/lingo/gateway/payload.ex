@@ -127,6 +127,11 @@ defmodule Lingo.Gateway.Payload do
     %{"op" => 31, "d" => %{"guild_ids" => guild_ids}}
   end
 
+  @spec request_channel_info(String.t(), [String.t()]) :: map()
+  def request_channel_info(guild_id, fields) when is_list(fields) do
+    %{"op" => 43, "d" => %{"guild_id" => guild_id, "fields" => fields}}
+  end
+
   @spec encode(map()) :: binary()
   def encode(payload), do: Jason.encode!(payload)
 

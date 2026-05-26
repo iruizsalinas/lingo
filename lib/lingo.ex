@@ -148,6 +148,9 @@ defmodule Lingo do
 
   def trigger_typing(channel_id), do: Lingo.Api.Channel.trigger_typing(channel_id)
 
+  def set_voice_channel_status(channel_id, params, opts \\ []),
+    do: Lingo.Api.Channel.set_voice_status(channel_id, params, opts)
+
   # Messages
   def get_message(channel_id, message_id), do: Lingo.Api.Message.get(channel_id, message_id)
   def list_messages(channel_id, opts \\ []), do: Lingo.Api.Message.list(channel_id, opts)
@@ -573,6 +576,11 @@ defmodule Lingo do
   def request_soundboard_sounds(guild_ids) when is_list(guild_ids) do
     payload = Lingo.Gateway.Payload.request_soundboard_sounds(guild_ids)
     Lingo.Gateway.ShardManager.broadcast(payload)
+  end
+
+  def request_channel_info(guild_id, fields \\ ["status", "voice_start_time"]) do
+    payload = Lingo.Gateway.Payload.request_channel_info(guild_id, fields)
+    Lingo.Gateway.ShardManager.send_to_guild_shard(guild_id, payload)
   end
 
   def shard_for_guild(guild_id), do: Lingo.Gateway.ShardManager.shard_for_guild(guild_id)

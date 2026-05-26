@@ -103,6 +103,25 @@ defmodule Lingo.Integration.ChannelTest do
     end
   end
 
+  describe "voice channel status" do
+    test "sets and clears status on a voice channel", %{guild_id: guild_id} do
+      {:ok, voice_channel} =
+        Lingo.Api.Guild.create_channel(guild_id, %{
+          name: "lingo-voice-status-#{:rand.uniform(99999)}",
+          type: 2
+        })
+
+      on_exit(fn -> Lingo.Api.Channel.delete(voice_channel.id) end)
+
+      assert voice_channel.type == :guild_voice
+
+      status = "Lingo status #{:rand.uniform(99999)}"
+
+      assert :ok = Lingo.set_voice_channel_status(voice_channel.id, %{status: status})
+      assert :ok = Lingo.set_voice_channel_status(voice_channel.id, %{status: nil})
+    end
+  end
+
   describe "pinned messages" do
     test "get_pinned_messages returns empty result initially", %{channel_id: channel_id} do
       assert {:ok, pins} = Lingo.Api.Channel.get_pinned_messages(channel_id)

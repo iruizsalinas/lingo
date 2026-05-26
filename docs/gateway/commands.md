@@ -45,3 +45,14 @@ Request soundboard sounds for the given guild IDs. Responses arrive as `:soundbo
 ```elixir
 Lingo.request_soundboard_sounds(["guild_id_1", "guild_id_2"])
 ```
+
+## Channel Info
+
+### `request_channel_info(guild_id, fields \\ ["status", "voice_start_time"])`
+
+Request ephemeral channel info for a guild. Responses arrive as `:channel_info` events.
+
+```elixir
+Lingo.request_channel_info(guild_id)
+Lingo.request_channel_info(guild_id, ["status"])
+```

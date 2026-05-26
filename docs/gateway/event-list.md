@@ -19,7 +19,10 @@ Gateway events and the data shape your `handle` block receives.
 | `:channel_create` | `Channel` struct |
 | `:channel_update` | `%{old: Channel \| nil, new: Channel}` |
 | `:channel_delete` | `%{old: Channel \| nil, new: Channel}` |
+| `:channel_info` | Raw map with `"guild_id"` and `"channels"` |
 | `:channel_pins_update` | Raw map with `"channel_id"`, `"guild_id"`, `"last_pin_timestamp"` |
+| `:voice_channel_status_update` | Raw map with `"id"`, `"guild_id"`, `"status"` |
+| `:voice_channel_start_time_update` | Raw map with `"id"`, `"guild_id"`, `"voice_start_time"` |
 
 ## Threads
 

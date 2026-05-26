@@ -97,6 +97,16 @@ defmodule Lingo.Gateway.PayloadTest do
     end
   end
 
+  describe "request_channel_info/2" do
+    test "requests voice status fields" do
+      payload = Payload.request_channel_info("guild123", ["status", "voice_start_time"])
+
+      assert payload["op"] == 43
+      assert payload["d"]["guild_id"] == "guild123"
+      assert payload["d"]["fields"] == ["status", "voice_start_time"]
+    end
+  end
+
   describe "encode/decode roundtrip" do
     test "json roundtrip preserves data" do
       original = Payload.heartbeat(42)

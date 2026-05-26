@@ -56,6 +56,14 @@ Follow an announcement channel. Supports `reason`.
 Lingo.trigger_typing(channel_id)
 ```
 
+### set_voice_channel_status
+
+```elixir
+Lingo.set_voice_channel_status(channel_id, params, opts \\ [])
+```
+
+`params`: `%{status: "In a call"}`. Supports `reason`.
+
 ### list_channel_invites / create_invite
 
 ```elixir

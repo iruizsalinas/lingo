@@ -78,6 +78,10 @@ defmodule Lingo.PermissionsTest do
       assert Permissions.resolve([:administrator]) == 1 <<< 3
     end
 
+    test "set voice channel status permission" do
+      assert Permissions.resolve([:set_voice_channel_status]) == 1 <<< 48
+    end
+
     test "empty list returns 0" do
       assert Permissions.resolve([]) == 0
     end

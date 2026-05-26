@@ -63,6 +63,13 @@ defmodule Lingo.Api.Channel do
     Client.request(:post, "/channels/#{channel_id}/typing")
   end
 
+  def set_voice_status(channel_id, params, opts \\ []) do
+    Client.request(:put, "/channels/#{channel_id}/voice-status",
+      json: params,
+      reason: opts[:reason]
+    )
+  end
+
   def get_pinned_messages(channel_id, opts \\ []) do
     params =
       opts

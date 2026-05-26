@@ -443,6 +443,7 @@ defmodule Lingo.Gateway.Connection do
     "CHANNEL_CREATE" => :channel_create,
     "CHANNEL_UPDATE" => :channel_update,
     "CHANNEL_DELETE" => :channel_delete,
+    "CHANNEL_INFO" => :channel_info,
     "CHANNEL_PINS_UPDATE" => :channel_pins_update,
     "THREAD_CREATE" => :thread_create,
     "THREAD_UPDATE" => :thread_update,
@@ -505,6 +506,8 @@ defmodule Lingo.Gateway.Connection do
     "TYPING_START" => :typing_start,
     "USER_UPDATE" => :user_update,
     "VOICE_CHANNEL_EFFECT_SEND" => :voice_channel_effect_send,
+    "VOICE_CHANNEL_STATUS_UPDATE" => :voice_channel_status_update,
+    "VOICE_CHANNEL_START_TIME_UPDATE" => :voice_channel_start_time_update,
     "VOICE_STATE_UPDATE" => :voice_state_update,
     "VOICE_SERVER_UPDATE" => :voice_server_update,
     "WEBHOOKS_UPDATE" => :webhooks_update

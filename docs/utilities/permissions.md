@@ -128,6 +128,7 @@ The computation follows Discord's permission algorithm:
 | `:create_events` | 44 |
 | `:use_external_sounds` | 45 |
 | `:send_voice_messages` | 46 |
+| `:set_voice_channel_status` | 48 |
 | `:send_polls` | 49 |
 | `:use_external_apps` | 50 |
 | `:pin_messages` | 51 |
