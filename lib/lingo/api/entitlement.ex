@@ -18,6 +18,7 @@ defmodule Lingo.Api.Entitlement do
         :exclude_deleted
       ])
       |> Enum.into(%{})
+      |> normalize_params()
 
     with {:ok, data} <-
            Client.request(:get, "/applications/#{application_id}/entitlements", params: params) do
@@ -49,4 +50,10 @@ defmodule Lingo.Api.Entitlement do
   def delete_test(application_id, entitlement_id) do
     Client.request(:delete, "/applications/#{application_id}/entitlements/#{entitlement_id}")
   end
+
+  defp normalize_params(%{sku_ids: sku_ids} = params) when is_list(sku_ids) do
+    %{params | sku_ids: Enum.join(sku_ids, ",")}
+  end
+
+  defp normalize_params(params), do: params
 end

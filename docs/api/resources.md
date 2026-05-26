@@ -228,7 +228,7 @@ Lingo.create_test_entitlement(params)
 Lingo.delete_test_entitlement(entitlement_id)
 ```
 
-`list_entitlements` options: `user_id`, `sku_ids`, `before`, `after`, `limit`, `guild_id`, `exclude_ended`, `exclude_deleted`.
+`list_entitlements` options: `user_id`, `sku_ids`, `before`, `after`, `limit`, `guild_id`, `exclude_ended`, `exclude_deleted`. `sku_ids` may be a comma-delimited string or list.
 
 ## Application
 
