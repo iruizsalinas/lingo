@@ -256,7 +256,7 @@ Fields: `user_id`, `channel_id`, `message_id`, `guild_id`, `emoji`, `member`, `m
 
 ### Invite
 
-Fields: `type`, `code`, `guild`, `channel`, `inviter`, `target_type`, `target_user`, `approximate_presence_count`, `approximate_member_count`, `expires_at`, `uses`, `max_uses`, `max_age`, `temporary`, `created_at`, `flags`.
+Fields: `type`, `code`, `guild`, `channel`, `inviter`, `target_type`, `target_user`, `target_application`, `approximate_presence_count`, `approximate_member_count`, `expires_at`, `guild_scheduled_event`, `roles`, `uses`, `max_uses`, `max_age`, `temporary`, `created_at`, `flags`.
 
 ### Ban
 

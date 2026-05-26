@@ -1,7 +1,7 @@
 defmodule Lingo.Type.Invite do
   @moduledoc false
 
-  alias Lingo.Type.{Channel, Guild, User}
+  alias Lingo.Type.{Channel, Guild, Role, ScheduledEvent, User}
 
   @type t :: %__MODULE__{
           type: integer() | nil,
@@ -11,9 +11,12 @@ defmodule Lingo.Type.Invite do
           inviter: User.t() | nil,
           target_type: integer() | nil,
           target_user: User.t() | nil,
+          target_application: map() | nil,
           approximate_presence_count: integer() | nil,
           approximate_member_count: integer() | nil,
           expires_at: String.t() | nil,
+          guild_scheduled_event: ScheduledEvent.t() | nil,
+          roles: [Role.t()],
           uses: integer() | nil,
           max_uses: integer() | nil,
           max_age: integer() | nil,
@@ -30,13 +33,16 @@ defmodule Lingo.Type.Invite do
     :inviter,
     :target_type,
     :target_user,
+    :target_application,
     :approximate_presence_count,
     :approximate_member_count,
     :expires_at,
+    :guild_scheduled_event,
     :uses,
     :max_uses,
     :max_age,
     :created_at,
+    roles: [],
     temporary: false,
     flags: 0
   ]
@@ -52,9 +58,12 @@ defmodule Lingo.Type.Invite do
       inviter: User.new(data["inviter"]),
       target_type: data["target_type"],
       target_user: User.new(data["target_user"]),
+      target_application: data["target_application"],
       approximate_presence_count: data["approximate_presence_count"],
       approximate_member_count: data["approximate_member_count"],
       expires_at: data["expires_at"],
+      guild_scheduled_event: ScheduledEvent.new(data["guild_scheduled_event"]),
+      roles: (data["roles"] || []) |> Enum.map(&Role.new/1),
       uses: data["uses"],
       max_uses: data["max_uses"],
       max_age: data["max_age"],

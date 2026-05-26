@@ -11,6 +11,9 @@ defmodule Lingo.TypeTest do
     Guild,
     Interaction,
     Message,
+    Invite,
+    Role,
+    ScheduledEvent,
     User
   }
 
@@ -199,6 +202,44 @@ defmodule Lingo.TypeTest do
 
       msg = Message.new(data)
       assert msg.referenced_message.content == "original"
+    end
+  end
+
+  describe "Invite" do
+    test "parses current optional invite fields" do
+      invite =
+        Invite.new(%{
+          "type" => 0,
+          "code" => "abc123",
+          "target_application" => %{"id" => "app1", "name" => "Activity"},
+          "guild_scheduled_event" => %{
+            "id" => "event1",
+            "guild_id" => "guild1",
+            "name" => "Launch",
+            "scheduled_start_time" => "2026-01-01T00:00:00Z",
+            "privacy_level" => 2,
+            "status" => 1,
+            "entity_type" => 2
+          },
+          "roles" => [
+            %{
+              "id" => "role1",
+              "name" => "Guest",
+              "position" => 1,
+              "color" => 12,
+              "icon" => "icon_hash",
+              "unicode_emoji" => nil
+            }
+          ]
+        })
+
+      assert invite.target_application["id"] == "app1"
+      assert %ScheduledEvent{} = invite.guild_scheduled_event
+      assert invite.guild_scheduled_event.id == "event1"
+      assert [%Role{} = role] = invite.roles
+      assert role.id == "role1"
+      assert role.name == "Guest"
+      assert role.position == 1
     end
   end
 
