@@ -137,7 +137,7 @@ Lingo.begin_prune(guild_id, params \\ %{}, opts \\ [])
 Lingo.search_messages(guild_id, opts \\ [])
 ```
 
-Options: `content`, `author_id`, `mentions`, `has`, `min_id`, `max_id`, `channel_id`, `pinned`, `limit`, `offset`, `sort_by`, `sort_order`.
+Options: `limit`, `offset`, `max_id`, `min_id`, `slop`, `content`, `channel_id`, `author_type`, `author_id`, `mentions`, `mentions_role_id`, `mention_everyone`, `replied_to_user_id`, `replied_to_message_id`, `pinned`, `has`, `embed_type`, `embed_provider`, `link_hostname`, `attachment_filename`, `attachment_extension`, `sort_by`, `sort_order`, `include_nsfw`.
 
 ### get_audit_log
 
