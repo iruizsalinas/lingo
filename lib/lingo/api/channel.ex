@@ -42,12 +42,17 @@ defmodule Lingo.Api.Channel do
     end
   end
 
-  def create_invite(channel_id, params \\ %{}, opts \\ []) do
+  def create_invite(channel_id, params \\ %{}, opts \\ [])
+
+  def create_invite(channel_id, params, opts) when is_list(params) do
+    create_invite(channel_id, Map.new(params), opts)
+  end
+
+  def create_invite(channel_id, params, opts) when is_map(params) do
+    request_opts = [reason: opts[:reason]] ++ invite_body_opts(params)
+
     with {:ok, data} <-
-           Client.request(:post, "/channels/#{channel_id}/invites",
-             json: params,
-             reason: opts[:reason]
-           ) do
+           Client.request(:post, "/channels/#{channel_id}/invites", request_opts) do
       {:ok, Invite.new(data)}
     end
   end
@@ -103,5 +108,41 @@ defmodule Lingo.Api.Channel do
     Client.request(:delete, "/channels/#{channel_id}/messages/pins/#{message_id}",
       reason: opts[:reason]
     )
+  end
+
+  defp invite_body_opts(%{target_users_file: target_users_file} = params) do
+    json = Map.delete(params, :target_users_file)
+
+    [
+      multipart: [
+        {"payload_json", {Jason.encode!(json), content_type: "application/json"}},
+        target_users_file_part(target_users_file)
+      ]
+    ]
+  end
+
+  defp invite_body_opts(%{"target_users_file" => target_users_file} = params) do
+    json = Map.delete(params, "target_users_file")
+
+    [
+      multipart: [
+        {"payload_json", {Jason.encode!(json), content_type: "application/json"}},
+        target_users_file_part(target_users_file)
+      ]
+    ]
+  end
+
+  defp invite_body_opts(params), do: [json: params]
+
+  defp target_users_file_part(user_ids) when is_list(user_ids) do
+    target_users_file_part("user_id\n" <> Enum.join(user_ids, "\n"))
+  end
+
+  defp target_users_file_part({filename, csv}) when is_binary(filename) do
+    {"target_users_file", {csv, filename: filename, content_type: "text/csv"}}
+  end
+
+  defp target_users_file_part(csv) when is_binary(csv) do
+    {"target_users_file", {csv, filename: "target_users.csv", content_type: "text/csv"}}
   end
 end

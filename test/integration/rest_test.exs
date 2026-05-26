@@ -101,7 +101,7 @@ defmodule Lingo.Integration.RestTest do
 
       on_exit(fn -> Lingo.Api.Invite.delete(invite.code) end)
 
-      %{invite_code: invite.code}
+      %{channel_id: channel.id, invite_code: invite.code}
     end
 
     test "get_target_users returns 404 on fresh invite", %{invite_code: code} do
@@ -130,6 +130,30 @@ defmodule Lingo.Integration.RestTest do
       # get target users
       assert {:ok, ids} = Lingo.Api.Invite.get_target_users(code)
       assert is_list(ids)
+      assert me.id in ids
+    end
+
+    test "create_invite accepts target_users_file", %{channel_id: channel_id} do
+      {:ok, me} = Lingo.Api.User.get_current()
+
+      assert {:ok, invite} =
+               Lingo.Api.Channel.create_invite(channel_id, %{
+                 max_age: 300,
+                 unique: true,
+                 target_users_file: [me.id]
+               })
+
+      on_exit(fn -> Lingo.Api.Invite.delete(invite.code) end)
+
+      assert is_binary(invite.code)
+
+      assert {:ok, status} = Lingo.Api.Invite.get_target_users_status(invite.code)
+      assert is_map(status)
+      assert is_integer(status["status"])
+
+      Process.sleep(3_000)
+
+      assert {:ok, ids} = Lingo.Api.Invite.get_target_users(invite.code)
       assert me.id in ids
     end
 

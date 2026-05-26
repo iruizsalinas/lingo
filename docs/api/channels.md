@@ -71,7 +71,7 @@ Lingo.list_channel_invites(channel_id)
 Lingo.create_invite(channel_id, params \\ %{}, opts \\ [])
 ```
 
-`create_invite` params: `%{max_age: 86400, max_uses: 1, temporary: false}`. Supports `reason`.
+`create_invite` params: `%{max_age: 86400, max_uses: 1, temporary: false}`. Supports `role_ids`, `target_users_file`, and `reason`.
 
 ## Messages
 
