@@ -130,8 +130,10 @@ Lingo.crosspost_message(channel_id, message_id)
 ### list_pins
 
 ```elixir
-Lingo.list_pins(channel_id)
+Lingo.list_pins(channel_id, opts \\ [])
 ```
+
+Options: `before`, `limit`.
 
 ### pin_message / unpin_message
 

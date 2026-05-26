@@ -166,7 +166,9 @@ defmodule Lingo do
     do: Lingo.Api.Message.crosspost(channel_id, message_id)
 
   def search_messages(guild_id, opts \\ []), do: Lingo.Api.Message.search(guild_id, opts)
-  def list_pins(channel_id), do: Lingo.Api.Channel.get_pinned_messages(channel_id)
+
+  def list_pins(channel_id, opts \\ []),
+    do: Lingo.Api.Channel.get_pinned_messages(channel_id, opts)
 
   def pin_message(channel_id, message_id, opts \\ []),
     do: Lingo.Api.Channel.pin_message(channel_id, message_id, opts)

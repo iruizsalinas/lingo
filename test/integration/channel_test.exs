@@ -104,9 +104,10 @@ defmodule Lingo.Integration.ChannelTest do
   end
 
   describe "pinned messages" do
-    test "get_pinned_messages returns empty list initially", %{channel_id: channel_id} do
+    test "get_pinned_messages returns empty result initially", %{channel_id: channel_id} do
       assert {:ok, pins} = Lingo.Api.Channel.get_pinned_messages(channel_id)
-      assert pins == []
+      assert pins.items == []
+      assert pins.has_more == false
     end
 
     test "pin, verify, and unpin a message", %{channel_id: channel_id} do
@@ -117,17 +118,21 @@ defmodule Lingo.Integration.ChannelTest do
       assert :ok = Lingo.Api.Channel.pin_message(channel_id, message.id)
 
       # verify it appears in pinned messages
-      assert {:ok, pins} = Lingo.Api.Channel.get_pinned_messages(channel_id)
-      assert length(pins) == 1
-      assert hd(pins).id == message.id
-      assert hd(pins).pinned == true
+      assert {:ok, pins} = Lingo.Api.Channel.get_pinned_messages(channel_id, limit: 1)
+      assert length(pins.items) == 1
+
+      [pin] = pins.items
+      assert is_binary(pin.pinned_at)
+      assert %Lingo.Type.Message{} = pin.message
+      assert pin.message.id == message.id
+      assert pin.message.pinned == true
 
       # unpin the message
       assert :ok = Lingo.Api.Channel.unpin_message(channel_id, message.id)
 
       # verify removal
       assert {:ok, pins} = Lingo.Api.Channel.get_pinned_messages(channel_id)
-      assert pins == []
+      assert pins.items == []
     end
   end
 

@@ -63,14 +63,27 @@ defmodule Lingo.Api.Channel do
     Client.request(:post, "/channels/#{channel_id}/typing")
   end
 
-  def get_pinned_messages(channel_id) do
-    with {:ok, data} <- Client.request(:get, "/channels/#{channel_id}/messages/pins") do
-      messages =
-        (data["items"] || [])
-        |> Enum.map(fn item -> Message.new(item["message"]) end)
+  def get_pinned_messages(channel_id, opts \\ []) do
+    params =
+      opts
+      |> Keyword.take([:before, :limit])
+      |> Enum.into(%{})
 
-      {:ok, messages}
+    with {:ok, data} <-
+           Client.request(:get, "/channels/#{channel_id}/messages/pins", params: params) do
+      {:ok,
+       %{
+         items: Enum.map(data["items"] || [], &new_pin/1),
+         has_more: data["has_more"] || false
+       }}
     end
+  end
+
+  defp new_pin(item) do
+    %{
+      pinned_at: item["pinned_at"],
+      message: Message.new(item["message"])
+    }
   end
 
   def pin_message(channel_id, message_id, opts \\ []) do
