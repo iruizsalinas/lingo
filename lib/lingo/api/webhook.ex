@@ -87,7 +87,7 @@ defmodule Lingo.Api.Webhook do
   def execute(webhook_id, webhook_token, params, opts \\ []) when is_map(params) do
     query_params =
       opts
-      |> Keyword.take([:wait, :thread_id])
+      |> Keyword.take([:wait, :thread_id, :with_components])
       |> Enum.into(%{})
 
     {files, json} = Map.pop(params, :files)
@@ -118,7 +118,11 @@ defmodule Lingo.Api.Webhook do
 
   def edit_message(webhook_id, webhook_token, message_id, params, opts \\ [])
       when is_map(params) do
-    query_params = if opts[:thread_id], do: %{thread_id: opts[:thread_id]}, else: nil
+    query_params =
+      opts
+      |> Keyword.take([:thread_id, :with_components])
+      |> Enum.into(%{})
+
     {files, json} = Map.pop(params, :files)
 
     req_opts =

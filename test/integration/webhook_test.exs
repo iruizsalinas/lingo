@@ -113,7 +113,8 @@ defmodule Lingo.Integration.WebhookTest do
                  %{
                    content: "hello from webhook"
                  },
-                 wait: true
+                 wait: true,
+                 with_components: true
                )
 
       assert is_binary(msg.id)
@@ -143,9 +144,13 @@ defmodule Lingo.Integration.WebhookTest do
 
       # edit the message
       assert {:ok, edited} =
-               Lingo.Api.Webhook.edit_message(webhook_id, webhook_token, msg.id, %{
-                 content: "edited"
-               })
+               Lingo.Api.Webhook.edit_message(
+                 webhook_id,
+                 webhook_token,
+                 msg.id,
+                 %{content: "edited"},
+                 with_components: true
+               )
 
       assert edited.id == msg.id
       assert edited.content == "edited"

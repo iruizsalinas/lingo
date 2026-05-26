@@ -85,7 +85,7 @@ Lingo.delete_webhook_with_token(webhook_id, token)
 Lingo.execute_webhook(webhook_id, token, params, opts \\ [])
 ```
 
-Options: `wait` (return the message), `thread_id`. Supports file attachments.
+Options: `wait` (return the message), `thread_id`, `with_components`. Supports file attachments.
 
 ### execute_slack_webhook / execute_github_webhook
 
@@ -104,7 +104,7 @@ Lingo.edit_webhook_message(webhook_id, token, message_id, params, opts \\ [])
 Lingo.delete_webhook_message(webhook_id, token, message_id, opts \\ [])
 ```
 
-All accept `thread_id`. `edit_webhook_message` supports file attachments.
+All accept `thread_id`. `edit_webhook_message` also accepts `with_components` and supports file attachments.
 
 ## Emojis
 
@@ -281,4 +281,3 @@ Lingo.get_subscription(sku_id, subscription_id)
 ```
 
 `list_subscriptions` options: `before`, `after`, `limit`, `user_id`.
-
