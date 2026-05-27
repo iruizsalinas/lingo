@@ -85,6 +85,57 @@ defmodule Lingo.Integration.CommandLifecycleTest do
 
       :ok = Lingo.Api.Command.delete_global(app_id, created.id)
     end
+
+    test "context menu command payloads are accepted by Discord", ctx do
+      app_id = ctx.client_id
+      guild_id = System.get_env("GUILD_ID")
+      if is_nil(guild_id) or guild_id == "", do: raise("GUILD_ID not set")
+
+      user_name = "Lingo Test User #{:rand.uniform(99999)}"
+      message_name = "Lingo Test Message #{:rand.uniform(99999)}"
+
+      user_payload =
+        Lingo.Type.ApplicationCommand.to_payload(%Lingo.Type.ApplicationCommand{
+          name: user_name,
+          type: :user,
+          description: "ignored by serializer",
+          options: [
+            %Lingo.Type.CommandOption{
+              type: :string,
+              name: "ignored",
+              description: "ignored"
+            }
+          ],
+          handler: 2
+        })
+
+      message_payload =
+        Lingo.Type.ApplicationCommand.to_payload(%Lingo.Type.ApplicationCommand{
+          name: message_name,
+          type: :message,
+          description: "ignored by serializer"
+        })
+
+      assert {:ok, user_command} = Lingo.Api.Command.create_guild(app_id, guild_id, user_payload)
+
+      assert {:ok, message_command} =
+               Lingo.Api.Command.create_guild(app_id, guild_id, message_payload)
+
+      on_exit(fn ->
+        Lingo.Api.Command.delete_guild(app_id, guild_id, user_command.id)
+        Lingo.Api.Command.delete_guild(app_id, guild_id, message_command.id)
+      end)
+
+      assert user_command.name == user_name
+      assert user_command.type == :user
+      assert user_command.description == ""
+      assert user_command.options == []
+
+      assert message_command.name == message_name
+      assert message_command.type == :message
+      assert message_command.description == ""
+      assert message_command.options == []
+    end
   end
 
   describe "bulk overwrite" do

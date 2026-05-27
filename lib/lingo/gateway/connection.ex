@@ -514,6 +514,6 @@ defmodule Lingo.Gateway.Connection do
   }
 
   defp safe_event_atom(type) do
-    Map.get(@known_events, type, :unknown_event)
+    Map.get(@known_events, type, {:unknown_event, type})
   end
 end

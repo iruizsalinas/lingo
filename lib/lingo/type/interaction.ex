@@ -24,7 +24,8 @@ defmodule Lingo.Type.Interaction do
           guild_locale: String.t() | nil,
           entitlements: [map()],
           authorizing_integration_owners: map() | nil,
-          context: integer() | nil
+          context: integer() | nil,
+          attachment_size_limit: integer() | nil
         }
 
   defstruct [
@@ -44,6 +45,7 @@ defmodule Lingo.Type.Interaction do
     :guild_locale,
     :authorizing_integration_owners,
     :context,
+    :attachment_size_limit,
     version: 1,
     entitlements: []
   ]
@@ -77,7 +79,8 @@ defmodule Lingo.Type.Interaction do
       guild_locale: data["guild_locale"],
       entitlements: data["entitlements"] || [],
       authorizing_integration_owners: data["authorizing_integration_owners"],
-      context: data["context"]
+      context: data["context"],
+      attachment_size_limit: data["attachment_size_limit"]
     }
   end
 

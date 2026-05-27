@@ -251,7 +251,13 @@ defmodule Lingo.Api.Client do
   end
 
   defp get_header(headers, key, default) do
-    case Map.get(headers, key) do
+    value =
+      Map.get(headers, key) ||
+        Enum.find_value(headers, fn {header, value} ->
+          if String.downcase(header) == key, do: value
+        end)
+
+    case value do
       [value | _] -> value
       value when is_binary(value) -> value
       nil -> default

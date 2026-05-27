@@ -4,8 +4,20 @@ defmodule Lingo.Api.RateLimiterTest do
   alias Lingo.Api.RateLimiter
 
   setup do
-    start_supervised!(RateLimiter)
+    if Process.whereis(RateLimiter) do
+      reset_tables()
+    else
+      start_supervised!(RateLimiter)
+    end
+
     :ok
+  end
+
+  defp reset_tables do
+    for table <- [:lingo_rate_limits, :lingo_bucket_map, :lingo_global_rate_limit],
+        :ets.whereis(table) != :undefined do
+      :ets.delete_all_objects(table)
+    end
   end
 
   describe "update/2 with list headers" do
@@ -33,6 +45,20 @@ defmodule Lingo.Api.RateLimiterTest do
       RateLimiter.update("GET:/no/info", [{"content-type", "application/json"}])
       assert :ets.lookup(:lingo_bucket_map, "GET:/no/info") == []
     end
+
+    test "parses headers case-insensitively" do
+      headers = [
+        {"X-RateLimit-Bucket", "case123"},
+        {"X-RateLimit-Remaining", "2"},
+        {"X-RateLimit-Reset-After", "1.0"},
+        {"X-RateLimit-Limit", "5"}
+      ]
+
+      RateLimiter.update("GET:/channels/123/case", headers)
+
+      [{_, bucket_key}] = :ets.lookup(:lingo_bucket_map, "GET:/channels/123/case")
+      assert bucket_key == "case123:123"
+    end
   end
 
   describe "update/2 with map headers" do
@@ -52,6 +78,20 @@ defmodule Lingo.Api.RateLimiterTest do
       [{^bucket_key, remaining, _reset_at, limit}] = :ets.lookup(:lingo_rate_limits, bucket_key)
       assert remaining == 0
       assert limit == 5
+    end
+
+    test "parses map-style headers case-insensitively" do
+      headers = %{
+        "X-RateLimit-Bucket" => ["mapcase"],
+        "X-RateLimit-Remaining" => ["1"],
+        "X-RateLimit-Reset-After" => ["1.0"],
+        "X-RateLimit-Limit" => ["5"]
+      }
+
+      RateLimiter.update("GET:/guilds/456/case", headers)
+
+      [{_, bucket_key}] = :ets.lookup(:lingo_bucket_map, "GET:/guilds/456/case")
+      assert bucket_key == "mapcase:456"
     end
   end
 
@@ -151,6 +191,34 @@ defmodule Lingo.Api.RateLimiterTest do
       start = System.monotonic_time(:millisecond)
       assert RateLimiter.wait_global() == :ok
       assert System.monotonic_time(:millisecond) - start < 50
+    end
+
+    test "shorter later pause does not shorten an active global pause" do
+      RateLimiter.pause_global(180)
+      Process.sleep(40)
+      RateLimiter.pause_global(20)
+
+      start = System.monotonic_time(:millisecond)
+      assert RateLimiter.wait_global() == :ok
+      elapsed = System.monotonic_time(:millisecond) - start
+
+      assert elapsed >= 120
+    end
+
+    test "wait observes a global pause extended while waiting" do
+      RateLimiter.pause_global(70)
+
+      task =
+        Task.async(fn ->
+          start = System.monotonic_time(:millisecond)
+          RateLimiter.wait_global()
+          System.monotonic_time(:millisecond) - start
+        end)
+
+      Process.sleep(30)
+      RateLimiter.pause_global(150)
+
+      assert Task.await(task, 1_000) >= 150
     end
   end
 

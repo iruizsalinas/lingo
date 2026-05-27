@@ -26,6 +26,10 @@ defmodule Lingo.TypeTest do
         "global_name" => "Test User",
         "avatar" => "abc123",
         "bot" => true,
+        "verified" => true,
+        "email" => "test@example.com",
+        "collectibles" => %{"nameplate" => %{"palette" => "cobalt"}},
+        "primary_guild" => %{"identity_guild_id" => "guild1", "tag" => "TEST"},
         "public_flags" => 256
       }
 
@@ -35,6 +39,10 @@ defmodule Lingo.TypeTest do
       assert user.global_name == "Test User"
       assert user.avatar == "abc123"
       assert user.bot == true
+      assert user.verified == true
+      assert user.email == "test@example.com"
+      assert user.collectibles["nameplate"]["palette"] == "cobalt"
+      assert user.primary_guild["tag"] == "TEST"
       assert user.public_flags == 256
     end
 
@@ -97,6 +105,22 @@ defmodule Lingo.TypeTest do
       assert guild.unavailable == true
       assert guild.name == nil
     end
+
+    test "parses current optional guild fields" do
+      guild =
+        Guild.new(%{
+          "id" => "1",
+          "name" => "G",
+          "owner_id" => "2",
+          "welcome_screen" => %{"description" => "Welcome"},
+          "safety_alerts_channel_id" => "alerts",
+          "incidents_data" => %{"invites_disabled_until" => nil}
+        })
+
+      assert guild.welcome_screen["description"] == "Welcome"
+      assert guild.safety_alerts_channel_id == "alerts"
+      assert guild.incidents_data["invites_disabled_until"] == nil
+    end
   end
 
   describe "Channel" do
@@ -152,6 +176,39 @@ defmodule Lingo.TypeTest do
       assert channel.message.id == "m1"
       assert channel.message.content == "forum starter"
     end
+
+    test "parses current optional channel fields" do
+      channel =
+        Channel.new(%{
+          "id" => "1",
+          "type" => 3,
+          "application_id" => "app1",
+          "managed" => true,
+          "member" => %{"user_id" => "u1", "join_timestamp" => "2026-01-01T00:00:00Z"},
+          "default_auto_archive_duration" => 1440,
+          "permissions" => "1024",
+          "total_message_sent" => 5,
+          "available_tags" => [%{"id" => "tag1", "name" => "News"}],
+          "applied_tags" => ["tag1"],
+          "default_reaction_emoji" => %{"emoji_name" => "wave"},
+          "default_thread_rate_limit_per_user" => 10,
+          "default_sort_order" => 1,
+          "default_forum_layout" => 2
+        })
+
+      assert channel.application_id == "app1"
+      assert channel.managed == true
+      assert channel.member["user_id"] == "u1"
+      assert channel.default_auto_archive_duration == 1440
+      assert channel.permissions == "1024"
+      assert channel.total_message_sent == 5
+      assert [%{"id" => "tag1"}] = channel.available_tags
+      assert channel.applied_tags == ["tag1"]
+      assert channel.default_reaction_emoji["emoji_name"] == "wave"
+      assert channel.default_thread_rate_limit_per_user == 10
+      assert channel.default_sort_order == 1
+      assert channel.default_forum_layout == 2
+    end
   end
 
   describe "Message" do
@@ -186,6 +243,25 @@ defmodule Lingo.TypeTest do
       assert hd(msg.reactions).count == 3
     end
 
+    test "parses current optional member fields" do
+      msg =
+        Message.new(%{
+          "id" => "m-member",
+          "channel_id" => "c1",
+          "member" => %{
+            "nick" => "Snd",
+            "banner" => "banner_hash",
+            "avatar_decoration_data" => %{"asset" => "decor"},
+            "collectibles" => %{"nameplate" => %{"palette" => "teal"}},
+            "roles" => []
+          }
+        })
+
+      assert msg.member.banner == "banner_hash"
+      assert msg.member.avatar_decoration_data["asset"] == "decor"
+      assert msg.member.collectibles["nameplate"]["palette"] == "teal"
+    end
+
     test "referenced_message recursion" do
       data = %{
         "id" => "m2",
@@ -202,6 +278,39 @@ defmodule Lingo.TypeTest do
 
       msg = Message.new(data)
       assert msg.referenced_message.content == "original"
+    end
+
+    test "parses current optional message fields" do
+      msg =
+        Message.new(%{
+          "id" => "m3",
+          "channel_id" => "c1",
+          "content" => "newer fields",
+          "interaction" => %{"id" => "i1", "name" => "old interaction"},
+          "role_subscription_data" => %{"role_subscription_listing_id" => "listing1"},
+          "resolved" => %{"users" => %{}},
+          "poll" => %{"question" => %{"text" => "Question?"}},
+          "call" => %{"participants" => ["u1"], "ended_timestamp" => nil},
+          "shared_client_theme" => %{"primary_color" => 123},
+          "stickers" => [%{"id" => "s1"}],
+          "message_snapshots" => [
+            %{"message" => %{"id" => "snapshot1", "channel_id" => "c1", "content" => "snap"}},
+            %{"unexpected" => true}
+          ]
+        })
+
+      assert msg.interaction["id"] == "i1"
+      assert msg.role_subscription_data["role_subscription_listing_id"] == "listing1"
+      assert msg.resolved["users"] == %{}
+      assert msg.poll["question"]["text"] == "Question?"
+      assert msg.call["participants"] == ["u1"]
+      assert msg.shared_client_theme["primary_color"] == 123
+      assert [%{"id" => "s1"}] = msg.stickers
+
+      assert [%{"message" => %Message{} = snapshot}, %{"unexpected" => true}] =
+               msg.message_snapshots
+
+      assert snapshot.content == "snap"
     end
   end
 
@@ -240,6 +349,28 @@ defmodule Lingo.TypeTest do
       assert role.id == "role1"
       assert role.name == "Guest"
       assert role.position == 1
+    end
+  end
+
+  describe "Role" do
+    test "parses role colors object" do
+      role =
+        Role.new(%{
+          "id" => "role1",
+          "name" => "Gradient",
+          "color" => 3_447_003,
+          "colors" => %{
+            "primary_color" => 3_447_003,
+            "secondary_color" => 16_759_788,
+            "tertiary_color" => nil
+          },
+          "permissions" => "0"
+        })
+
+      assert role.color == 3_447_003
+      assert role.colors["primary_color"] == 3_447_003
+      assert role.colors["secondary_color"] == 16_759_788
+      assert role.colors["tertiary_color"] == nil
     end
   end
 
@@ -290,6 +421,19 @@ defmodule Lingo.TypeTest do
 
       assert Interaction.author(interaction).username == "bob"
     end
+
+    test "parses attachment size limit" do
+      interaction =
+        Interaction.new(%{
+          "id" => "1",
+          "application_id" => "2",
+          "type" => 2,
+          "token" => "t",
+          "attachment_size_limit" => 26_214_400
+        })
+
+      assert interaction.attachment_size_limit == 26_214_400
+    end
   end
 
   describe "ApplicationCommand" do
@@ -322,6 +466,58 @@ defmodule Lingo.TypeTest do
       payload = ApplicationCommand.to_payload(cmd)
       refute Map.has_key?(payload, "default_member_permissions")
       refute Map.has_key?(payload, "nsfw")
+    end
+
+    test "to_payload omits chat-input-only fields for context menus" do
+      user_payload =
+        ApplicationCommand.to_payload(%ApplicationCommand{
+          name: "Inspect User",
+          type: :user,
+          description: "",
+          options: [%CommandOption{type: :string, name: "ignored", description: "ignored"}]
+        })
+
+      assert user_payload["name"] == "Inspect User"
+      assert user_payload["type"] == 2
+      refute Map.has_key?(user_payload, "description")
+      refute Map.has_key?(user_payload, "options")
+
+      message_payload =
+        ApplicationCommand.to_payload(%ApplicationCommand{
+          name: "Inspect Message",
+          type: :message,
+          description: ""
+        })
+
+      assert message_payload["type"] == 3
+      refute Map.has_key?(message_payload, "description")
+      refute Map.has_key?(message_payload, "options")
+    end
+
+    test "to_payload includes primary entry point handler" do
+      payload =
+        ApplicationCommand.to_payload(%ApplicationCommand{
+          name: "Play",
+          type: :primary_entry_point,
+          handler: 2
+        })
+
+      assert payload["type"] == 4
+      assert payload["handler"] == 2
+      refute Map.has_key?(payload, "description")
+      refute Map.has_key?(payload, "options")
+    end
+
+    test "to_payload omits handler for non-primary-entry-point commands" do
+      payload =
+        ApplicationCommand.to_payload(%ApplicationCommand{
+          name: "test",
+          description: "test",
+          type: :chat_input,
+          handler: 2
+        })
+
+      refute Map.has_key?(payload, "handler")
     end
   end
 

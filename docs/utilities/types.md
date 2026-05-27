@@ -42,6 +42,10 @@ All types are in the `Lingo.Type` namespace. Each has a `new/1` constructor that
 | `public_updates_channel_id` | snowflake \| nil |
 | `nsfw_level` | `:default \| :explicit \| :safe \| :age_restricted` |
 | `stickers` | `[Sticker]` |
+| `premium_progress_bar_enabled` | boolean |
+| `safety_alerts_channel_id` | snowflake \| nil |
+| `incidents_data` | map \| nil |
+| `welcome_screen` | map \| nil |
 | `channels` | `[Channel]` |
 | `members` | `[Member]` |
 | `member_count` | integer |
@@ -69,6 +73,8 @@ All types are in the `Lingo.Type` namespace. Each has a `new/1` constructor that
 | `recipients` | list |
 | `icon` | string \| nil |
 | `owner_id` | snowflake \| nil |
+| `application_id` | snowflake \| nil |
+| `managed` | boolean |
 | `parent_id` | snowflake \| nil |
 | `last_pin_timestamp` | string \| nil |
 | `rtc_region` | string \| nil |
@@ -76,7 +82,18 @@ All types are in the `Lingo.Type` namespace. Each has a `new/1` constructor that
 | `message_count` | integer |
 | `member_count` | integer |
 | `thread_metadata` | map \| nil |
+| `member` | map \| nil |
+| `default_auto_archive_duration` | integer \| nil |
+| `permissions` | string \| nil |
 | `flags` | integer |
+| `total_message_sent` | integer \| nil |
+| `available_tags` | list |
+| `applied_tags` | list |
+| `default_reaction_emoji` | map \| nil |
+| `default_thread_rate_limit_per_user` | integer \| nil |
+| `default_sort_order` | integer \| nil |
+| `default_forum_layout` | integer \| nil |
+| `message` | `Message \| nil` |
 
 Channel types: `:guild_text`, `:dm`, `:guild_voice`, `:group_dm`, `:guild_category`, `:guild_announcement`, `:announcement_thread`, `:public_thread`, `:private_thread`, `:guild_stage_voice`, `:guild_directory`, `:guild_forum`, `:guild_media`.
 
@@ -108,9 +125,13 @@ Channel types: `:guild_text`, `:dm`, `:guild_voice`, `:group_dm`, `:guild_catego
 | `banner` | string \| nil |
 | `accent_color` | integer \| nil |
 | `locale` | string \| nil |
+| `verified` | boolean |
+| `email` | string \| nil |
 | `flags` | integer |
 | `premium_type` | integer |
 | `public_flags` | integer |
+| `collectibles` | map \| nil |
+| `primary_guild` | map \| nil |
 
 ## Member
 
@@ -121,6 +142,9 @@ Channel types: `:guild_text`, `:dm`, `:guild_voice`, `:group_dm`, `:guild_catego
 | `user` | `User \| nil` |
 | `nick` | string \| nil |
 | `avatar` | string \| nil |
+| `banner` | string \| nil |
+| `avatar_decoration_data` | map \| nil |
+| `collectibles` | map \| nil |
 | `roles` | `[snowflake]` |
 | `joined_at` | string |
 | `premium_since` | string \| nil |
@@ -157,8 +181,18 @@ Channel types: `:guild_text`, `:dm`, `:guild_voice`, `:group_dm`, `:guild_catego
 | `type` | integer |
 | `flags` | integer |
 | `referenced_message` | `Message \| nil` |
+| `message_snapshots` | list |
+| `interaction_metadata` | map \| nil |
+| `interaction` | map \| nil |
 | `thread` | `Channel \| nil` |
 | `components` | list |
+| `sticker_items` | list |
+| `stickers` | list |
+| `role_subscription_data` | map \| nil |
+| `resolved` | map \| nil |
+| `poll` | map \| nil |
+| `call` | map \| nil |
+| `shared_client_theme` | map \| nil |
 
 ### Attachment
 
@@ -185,6 +219,7 @@ Channel types: `:guild_text`, `:dm`, `:guild_voice`, `:group_dm`, `:guild_catego
 | `id` | snowflake |
 | `name` | string |
 | `color` | integer |
+| `colors` | map |
 | `hoist` | boolean |
 | `icon` | string \| nil |
 | `unicode_emoji` | string \| nil |
@@ -233,6 +268,9 @@ Channel types: `:guild_text`, `:dm`, `:guild_voice`, `:group_dm`, `:guild_catego
 | `locale` | string |
 | `guild_locale` | string \| nil |
 | `entitlements` | list |
+| `authorizing_integration_owners` | map \| nil |
+| `context` | integer \| nil |
+| `attachment_size_limit` | integer \| nil |
 
 `Lingo.Type.Interaction.author/1` returns the user, preferring `member.user` and falling back to `user`.
 
@@ -292,7 +330,7 @@ Fields: `code`, `name`, `description`, `usage_count`, `creator_id`, `creator`, `
 
 ### ApplicationCommand
 
-Fields: `id`, `type`, `application_id`, `guild_id`, `name`, `description`, `options`, `default_member_permissions`, `nsfw`, `version`, `integration_types`, `contexts`.
+Fields: `id`, `type`, `application_id`, `guild_id`, `name`, `description`, `options`, `default_member_permissions`, `nsfw`, `handler`, `version`, `integration_types`, `contexts`.
 
 ### CommandOption
 

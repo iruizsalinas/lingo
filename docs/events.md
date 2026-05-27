@@ -145,4 +145,4 @@ end
 
 ## Internal Events
 
-Lingo also dispatches internal events (`:shard_reconnecting`, `:shard_disconnect`, `:shard_error`, `:rate_limit`). Handle them the same way as gateway events. See the [Event List: Shard](/gateway/event-list#shard) for the full list and data shapes.
+Lingo also dispatches internal events (`:shard_reconnecting`, `:shard_disconnect`, `:shard_error`, `:rate_limit`). Unknown gateway dispatches are delivered as `{:unknown_event, raw_name}` with the raw payload. See the [Event List: Shard](/gateway/event-list#shard) for the full list and data shapes.

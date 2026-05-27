@@ -11,7 +11,8 @@ defmodule Lingo.Api.Interaction do
     deferred_update_message: 6,
     update_message: 7,
     autocomplete: 8,
-    modal: 9
+    modal: 9,
+    launch_activity: 12
   }
 
   def create_response(interaction_id, interaction_token, type, data \\ nil, opts \\ []) do

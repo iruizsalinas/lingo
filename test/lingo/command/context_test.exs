@@ -111,6 +111,27 @@ defmodule Lingo.Command.ContextTest do
       ctx = Context.from_interaction(interaction)
       assert Context.option(ctx, "anything") == nil
     end
+
+    test "does not create atoms for unknown option names" do
+      option_name = "unknown_option_#{System.unique_integer([:positive])}"
+      assert_raise ArgumentError, fn -> String.to_existing_atom(option_name) end
+
+      interaction =
+        Interaction.new(%{
+          "id" => "1",
+          "application_id" => "2",
+          "type" => 2,
+          "token" => "t",
+          "data" => %{
+            "name" => "cmd",
+            "options" => [%{"type" => 3, "name" => option_name, "value" => "safe"}]
+          }
+        })
+
+      ctx = Context.from_interaction(interaction)
+      assert Context.option(ctx, option_name) == "safe"
+      assert_raise ArgumentError, fn -> String.to_existing_atom(option_name) end
+    end
   end
 
   describe "option parsing edge cases" do
@@ -318,6 +339,30 @@ defmodule Lingo.Command.ContextTest do
 
       ctx = Context.from_modal(interaction)
       assert ctx.options == %{}
+    end
+
+    test "does not create atoms for unknown modal custom IDs" do
+      custom_id = "unknown_modal_id_#{System.unique_integer([:positive])}"
+      assert_raise ArgumentError, fn -> String.to_existing_atom(custom_id) end
+
+      interaction =
+        Interaction.new(%{
+          "id" => "1",
+          "application_id" => "2",
+          "type" => 5,
+          "token" => "t",
+          "user" => %{"id" => "u1", "username" => "a", "discriminator" => "0"},
+          "data" => %{
+            "custom_id" => "modal",
+            "components" => [
+              %{"type" => 18, "component" => %{"custom_id" => custom_id, "value" => "safe"}}
+            ]
+          }
+        })
+
+      ctx = Context.from_modal(interaction)
+      assert Context.modal_value(ctx, custom_id) == "safe"
+      assert_raise ArgumentError, fn -> String.to_existing_atom(custom_id) end
     end
   end
 

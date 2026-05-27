@@ -14,9 +14,13 @@ defmodule Lingo.Type.User do
           banner: String.t() | nil,
           accent_color: integer() | nil,
           locale: String.t() | nil,
+          verified: boolean() | nil,
+          email: String.t() | nil,
           flags: integer() | nil,
           premium_type: integer() | nil,
-          public_flags: integer() | nil
+          public_flags: integer() | nil,
+          collectibles: map() | nil,
+          primary_guild: map() | nil
         }
 
   defstruct [
@@ -29,9 +33,13 @@ defmodule Lingo.Type.User do
     :banner,
     :accent_color,
     :locale,
+    :verified,
+    :email,
     :flags,
     :premium_type,
     :public_flags,
+    :collectibles,
+    :primary_guild,
     :mfa_enabled,
     bot: false,
     system: false
@@ -53,9 +61,13 @@ defmodule Lingo.Type.User do
       banner: data["banner"],
       accent_color: data["accent_color"],
       locale: data["locale"],
+      verified: data["verified"],
+      email: data["email"],
       flags: data["flags"],
       premium_type: data["premium_type"],
-      public_flags: data["public_flags"]
+      public_flags: data["public_flags"],
+      collectibles: data["collectibles"],
+      primary_guild: data["primary_guild"]
     }
   end
 end

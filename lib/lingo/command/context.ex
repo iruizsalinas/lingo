@@ -110,13 +110,23 @@ defmodule Lingo.Command.Context do
 
   @spec option(t(), atom() | String.t()) :: any()
   def option(%__MODULE__{options: options}, name) when is_atom(name) do
-    Map.get(options, name)
+    case Map.fetch(options, name) do
+      {:ok, value} -> value
+      :error -> Map.get(options, Atom.to_string(name))
+    end
   end
 
   def option(%__MODULE__{options: options}, name) when is_binary(name) do
-    Map.get(options, String.to_existing_atom(name))
-  rescue
-    ArgumentError -> nil
+    case Map.fetch(options, name) do
+      {:ok, value} ->
+        value
+
+      :error ->
+        case existing_atom(name) do
+          {:ok, atom} -> Map.get(options, atom)
+          :error -> nil
+        end
+    end
   end
 
   @spec modal_value(t(), atom() | String.t()) :: any()
@@ -379,10 +389,10 @@ defmodule Lingo.Command.Context do
       case opt do
         %{"type" => type, "name" => name} when type in [1, 2] ->
           sub_opts = parse_options(opt["options"])
-          Map.put(acc, safe_to_atom(name), sub_opts)
+          Map.put(acc, option_key(name), sub_opts)
 
         %{"name" => name, "value" => value} ->
-          Map.put(acc, safe_to_atom(name), value)
+          Map.put(acc, option_key(name), value)
 
         _ ->
           acc
@@ -409,19 +419,26 @@ defmodule Lingo.Command.Context do
   end
 
   defp extract_modal_value(%{"custom_id" => cid, "value" => value}, acc) do
-    Map.put(acc, safe_to_atom(cid), value)
+    Map.put(acc, option_key(cid), value)
   end
 
   defp extract_modal_value(%{"custom_id" => cid, "values" => values}, acc)
        when is_list(values) do
-    Map.put(acc, safe_to_atom(cid), values)
+    Map.put(acc, option_key(cid), values)
   end
 
   defp extract_modal_value(_comp, acc), do: acc
 
-  defp safe_to_atom(str) when is_binary(str) do
-    String.to_existing_atom(str)
+  defp option_key(str) when is_binary(str) do
+    case existing_atom(str) do
+      {:ok, atom} -> atom
+      :error -> str
+    end
+  end
+
+  defp existing_atom(str) when is_binary(str) do
+    {:ok, String.to_existing_atom(str)}
   rescue
-    ArgumentError -> String.to_atom(str)
+    ArgumentError -> :error
   end
 end

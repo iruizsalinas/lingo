@@ -17,7 +17,7 @@ defmodule Lingo.Gateway.Dispatcher do
     User
   }
 
-  @spec dispatch(atom(), map()) :: :ok
+  @spec dispatch(atom() | {:unknown_event, String.t()}, map()) :: :ok
   def dispatch(event, data) do
     parsed =
       try do

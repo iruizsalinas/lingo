@@ -32,7 +32,10 @@ defmodule Lingo.Api.RateLimiter do
   @spec pause_global(non_neg_integer()) :: :ok
   def pause_global(ms) do
     if table_exists?(@global_table) do
-      :ets.insert(@global_table, {:paused_until, System.system_time(:millisecond) + ms})
+      resume_at = System.system_time(:millisecond) + ms
+      current_resume_at = global_paused_until()
+
+      :ets.insert(@global_table, {:paused_until, max(resume_at, current_resume_at)})
     end
 
     :ok
@@ -41,20 +44,7 @@ defmodule Lingo.Api.RateLimiter do
   @spec wait_global() :: :ok
   def wait_global do
     if table_exists?(@global_table) do
-      case :ets.lookup(@global_table, :paused_until) do
-        [{:paused_until, resume_at}] ->
-          now = System.system_time(:millisecond)
-
-          if resume_at > now do
-            Process.sleep(resume_at - now + 10)
-          end
-
-          :ets.select_delete(@global_table, [{{:paused_until, resume_at}, [], [true]}])
-          :ok
-
-        [] ->
-          :ok
-      end
+      do_wait_global()
     else
       :ok
     end
@@ -240,6 +230,27 @@ defmodule Lingo.Api.RateLimiter do
     end
   end
 
+  defp do_wait_global do
+    case :ets.lookup(@global_table, :paused_until) do
+      [{:paused_until, resume_at}] ->
+        now = System.system_time(:millisecond)
+
+        if resume_at > now do
+          Process.sleep(resume_at - now + 10)
+          do_wait_global()
+        else
+          :ets.select_delete(@global_table, [
+            {{:paused_until, :"$1"}, [{:"=<", :"$1", now}], [true]}
+          ])
+
+          do_wait_global()
+        end
+
+      [] ->
+        :ok
+    end
+  end
+
   defp do_wait(bucket_key) do
     if table_exists?(@buckets) do
       case :ets.lookup(@buckets, bucket_key) do
@@ -273,15 +284,28 @@ defmodule Lingo.Api.RateLimiter do
     :ets.whereis(table) != :undefined
   end
 
+  defp global_paused_until do
+    case :ets.lookup(@global_table, :paused_until) do
+      [{:paused_until, resume_at}] -> resume_at
+      [] -> 0
+    end
+  end
+
   defp get_header(headers, key) when is_list(headers) do
-    case List.keyfind(headers, key, 0) do
+    case Enum.find(headers, fn {header, _value} -> String.downcase(header) == key end) do
       {_, value} -> value
       nil -> nil
     end
   end
 
   defp get_header(headers, key) when is_map(headers) do
-    case Map.get(headers, key) do
+    value =
+      Map.get(headers, key) ||
+        Enum.find_value(headers, fn {header, value} ->
+          if String.downcase(header) == key, do: value
+        end)
+
+    case value do
       [value | _] -> value
       value when is_binary(value) -> value
       nil -> nil

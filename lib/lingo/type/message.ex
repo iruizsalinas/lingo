@@ -29,13 +29,20 @@ defmodule Lingo.Type.Message do
           application_id: String.t() | nil,
           flags: integer(),
           message_reference: map() | nil,
+          message_snapshots: [map()],
           referenced_message: t() | nil,
           interaction_metadata: map() | nil,
+          interaction: map() | nil,
           thread: Lingo.Type.Channel.t() | nil,
           components: [map()],
           sticker_items: [map()],
-          message_snapshots: [map()],
-          position: integer() | nil
+          stickers: [map()],
+          position: integer() | nil,
+          role_subscription_data: map() | nil,
+          resolved: map() | nil,
+          poll: map() | nil,
+          call: map() | nil,
+          shared_client_theme: map() | nil
         }
 
   defstruct [
@@ -55,8 +62,14 @@ defmodule Lingo.Type.Message do
     :application_id,
     :message_reference,
     :interaction_metadata,
+    :interaction,
     :thread,
     :position,
+    :role_subscription_data,
+    :resolved,
+    :poll,
+    :call,
+    :shared_client_theme,
     type: 0,
     tts: false,
     mention_everyone: false,
@@ -70,6 +83,7 @@ defmodule Lingo.Type.Message do
     flags: 0,
     components: [],
     sticker_items: [],
+    stickers: [],
     message_snapshots: []
   ]
 
@@ -104,18 +118,28 @@ defmodule Lingo.Type.Message do
       message_reference: data["message_reference"],
       referenced_message: new(data["referenced_message"]),
       interaction_metadata: data["interaction_metadata"],
+      interaction: data["interaction"],
       thread: if(data["thread"], do: Lingo.Type.Channel.new(data["thread"])),
       components: data["components"] || [],
       sticker_items: data["sticker_items"] || [],
+      stickers: data["stickers"] || [],
       message_snapshots: parse_snapshots(data["message_snapshots"]),
-      position: data["position"]
+      position: data["position"],
+      role_subscription_data: data["role_subscription_data"],
+      resolved: data["resolved"],
+      poll: data["poll"],
+      call: data["call"],
+      shared_client_theme: data["shared_client_theme"]
     }
   end
 
   defp parse_snapshots(nil), do: []
 
   defp parse_snapshots(snapshots) when is_list(snapshots) do
-    Enum.map(snapshots, fn %{"message" => msg} -> %{message: new(msg)} end)
+    Enum.map(snapshots, fn
+      %{"message" => msg} = snapshot -> Map.put(snapshot, "message", new(msg))
+      snapshot -> snapshot
+    end)
   end
 end
 
