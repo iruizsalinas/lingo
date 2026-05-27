@@ -143,13 +143,9 @@ defmodule Lingo.Api.RateLimiter do
     now = System.system_time(:millisecond)
 
     if table_exists?(@buckets) do
-      @buckets
-      |> :ets.tab2list()
-      |> Enum.each(fn {key, _remaining, reset_at, _limit} ->
-        if reset_at < now - 30_000 do
-          :ets.delete(@buckets, key)
-        end
-      end)
+      :ets.select_delete(@buckets, [
+        {{:_, :_, :"$1", :_}, [{:<, :"$1", now - 30_000}], [true]}
+      ])
     end
 
     if table_exists?(@bucket_map) do

@@ -113,11 +113,17 @@ defmodule Lingo.Permissions do
         ) :: integer()
   def compute(everyone_perms, member_role_ids, roles, overwrites \\ [], member_id \\ nil) do
     base = parse_bitfield(everyone_perms)
+    member_role_ids = role_id_map(member_role_ids)
 
     base =
       roles
-      |> Enum.filter(fn r -> r.id in member_role_ids end)
-      |> Enum.reduce(base, fn r, acc -> bor(acc, parse_bitfield(r.permissions)) end)
+      |> Enum.reduce(base, fn role, acc ->
+        if Map.has_key?(member_role_ids, role.id) do
+          bor(acc, parse_bitfield(role.permissions))
+        else
+          acc
+        end
+      end)
 
     if band(base, @admin_flag) == @admin_flag do
       @all_flags
@@ -150,11 +156,13 @@ defmodule Lingo.Permissions do
       end
 
     # role overwrites
-    role_ows = Enum.filter(overwrites, fn ow -> ow.type == :role and ow.id in role_ids end)
-
     {role_allow, role_deny} =
-      Enum.reduce(role_ows, {0, 0}, fn ow, {a, d} ->
-        {bor(a, parse_bitfield(ow.allow)), bor(d, parse_bitfield(ow.deny))}
+      Enum.reduce(overwrites, {0, 0}, fn ow, {allow, deny} ->
+        if ow.type == :role and Map.has_key?(role_ids, ow.id) do
+          {bor(allow, parse_bitfield(ow.allow)), bor(deny, parse_bitfield(ow.deny))}
+        else
+          {allow, deny}
+        end
       end)
 
     perms = perms |> band(bnot(role_deny)) |> bor(role_allow)
@@ -178,4 +186,8 @@ defmodule Lingo.Permissions do
   defp parse_bitfield(v) when is_integer(v), do: v
   defp parse_bitfield(v) when is_binary(v), do: String.to_integer(v)
   defp parse_bitfield(nil), do: 0
+
+  defp role_id_map(role_ids) do
+    Map.new(role_ids, &{&1, true})
+  end
 end

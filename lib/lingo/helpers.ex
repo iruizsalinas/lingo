@@ -109,16 +109,17 @@ defmodule Lingo.Helpers do
 
     if member do
       roles = Cache.list_roles(guild_id)
+      role_ids = role_id_map(member.roles)
 
-      member.roles
-      |> Enum.map(fn rid -> Enum.find(roles, fn r -> r.id == rid end) end)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.filter(fn r -> r.color > 0 end)
-      |> Enum.sort_by(fn r -> r.position end, :desc)
-      |> case do
-        [top | _] -> top.color
-        [] -> 0
-      end
+      roles
+      |> Enum.reduce({-1, 0}, fn role, {best_position, best_color} ->
+        if role.color > 0 and Map.has_key?(role_ids, role.id) and role.position > best_position do
+          {role.position, role.color}
+        else
+          {best_position, best_color}
+        end
+      end)
+      |> elem(1)
     else
       0
     end
@@ -206,11 +207,18 @@ defmodule Lingo.Helpers do
 
   defp highest_role_position(guild_id, member) do
     roles = Cache.list_roles(guild_id)
+    role_ids = role_id_map(member.roles)
 
-    member.roles
-    |> Enum.map(fn rid -> Enum.find(roles, fn r -> r.id == rid end) end)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.map(& &1.position)
-    |> Enum.max(fn -> 0 end)
+    Enum.reduce(roles, 0, fn role, max_position ->
+      if Map.has_key?(role_ids, role.id) and role.position > max_position do
+        role.position
+      else
+        max_position
+      end
+    end)
+  end
+
+  defp role_id_map(role_ids) do
+    Map.new(role_ids, &{&1, true})
   end
 end

@@ -127,6 +127,21 @@ defmodule Lingo.Api.RateLimiterTest do
     end
   end
 
+  describe "cleanup" do
+    test "deletes expired buckets without deleting fresh buckets" do
+      now = System.system_time(:millisecond)
+
+      :ets.insert(:lingo_rate_limits, {"expired", 0, now - 31_000, 1})
+      :ets.insert(:lingo_rate_limits, {"fresh", 0, now + 1_000, 1})
+
+      send(Process.whereis(RateLimiter), :cleanup)
+      Process.sleep(20)
+
+      assert :ets.lookup(:lingo_rate_limits, "expired") == []
+      assert [{_, 0, _, 1}] = :ets.lookup(:lingo_rate_limits, "fresh")
+    end
+  end
+
   describe "wait/1" do
     test "passes immediately when no bucket exists" do
       assert RateLimiter.wait("GET:/unknown/route") == :ok
