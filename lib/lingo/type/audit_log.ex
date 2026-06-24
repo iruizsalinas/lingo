@@ -42,13 +42,14 @@ defmodule Lingo.Type.AuditLogEntry do
           id: String.t(),
           target_id: String.t() | nil,
           changes: [map()],
+          guild_id: String.t() | nil,
           user_id: String.t() | nil,
           action_type: integer(),
           options: map() | nil,
           reason: String.t() | nil
         }
 
-  defstruct [:id, :target_id, :user_id, :action_type, :options, :reason, changes: []]
+  defstruct [:id, :target_id, :guild_id, :user_id, :action_type, :options, :reason, changes: []]
 
   def new(nil), do: nil
 
@@ -56,6 +57,7 @@ defmodule Lingo.Type.AuditLogEntry do
     %__MODULE__{
       id: data["id"],
       target_id: data["target_id"],
+      guild_id: data["guild_id"],
       changes: data["changes"] || [],
       user_id: data["user_id"],
       action_type: data["action_type"],

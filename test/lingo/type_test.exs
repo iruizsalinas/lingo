@@ -3,6 +3,7 @@ defmodule Lingo.TypeTest do
 
   alias Lingo.Type.{
     ApplicationCommand,
+    AuditLogEntry,
     Channel,
     CommandOption,
     Component,
@@ -53,6 +54,21 @@ defmodule Lingo.TypeTest do
 
     test "returns nil for nil" do
       assert User.new(nil) == nil
+    end
+  end
+
+  describe "AuditLogEntry" do
+    test "parses gateway guild_id" do
+      entry =
+        AuditLogEntry.new(%{
+          "id" => "entry1",
+          "target_id" => "target1",
+          "guild_id" => "guild1",
+          "user_id" => "user1",
+          "action_type" => 22
+        })
+
+      assert entry.guild_id == "guild1"
     end
   end
 
