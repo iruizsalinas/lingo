@@ -336,7 +336,10 @@ defmodule Lingo.TypeTest do
         Invite.new(%{
           "type" => 0,
           "code" => "abc123",
+          "guild_id" => "guild1",
+          "channel_id" => "channel1",
           "target_application" => %{"id" => "app1", "name" => "Activity"},
+          "role_ids" => ["role1"],
           "guild_scheduled_event" => %{
             "id" => "event1",
             "guild_id" => "guild1",
@@ -358,6 +361,9 @@ defmodule Lingo.TypeTest do
           ]
         })
 
+      assert invite.guild_id == "guild1"
+      assert invite.channel_id == "channel1"
+      assert invite.role_ids == ["role1"]
       assert invite.target_application["id"] == "app1"
       assert %ScheduledEvent{} = invite.guild_scheduled_event
       assert invite.guild_scheduled_event.id == "event1"

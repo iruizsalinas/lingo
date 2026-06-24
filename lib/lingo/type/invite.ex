@@ -6,6 +6,8 @@ defmodule Lingo.Type.Invite do
   @type t :: %__MODULE__{
           type: integer() | nil,
           code: String.t(),
+          guild_id: String.t() | nil,
+          channel_id: String.t() | nil,
           guild: Guild.t() | nil,
           channel: Channel.t() | nil,
           inviter: User.t() | nil,
@@ -22,12 +24,15 @@ defmodule Lingo.Type.Invite do
           max_age: integer() | nil,
           temporary: boolean(),
           created_at: String.t() | nil,
+          role_ids: [String.t()],
           flags: integer()
         }
 
   defstruct [
     :type,
     :code,
+    :guild_id,
+    :channel_id,
     :guild,
     :channel,
     :inviter,
@@ -42,6 +47,7 @@ defmodule Lingo.Type.Invite do
     :max_uses,
     :max_age,
     :created_at,
+    role_ids: [],
     roles: [],
     temporary: false,
     flags: 0
@@ -53,6 +59,8 @@ defmodule Lingo.Type.Invite do
     %__MODULE__{
       type: data["type"],
       code: data["code"],
+      guild_id: data["guild_id"],
+      channel_id: data["channel_id"],
       guild: Guild.new(data["guild"]),
       channel: Channel.new(data["channel"]),
       inviter: User.new(data["inviter"]),
@@ -69,6 +77,7 @@ defmodule Lingo.Type.Invite do
       max_age: data["max_age"],
       temporary: data["temporary"] || false,
       created_at: data["created_at"],
+      role_ids: data["role_ids"] || [],
       flags: data["flags"] || 0
     }
   end
