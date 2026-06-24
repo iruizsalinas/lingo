@@ -230,8 +230,8 @@ defmodule Lingo do
     do: Lingo.Api.Thread.list_joined_private_archived(channel_id, opts)
 
   # Interactions
-  def create_interaction_response(interaction_id, token, type, data \\ nil),
-    do: Lingo.Api.Interaction.create_response(interaction_id, token, type, data)
+  def create_interaction_response(interaction_id, token, type, data \\ nil, opts \\ []),
+    do: Lingo.Api.Interaction.create_response(interaction_id, token, type, data, opts)
 
   def get_original_response(token),
     do: Lingo.Api.Interaction.get_original_response(Lingo.Config.application_id(), token)

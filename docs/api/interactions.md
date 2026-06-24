@@ -9,10 +9,12 @@ Most of the time you'll use the [context helpers](/commands/context) (`reply!`, 
 ### create_interaction_response
 
 ```elixir
-Lingo.create_interaction_response(interaction_id, token, type, data \\ nil)
+Lingo.create_interaction_response(interaction_id, token, type, data \\ nil, opts \\ [])
 ```
 
 `type` is one of: `:pong`, `:channel_message`, `:deferred_channel_message`, `:deferred_update_message`, `:update_message`, `:autocomplete`, `:modal`, `:launch_activity`.
+
+Options: `with_response: true` requests Discord's interaction callback response body.
 
 ### get_original_response
 
