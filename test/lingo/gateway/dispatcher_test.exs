@@ -2,7 +2,7 @@ defmodule Lingo.Gateway.DispatcherTest do
   use ExUnit.Case
 
   alias Lingo.Gateway.Dispatcher
-  alias Lingo.Type.{AuditLogEntry, Invite, Role}
+  alias Lingo.Type.{AuditLogEntry, Invite, Member, Presence, Role}
 
   defmodule DispatchBot do
     use Lingo.Bot
@@ -21,6 +21,10 @@ defmodule Lingo.Gateway.DispatcherTest do
 
     handle :guild_role_update, data do
       send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:guild_role_update, data})
+    end
+
+    handle :guild_members_chunk, data do
+      send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:guild_members_chunk, data})
     end
   end
 
@@ -112,5 +116,49 @@ defmodule Lingo.Gateway.DispatcherTest do
     assert role.id == "role1"
     assert role.guild_id == "guild1"
     assert role.name == "Admin"
+  end
+
+  test "dispatches guild members chunk with member and presence context intact" do
+    Dispatcher.dispatch(:guild_members_chunk, %{
+      "guild_id" => "guild1",
+      "members" => [
+        %{
+          "user" => %{"id" => "user1", "username" => "alice", "discriminator" => "0"},
+          "roles" => ["role1"],
+          "joined_at" => "2026-01-01T00:00:00Z"
+        }
+      ],
+      "presences" => [
+        %{
+          "user" => %{"id" => "user1", "username" => "alice", "discriminator" => "0"},
+          "status" => "online",
+          "activities" => []
+        }
+      ],
+      "chunk_index" => 0,
+      "chunk_count" => 1,
+      "nonce" => "nonce1"
+    })
+
+    assert_receive {:guild_members_chunk,
+                    %{
+                      guild_id: "guild1",
+                      members: [%Member{} = member],
+                      presences: [%Presence{} = presence],
+                      chunk_index: 0,
+                      chunk_count: 1,
+                      nonce: "nonce1"
+                    }}
+
+    assert member.guild_id == "guild1"
+    assert member.user.id == "user1"
+    assert presence.guild_id == "guild1"
+    assert presence.user.id == "user1"
+    assert presence.status == :online
+
+    assert %Member{user: %{id: "user1"}, guild_id: "guild1"} =
+             Lingo.Cache.get_member("guild1", "user1")
+
+    assert %Presence{user: nil, guild_id: "guild1"} = Lingo.Cache.get_presence("guild1", "user1")
   end
 end

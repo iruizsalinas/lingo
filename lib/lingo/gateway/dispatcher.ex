@@ -161,12 +161,24 @@ defmodule Lingo.Gateway.Dispatcher do
 
   defp update_and_parse(:guild_members_chunk, data) do
     guild_id = data["guild_id"]
-    members = Enum.map(data["members"] || [], &Member.new/1)
+
+    members =
+      Enum.map(data["members"] || [], fn member ->
+        Member.new(Map.put(member, "guild_id", guild_id))
+      end)
+
+    presences =
+      Enum.map(data["presences"] || [], fn presence ->
+        Presence.new(Map.put(presence, "guild_id", guild_id))
+      end)
+
     Enum.each(members, fn m -> Cache.put_member(guild_id, m) end)
+    Enum.each(presences, fn p -> Cache.put_presence(guild_id, p) end)
 
     %{
       guild_id: guild_id,
       members: members,
+      presences: presences,
       chunk_index: data["chunk_index"],
       chunk_count: data["chunk_count"],
       not_found: data["not_found"],

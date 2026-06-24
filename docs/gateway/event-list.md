@@ -42,7 +42,7 @@ Gateway events and the data shape your `handle` block receives.
 | `:guild_member_add` | `Member` struct |
 | `:guild_member_update` | `%{old: Member \| nil, new: Member}` |
 | `:guild_member_remove` | `%{old: Member \| nil, new: %{guild_id: str, user: User}}` |
-| `:guild_members_chunk` | `%{guild_id: str, members: [Member], chunk_index: int, chunk_count: int, not_found: list, nonce: str}` |
+| `:guild_members_chunk` | `%{guild_id: str, members: [Member with guild_id], presences: [Presence], chunk_index: int, chunk_count: int, not_found: list, nonce: str}` |
 
 ## Roles
 
