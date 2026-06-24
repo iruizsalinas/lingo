@@ -233,6 +233,7 @@ defmodule Lingo.TypeTest do
       data = %{
         "id" => "m1",
         "channel_id" => "c1",
+        "channel_type" => 0,
         "author" => %{"id" => "u1", "username" => "sender", "discriminator" => "0"},
         "member" => %{"nick" => "Snd", "roles" => ["r1"]},
         "content" => "hello world",
@@ -251,6 +252,7 @@ defmodule Lingo.TypeTest do
       }
 
       msg = Message.new(data)
+      assert msg.channel_type == 0
       assert msg.content == "hello world"
       assert msg.author.username == "sender"
       assert msg.member.nick == "Snd"

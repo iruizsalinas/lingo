@@ -6,6 +6,7 @@ defmodule Lingo.Type.Message do
   @type t :: %__MODULE__{
           id: String.t(),
           channel_id: String.t(),
+          channel_type: integer() | nil,
           guild_id: String.t() | nil,
           author: User.t(),
           member: Member.t() | nil,
@@ -48,6 +49,7 @@ defmodule Lingo.Type.Message do
   defstruct [
     :id,
     :channel_id,
+    :channel_type,
     :guild_id,
     :author,
     :member,
@@ -93,6 +95,7 @@ defmodule Lingo.Type.Message do
     %__MODULE__{
       id: data["id"],
       channel_id: data["channel_id"],
+      channel_type: data["channel_type"],
       guild_id: data["guild_id"],
       author: User.new(data["author"]),
       member: Member.new(data["member"]),

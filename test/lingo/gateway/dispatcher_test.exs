@@ -2,7 +2,7 @@ defmodule Lingo.Gateway.DispatcherTest do
   use ExUnit.Case
 
   alias Lingo.Gateway.Dispatcher
-  alias Lingo.Type.{AuditLogEntry, Invite, Member, Presence, Role}
+  alias Lingo.Type.{AuditLogEntry, Invite, Member, Message, Presence, Role}
 
   defmodule DispatchBot do
     use Lingo.Bot
@@ -25,6 +25,14 @@ defmodule Lingo.Gateway.DispatcherTest do
 
     handle :guild_members_chunk, data do
       send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:guild_members_chunk, data})
+    end
+
+    handle :message_create, message do
+      send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:message_create, message})
+    end
+
+    handle :message_update, data do
+      send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:message_update, data})
     end
   end
 
@@ -160,5 +168,41 @@ defmodule Lingo.Gateway.DispatcherTest do
              Lingo.Cache.get_member("guild1", "user1")
 
     assert %Presence{user: nil, guild_id: "guild1"} = Lingo.Cache.get_presence("guild1", "user1")
+  end
+
+  test "dispatches message create with channel_type intact" do
+    Dispatcher.dispatch(:message_create, %{
+      "id" => "message1",
+      "channel_id" => "channel1",
+      "channel_type" => 0,
+      "guild_id" => "guild1",
+      "author" => %{"id" => "user1", "username" => "alice", "discriminator" => "0"},
+      "content" => "hello",
+      "timestamp" => "2026-01-01T00:00:00Z"
+    })
+
+    assert_receive {:message_create, %Message{} = message}
+
+    assert message.id == "message1"
+    assert message.channel_type == 0
+    assert message.guild_id == "guild1"
+    assert %Message{channel_type: 0} = Lingo.Cache.get_message("channel1", "message1")
+  end
+
+  test "dispatches message update with channel_type intact" do
+    Dispatcher.dispatch(:message_update, %{
+      "id" => "message1",
+      "channel_id" => "channel1",
+      "channel_type" => 0,
+      "guild_id" => "guild1",
+      "content" => "edited",
+      "timestamp" => "2026-01-01T00:00:00Z"
+    })
+
+    assert_receive {:message_update, %{old: nil, new: %Message{} = message}}
+
+    assert message.id == "message1"
+    assert message.channel_type == 0
+    assert message.guild_id == "guild1"
   end
 end

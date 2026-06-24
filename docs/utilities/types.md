@@ -163,6 +163,7 @@ Channel types: `:guild_text`, `:dm`, `:guild_voice`, `:group_dm`, `:guild_catego
 |-------|------|
 | `id` | snowflake |
 | `channel_id` | snowflake |
+| `channel_type` | integer \| nil |
 | `guild_id` | snowflake \| nil |
 | `author` | `User \| nil` |
 | `member` | `Member \| nil` |
