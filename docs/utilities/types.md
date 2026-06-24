@@ -139,6 +139,7 @@ Channel types: `:guild_text`, `:dm`, `:guild_voice`, `:group_dm`, `:guild_catego
 
 | Field | Type |
 |-------|------|
+| `guild_id` | snowflake \| nil |
 | `user` | `User \| nil` |
 | `nick` | string \| nil |
 | `avatar` | string \| nil |

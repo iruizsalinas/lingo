@@ -2,13 +2,17 @@ defmodule Lingo.Gateway.DispatcherTest do
   use ExUnit.Case
 
   alias Lingo.Gateway.Dispatcher
-  alias Lingo.Type.{AuditLogEntry, Invite, Member, Message, Presence, Role}
+  alias Lingo.Type.{AuditLogEntry, Guild, Invite, Member, Message, Presence, Role}
 
   defmodule DispatchBot do
     use Lingo.Bot
 
     handle :guild_audit_log_entry_create, entry do
       send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:audit_log_entry, entry})
+    end
+
+    handle :guild_create, guild do
+      send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:guild_create, guild})
     end
 
     handle :invite_create, invite do
@@ -90,6 +94,37 @@ defmodule Lingo.Gateway.DispatcherTest do
     assert invite.channel_id == "channel1"
     assert invite.role_ids == ["role1"]
     assert invite.uses == 0
+  end
+
+  test "dispatches guild create with nested member and cached presence context intact" do
+    Dispatcher.dispatch(:guild_create, %{
+      "id" => "guild1",
+      "name" => "Guild",
+      "owner_id" => "owner1",
+      "members" => [
+        %{
+          "user" => %{"id" => "user1", "username" => "alice", "discriminator" => "0"},
+          "roles" => ["role1"]
+        }
+      ],
+      "presences" => [
+        %{
+          "user" => %{"id" => "user1", "username" => "alice", "discriminator" => "0"},
+          "status" => "online",
+          "activities" => []
+        }
+      ]
+    })
+
+    assert_receive {:guild_create, %Guild{members: [%Member{} = member]}}
+
+    assert member.guild_id == "guild1"
+    assert member.user.id == "user1"
+
+    assert %Member{user: %{id: "user1"}, guild_id: "guild1"} =
+             Lingo.Cache.get_member("guild1", "user1")
+
+    assert %Presence{user: nil, guild_id: "guild1"} = Lingo.Cache.get_presence("guild1", "user1")
   end
 
   test "dispatches guild role create with guild_id intact" do
@@ -177,6 +212,7 @@ defmodule Lingo.Gateway.DispatcherTest do
       "channel_type" => 0,
       "guild_id" => "guild1",
       "author" => %{"id" => "user1", "username" => "alice", "discriminator" => "0"},
+      "member" => %{"nick" => "Alice", "roles" => ["role1"]},
       "content" => "hello",
       "timestamp" => "2026-01-01T00:00:00Z"
     })
@@ -186,7 +222,11 @@ defmodule Lingo.Gateway.DispatcherTest do
     assert message.id == "message1"
     assert message.channel_type == 0
     assert message.guild_id == "guild1"
-    assert %Message{channel_type: 0} = Lingo.Cache.get_message("channel1", "message1")
+    assert message.member.guild_id == "guild1"
+    assert message.member.user.id == "user1"
+
+    assert %Message{channel_type: 0, member: %Member{guild_id: "guild1", user: %{id: "user1"}}} =
+             Lingo.Cache.get_message("channel1", "message1")
   end
 
   test "dispatches message update with channel_type intact" do

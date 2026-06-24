@@ -135,7 +135,7 @@ defmodule Lingo.TypeTest do
       assert guild.premium_tier == :tier_2
     end
 
-    test "parses nested roles and emojis" do
+    test "parses nested roles, members, and emojis with guild context" do
       data = %{
         "id" => "1",
         "name" => "G",
@@ -143,6 +143,12 @@ defmodule Lingo.TypeTest do
         "roles" => [
           %{"id" => "r1", "name" => "Admin", "permissions" => "8"},
           %{"id" => "r2", "name" => "Member", "permissions" => "0"}
+        ],
+        "members" => [
+          %{
+            "user" => %{"id" => "u1", "username" => "alice", "discriminator" => "0"},
+            "roles" => ["r1"]
+          }
         ],
         "emojis" => [
           %{"id" => "e1", "name" => "happy", "animated" => true}
@@ -153,6 +159,8 @@ defmodule Lingo.TypeTest do
       assert length(guild.roles) == 2
       assert hd(guild.roles).name == "Admin"
       assert hd(guild.roles).guild_id == "1"
+      assert hd(guild.members).guild_id == "1"
+      assert hd(guild.members).user.id == "u1"
       assert length(guild.emojis) == 1
       assert hd(guild.emojis).animated == true
     end
@@ -305,6 +313,8 @@ defmodule Lingo.TypeTest do
       assert msg.content == "hello world"
       assert msg.author.username == "sender"
       assert msg.member.nick == "Snd"
+      assert msg.member.guild_id == "g1"
+      assert msg.member.user.id == "u1"
       assert [%User{id: "u2"}] = msg.mentions
       assert msg.mention_members["u2"].guild_id == "g1"
       assert msg.mention_members["u2"].nick == "Mentioned"

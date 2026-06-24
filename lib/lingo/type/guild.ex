@@ -168,7 +168,11 @@ defmodule Lingo.Type.Guild do
       safety_alerts_channel_id: data["safety_alerts_channel_id"],
       incidents_data: data["incidents_data"],
       channels: (data["channels"] || []) |> Enum.map(&Channel.new/1),
-      members: (data["members"] || []) |> Enum.map(&Lingo.Type.Member.new/1),
+      members:
+        (data["members"] || [])
+        |> Enum.map(fn member ->
+          Lingo.Type.Member.new(Map.put(member, "guild_id", data["id"]))
+        end),
       member_count: data["member_count"],
       large: data["large"] || false,
       unavailable: data["unavailable"] || false

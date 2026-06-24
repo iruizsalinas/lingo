@@ -102,7 +102,7 @@ defmodule Lingo.Type.Message do
       channel_type: data["channel_type"],
       guild_id: data["guild_id"],
       author: User.new(data["author"]),
-      member: Member.new(data["member"]),
+      member: parse_author_member(data["member"], data["guild_id"], data["author"]),
       content: data["content"] || "",
       timestamp: data["timestamp"],
       edited_timestamp: data["edited_timestamp"],
@@ -150,13 +150,22 @@ defmodule Lingo.Type.Message do
     end)
   end
 
+  defp parse_author_member(nil, _guild_id, _author), do: nil
+
+  defp parse_author_member(member_data, guild_id, author) when is_map(member_data) do
+    member_data
+    |> maybe_put_guild_id(guild_id)
+    |> maybe_put_user(author)
+    |> Member.new()
+  end
+
   defp parse_mention_members(mentions, guild_id) do
     mentions
     |> Enum.flat_map(fn
       %{"id" => user_id, "member" => member_data} = mention when is_map(member_data) ->
         member =
           member_data
-          |> Map.put("guild_id", guild_id)
+          |> maybe_put_guild_id(guild_id)
           |> Map.put("user", Map.delete(mention, "member"))
           |> Member.new()
 
@@ -167,6 +176,12 @@ defmodule Lingo.Type.Message do
     end)
     |> Map.new()
   end
+
+  defp maybe_put_user(data, nil), do: data
+  defp maybe_put_user(data, author) when is_map(author), do: Map.put_new(data, "user", author)
+
+  defp maybe_put_guild_id(data, nil), do: data
+  defp maybe_put_guild_id(data, guild_id), do: Map.put(data, "guild_id", guild_id)
 end
 
 defmodule Lingo.Type.Attachment do

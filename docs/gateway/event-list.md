@@ -6,7 +6,7 @@ Gateway events and the data shape your `handle` block receives.
 
 | Event | Data |
 |-------|------|
-| `:guild_create` | `Guild` struct (with `.channels`, `.members`, `.roles` populated) |
+| `:guild_create` | `Guild` struct (with `.channels`, `.members`, `.roles` populated; nested members and roles include `guild_id`) |
 | `:guild_update` | `%{old: Guild \| nil, new: Guild}` |
 | `:guild_delete` | `%{id: snowflake, unavailable: boolean}` or `%{old: Guild \| nil, new: %{id, unavailable}}` |
 | `:guild_audit_log_entry_create` | `AuditLogEntry` struct |
@@ -70,8 +70,8 @@ Gateway events and the data shape your `handle` block receives.
 
 | Event | Data |
 |-------|------|
-| `:message_create` | `Message` struct |
-| `:message_update` | `%{old: Message \| nil, new: Message}` |
+| `:message_create` | `Message` struct; gateway `channel_type`, author member context, and mention member context are preserved when present |
+| `:message_update` | `%{old: Message \| nil, new: Message}`; gateway `channel_type`, author member context, and mention member context are preserved when present |
 | `:message_delete` | `%{old: Message \| nil, new: %{id: str, channel_id: str, guild_id: str}}` |
 | `:message_delete_bulk` | `%{ids: [str], channel_id: str, guild_id: str}` |
 

@@ -56,7 +56,7 @@ defmodule Lingo.Gateway.Dispatcher do
     end)
 
     Enum.each(data["presences"] || [], fn p ->
-      Cache.put_presence(guild.id, Presence.new(p))
+      Cache.put_presence(guild.id, Presence.new(Map.put(p, "guild_id", guild.id)))
     end)
 
     # strip nested collections before caching - they live in their own tables
