@@ -73,7 +73,7 @@ defmodule Lingo.Type.Interaction do
       user: User.new(data["user"]),
       token: data["token"],
       version: data["version"] || 1,
-      message: Message.new(data["message"]),
+      message: parse_message(data["message"], data["guild_id"]),
       app_permissions: data["app_permissions"],
       locale: data["locale"],
       guild_locale: data["guild_locale"],
@@ -96,5 +96,15 @@ defmodule Lingo.Type.Interaction do
     member_data
     |> Map.put("guild_id", guild_id)
     |> Member.new()
+  end
+
+  defp parse_message(nil, _guild_id), do: nil
+
+  defp parse_message(message_data, nil) when is_map(message_data), do: Message.new(message_data)
+
+  defp parse_message(message_data, guild_id) when is_map(message_data) do
+    message_data
+    |> Map.put_new("guild_id", guild_id)
+    |> Message.new()
   end
 end

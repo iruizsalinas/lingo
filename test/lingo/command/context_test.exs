@@ -2,7 +2,7 @@ defmodule Lingo.Command.ContextTest do
   use ExUnit.Case, async: true
 
   alias Lingo.Command.Context
-  alias Lingo.Type.Interaction
+  alias Lingo.Type.{Channel, Interaction, Message, Role}
 
   describe "from_interaction/1" do
     test "builds context from guild interaction" do
@@ -234,6 +234,45 @@ defmodule Lingo.Command.ContextTest do
       assert %{guild_id: "g1", nick: "Target", user: %{username: "target"}} =
                Context.get_member(ctx, "user")
     end
+
+    test "hydrates resolved role, channel, and message with context guild" do
+      interaction =
+        Interaction.new(%{
+          "id" => "1",
+          "application_id" => "2",
+          "type" => 2,
+          "token" => "t",
+          "guild_id" => "g1",
+          "data" => %{
+            "name" => "Inspect Targets",
+            "options" => [
+              %{"type" => 8, "name" => "role", "value" => "role1"},
+              %{"type" => 7, "name" => "channel", "value" => "channel1"}
+            ],
+            "resolved" => %{
+              "roles" => %{
+                "role1" => %{"id" => "role1", "name" => "Mod", "permissions" => "0"}
+              },
+              "channels" => %{
+                "channel1" => %{"id" => "channel1", "type" => 0, "name" => "general"}
+              },
+              "messages" => %{
+                "message1" => %{
+                  "id" => "message1",
+                  "channel_id" => "channel1",
+                  "content" => "target"
+                }
+              }
+            }
+          }
+        })
+
+      ctx = Context.from_interaction(interaction)
+
+      assert %Role{id: "role1", guild_id: "g1"} = Context.get_role(ctx, "role")
+      assert %Channel{id: "channel1", guild_id: "g1"} = Context.get_channel(ctx, "channel")
+      assert %Message{id: "message1", guild_id: "g1"} = Context.resolved_message(ctx, "message1")
+    end
   end
 
   describe "from_component/1" do
@@ -267,6 +306,7 @@ defmodule Lingo.Command.ContextTest do
       assert ctx.component_type == 2
       assert ctx.values == []
       assert ctx.message.content == "Are you sure?"
+      assert ctx.message.guild_id == "g1"
       assert ctx.user_id == "u1"
       assert ctx.guild_id == "g1"
     end

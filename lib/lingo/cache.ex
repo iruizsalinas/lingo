@@ -172,12 +172,12 @@ defmodule Lingo.Cache do
   def get_presence(guild_id, user_id) do
     case ets_get(:lingo_presences, {guild_id, user_id}) do
       nil -> nil
-      presence -> %{presence | user: get_user(user_id)}
+      presence -> %{presence | user: get_user(user_id) || %Lingo.Type.User{id: user_id}}
     end
   end
 
   def put_presence(guild_id, %{user: %{id: user_id}} = presence) do
-    put_user(presence.user)
+    put_presence_user(user_id, presence.user)
     safe_insert(:lingo_presences, {{guild_id, user_id}, %{presence | user: nil}})
   end
 
@@ -324,4 +324,32 @@ defmodule Lingo.Cache do
   end
 
   defp message_context_value(value), do: value
+
+  defp put_presence_user(user_id, user) do
+    case get_user(user_id) do
+      nil ->
+        if user_has_details?(user), do: put_user(user)
+
+      existing ->
+        put_user(merge_user(existing, user))
+    end
+  end
+
+  defp merge_user(existing, user) do
+    user
+    |> Map.from_struct()
+    |> Enum.reduce(existing, fn
+      {_field, nil}, acc ->
+        acc
+
+      {field, false}, acc when field in [:bot, :system] ->
+        if Map.get(acc, field), do: acc, else: Map.put(acc, field, false)
+
+      {field, value}, acc ->
+        Map.put(acc, field, value)
+    end)
+  end
+
+  defp user_has_details?(%{username: username}) when is_binary(username), do: true
+  defp user_has_details?(_user), do: false
 end

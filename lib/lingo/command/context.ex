@@ -159,30 +159,30 @@ defmodule Lingo.Command.Context do
   def resolved_member(_, _), do: nil
 
   @spec resolved_role(t(), String.t()) :: Lingo.Type.Role.t() | nil
-  def resolved_role(%__MODULE__{resolved: r}, role_id) when is_map(r) do
+  def resolved_role(%__MODULE__{guild_id: guild_id, resolved: r}, role_id) when is_map(r) do
     case get_in(r, ["roles", role_id]) do
       nil -> nil
-      data -> Lingo.Type.Role.new(data)
+      data -> data |> maybe_put_context_guild_id(guild_id) |> Lingo.Type.Role.new()
     end
   end
 
   def resolved_role(_, _), do: nil
 
   @spec resolved_channel(t(), String.t()) :: Lingo.Type.Channel.t() | nil
-  def resolved_channel(%__MODULE__{resolved: r}, channel_id) when is_map(r) do
+  def resolved_channel(%__MODULE__{guild_id: guild_id, resolved: r}, channel_id) when is_map(r) do
     case get_in(r, ["channels", channel_id]) do
       nil -> nil
-      data -> Lingo.Type.Channel.new(data)
+      data -> data |> maybe_put_context_guild_id(guild_id) |> Lingo.Type.Channel.new()
     end
   end
 
   def resolved_channel(_, _), do: nil
 
   @spec resolved_message(t(), String.t()) :: Lingo.Type.Message.t() | nil
-  def resolved_message(%__MODULE__{resolved: r}, message_id) when is_map(r) do
+  def resolved_message(%__MODULE__{guild_id: guild_id, resolved: r}, message_id) when is_map(r) do
     case get_in(r, ["messages", message_id]) do
       nil -> nil
-      data -> Lingo.Type.Message.new(data)
+      data -> data |> maybe_put_context_guild_id(guild_id) |> Lingo.Type.Message.new()
     end
   end
 

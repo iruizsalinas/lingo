@@ -249,7 +249,8 @@ defmodule Lingo.Gateway.Dispatcher do
   defp update_and_parse(:message_update, data) do
     old = Cache.get_message(data["channel_id"], data["id"])
     Cache.merge_message(data["channel_id"], data)
-    %{old: old, new: Message.new(data)}
+    new = Cache.get_message(data["channel_id"], data["id"]) || Message.new(data)
+    %{old: old, new: new}
   end
 
   defp update_and_parse(:message_delete, data) do
@@ -277,9 +278,11 @@ defmodule Lingo.Gateway.Dispatcher do
 
   defp update_and_parse(:presence_update, data) do
     p = Presence.new(data)
-    old = Cache.get_presence(data["guild_id"], get_in(data, ["user", "id"]))
+    user_id = get_in(data, ["user", "id"])
+    old = Cache.get_presence(data["guild_id"], user_id)
     Cache.put_presence(data["guild_id"], p)
-    %{old: old, new: p}
+    new = Cache.get_presence(data["guild_id"], user_id) || p
+    %{old: old, new: new}
   end
 
   defp update_and_parse(:user_update, data) do

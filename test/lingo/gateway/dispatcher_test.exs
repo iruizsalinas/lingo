@@ -38,6 +38,10 @@ defmodule Lingo.Gateway.DispatcherTest do
     handle :message_update, data do
       send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:message_update, data})
     end
+
+    handle :presence_update, data do
+      send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:presence_update, data})
+    end
   end
 
   setup do
@@ -246,5 +250,53 @@ defmodule Lingo.Gateway.DispatcherTest do
     assert message.id == "message1"
     assert message.channel_type == 0
     assert message.guild_id == "guild1"
+  end
+
+  test "dispatches message update with merged cached message when update is partial" do
+    Dispatcher.dispatch(:message_create, %{
+      "id" => "message2",
+      "channel_id" => "channel1",
+      "channel_type" => 0,
+      "guild_id" => "guild1",
+      "author" => %{"id" => "user1", "username" => "alice", "discriminator" => "0"},
+      "member" => %{"nick" => "Alice", "roles" => ["role1"]},
+      "content" => "before",
+      "timestamp" => "2026-01-01T00:00:00Z"
+    })
+
+    assert_receive {:message_create, %Message{}}
+
+    Dispatcher.dispatch(:message_update, %{
+      "id" => "message2",
+      "channel_id" => "channel1",
+      "content" => "after",
+      "member" => %{"nick" => "Edited", "roles" => ["role2"]}
+    })
+
+    assert_receive {:message_update, %{old: %Message{content: "before"}, new: %Message{} = new}}
+
+    assert new.content == "after"
+    assert new.guild_id == "guild1"
+    assert new.channel_type == 0
+    assert new.author.id == "user1"
+    assert %Member{guild_id: "guild1", nick: "Edited", user: %{id: "user1"}} = new.member
+  end
+
+  test "dispatches presence update with cached user details when payload user is partial" do
+    Lingo.Cache.put_user(%Lingo.Type.User{id: "user1", username: "alice", bot: true})
+
+    Dispatcher.dispatch(:presence_update, %{
+      "guild_id" => "guild1",
+      "user" => %{"id" => "user1"},
+      "status" => "idle",
+      "activities" => []
+    })
+
+    assert_receive {:presence_update, %{old: nil, new: %Presence{} = presence}}
+
+    assert presence.guild_id == "guild1"
+    assert presence.status == :idle
+    assert presence.user.username == "alice"
+    assert presence.user.bot == true
   end
 end

@@ -2,7 +2,7 @@ defmodule Lingo.CacheTest do
   use ExUnit.Case
 
   alias Lingo.Cache
-  alias Lingo.Type.{Attachment, Channel, Embed, Guild, Member, Message, Role, User}
+  alias Lingo.Type.{Attachment, Channel, Embed, Guild, Member, Message, Presence, Role, User}
 
   setup do
     start_supervised!(Cache)
@@ -209,7 +209,7 @@ defmodule Lingo.CacheTest do
 
   describe "presence cache" do
     test "stores and retrieves a presence" do
-      presence = %Lingo.Type.Presence{
+      presence = %Presence{
         user: %User{id: "u1", username: "alice"},
         status: :online,
         guild_id: "g1"
@@ -223,8 +223,34 @@ defmodule Lingo.CacheTest do
       assert Cache.get_user("u1").username == "alice"
     end
 
+    test "partial presence users do not overwrite cached user details" do
+      Cache.put_user(%User{id: "u1", username: "alice", bot: true})
+
+      Cache.put_presence("g1", %Presence{
+        user: %User{id: "u1", username: "alice-renamed"},
+        status: :idle,
+        guild_id: "g1"
+      })
+
+      assert %User{username: "alice-renamed", bot: true} = Cache.get_user("u1")
+
+      assert %Presence{status: :idle, user: %User{id: "u1", username: "alice-renamed", bot: true}} =
+               Cache.get_presence("g1", "u1")
+    end
+
+    test "partial presence users remain addressable when no full user is cached" do
+      Cache.put_presence("g1", %Presence{
+        user: %User{id: "u2"},
+        status: :online,
+        guild_id: "g1"
+      })
+
+      assert Cache.get_user("u2") == nil
+      assert %Presence{user: %User{id: "u2", username: nil}} = Cache.get_presence("g1", "u2")
+    end
+
     test "ignores presences without a user" do
-      assert Cache.put_presence("g1", %Lingo.Type.Presence{user: nil}) == :ok
+      assert Cache.put_presence("g1", %Presence{user: nil}) == :ok
     end
   end
 end
