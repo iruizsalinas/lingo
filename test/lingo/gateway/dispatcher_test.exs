@@ -124,7 +124,8 @@ defmodule Lingo.Gateway.DispatcherTest do
     assert %Member{user: %{id: "user1"}, guild_id: "guild1"} =
              Lingo.Cache.get_member("guild1", "user1")
 
-    assert %Presence{user: nil, guild_id: "guild1"} = Lingo.Cache.get_presence("guild1", "user1")
+    assert %Presence{user: %{id: "user1"}, guild_id: "guild1"} =
+             Lingo.Cache.get_presence("guild1", "user1")
   end
 
   test "dispatches guild role create with guild_id intact" do
@@ -202,7 +203,8 @@ defmodule Lingo.Gateway.DispatcherTest do
     assert %Member{user: %{id: "user1"}, guild_id: "guild1"} =
              Lingo.Cache.get_member("guild1", "user1")
 
-    assert %Presence{user: nil, guild_id: "guild1"} = Lingo.Cache.get_presence("guild1", "user1")
+    assert %Presence{user: %{id: "user1"}, guild_id: "guild1"} =
+             Lingo.Cache.get_presence("guild1", "user1")
   end
 
   test "dispatches message create with channel_type intact" do

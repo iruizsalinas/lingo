@@ -2,7 +2,7 @@ defmodule Lingo.CacheTest do
   use ExUnit.Case
 
   alias Lingo.Cache
-  alias Lingo.Type.{Channel, Guild, Member, Message, Role, User}
+  alias Lingo.Type.{Attachment, Channel, Embed, Guild, Member, Message, Role, User}
 
   setup do
     start_supervised!(Cache)
@@ -139,6 +139,72 @@ defmodule Lingo.CacheTest do
       Cache.delete_message("ch1", "m2")
       assert Cache.get_message("ch1", "m2") == nil
     end
+
+    test "merges message updates through message type parsing" do
+      Cache.put_message(%Message{
+        id: "m3",
+        channel_id: "ch1",
+        content: "before",
+        author: %User{id: "u1", username: "old"}
+      })
+
+      Cache.merge_message("ch1", %{
+        "id" => "m3",
+        "embeds" => [%{"title" => "Updated"}],
+        "attachments" => [
+          %{
+            "id" => "a1",
+            "filename" => "file.txt",
+            "size" => 5,
+            "url" => "https://cdn/file.txt",
+            "proxy_url" => "https://proxy/file.txt"
+          }
+        ],
+        "author" => %{"id" => "u2", "username" => "new", "discriminator" => "0"},
+        "member" => %{"roles" => ["r1"], "nick" => "New"},
+        "guild_id" => "g1"
+      })
+
+      result = Cache.get_message("ch1", "m3")
+
+      assert result.content == "before"
+      assert [%Embed{title: "Updated"}] = result.embeds
+      assert [%Attachment{filename: "file.txt"}] = result.attachments
+      assert %User{id: "u2", username: "new"} = result.author
+      assert %Member{guild_id: "g1", nick: "New", user: %User{id: "u2"}} = result.member
+    end
+
+    test "merges derived message member fields with existing context" do
+      Cache.put_message(%Message{
+        id: "m4",
+        channel_id: "ch1",
+        guild_id: "g1",
+        author: %User{id: "u1", username: "old", discriminator: "0"},
+        member: %Member{guild_id: "g1", user: %User{id: "u1"}, nick: "Old"},
+        mention_members: %{"u2" => %Member{guild_id: "g1", nick: "Before"}}
+      })
+
+      Cache.merge_message("ch1", %{
+        "id" => "m4",
+        "member" => %{"nick" => "Updated", "roles" => ["r1"]},
+        "mentions" => [
+          %{
+            "id" => "u3",
+            "username" => "mentioned",
+            "discriminator" => "0",
+            "member" => %{"nick" => "Mentioned", "roles" => ["r2"]}
+          }
+        ]
+      })
+
+      result = Cache.get_message("ch1", "m4")
+
+      assert %Member{guild_id: "g1", nick: "Updated", user: %User{id: "u1"}} = result.member
+      assert [%User{id: "u3"}] = result.mentions
+
+      assert %{"u3" => %Member{guild_id: "g1", nick: "Mentioned", user: %User{id: "u3"}}} =
+               result.mention_members
+    end
   end
 
   describe "presence cache" do
@@ -153,6 +219,8 @@ defmodule Lingo.CacheTest do
 
       result = Cache.get_presence("g1", "u1")
       assert result.status == :online
+      assert result.user.username == "alice"
+      assert Cache.get_user("u1").username == "alice"
     end
 
     test "ignores presences without a user" do

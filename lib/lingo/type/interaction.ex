@@ -69,7 +69,7 @@ defmodule Lingo.Type.Interaction do
       guild_id: data["guild_id"],
       channel: data["channel"],
       channel_id: data["channel_id"],
-      member: Member.new(data["member"]),
+      member: parse_member(data["member"], data["guild_id"]),
       user: User.new(data["user"]),
       token: data["token"],
       version: data["version"] || 1,
@@ -87,4 +87,14 @@ defmodule Lingo.Type.Interaction do
   @spec author(t()) :: User.t() | nil
   def author(%__MODULE__{member: %Member{user: user}}) when not is_nil(user), do: user
   def author(%__MODULE__{user: user}), do: user
+
+  defp parse_member(nil, _guild_id), do: nil
+
+  defp parse_member(member_data, nil) when is_map(member_data), do: Member.new(member_data)
+
+  defp parse_member(member_data, guild_id) when is_map(member_data) do
+    member_data
+    |> Map.put("guild_id", guild_id)
+    |> Member.new()
+  end
 end

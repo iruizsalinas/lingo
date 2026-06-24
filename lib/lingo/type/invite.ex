@@ -71,7 +71,9 @@ defmodule Lingo.Type.Invite do
       approximate_member_count: data["approximate_member_count"],
       expires_at: data["expires_at"],
       guild_scheduled_event: ScheduledEvent.new(data["guild_scheduled_event"]),
-      roles: (data["roles"] || []) |> Enum.map(&Role.new/1),
+      roles:
+        (data["roles"] || [])
+        |> Enum.map(fn role -> Role.new(maybe_put_guild_id(role, data["guild_id"])) end),
       uses: data["uses"],
       max_uses: data["max_uses"],
       max_age: data["max_age"],
@@ -81,4 +83,9 @@ defmodule Lingo.Type.Invite do
       flags: data["flags"] || 0
     }
   end
+
+  defp maybe_put_guild_id(data, nil), do: data
+
+  defp maybe_put_guild_id(data, guild_id) when is_map(data),
+    do: Map.put(data, "guild_id", guild_id)
 end

@@ -116,6 +116,7 @@ Lingo.cached_presence(guild_id, user_id)
 ```
 
 Returns a `Presence` struct or `nil`.
+When the presence includes user data, `.user` is populated from the shared user cache.
 
 ## What Gets Cached
 
@@ -123,7 +124,7 @@ Returns a `Presence` struct or `nil`.
 |----------|---------------|
 | Guilds | `guild_create`, `guild_update`, `guild_delete` |
 | Channels | `guild_create`, `channel_create`, `channel_update`, `channel_delete` |
-| Users | member/message events, `user_update` |
+| Users | member/message/presence events, `user_update` |
 | Members | `guild_create`, `guild_member_add`, `guild_member_update`, `guild_member_remove` |
 | Roles | `guild_create`, `guild_role_create`, `guild_role_update`, `guild_role_delete` |
 | Messages | `message_create`, `message_update`, `message_delete` |

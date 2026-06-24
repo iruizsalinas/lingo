@@ -6,20 +6,20 @@ defmodule Lingo.Api.Role do
 
   def list(guild_id) do
     with {:ok, data} <- Client.request(:get, "/guilds/#{guild_id}/roles") do
-      {:ok, Enum.map(data, &Role.new/1)}
+      {:ok, Enum.map(data, &new_role(&1, guild_id))}
     end
   end
 
   def get(guild_id, role_id) do
     with {:ok, data} <- Client.request(:get, "/guilds/#{guild_id}/roles/#{role_id}") do
-      {:ok, Role.new(data)}
+      {:ok, new_role(data, guild_id)}
     end
   end
 
   def create(guild_id, params, opts \\ []) do
     with {:ok, data} <-
            Client.request(:post, "/guilds/#{guild_id}/roles", json: params, reason: opts[:reason]) do
-      {:ok, Role.new(data)}
+      {:ok, new_role(data, guild_id)}
     end
   end
 
@@ -29,7 +29,7 @@ defmodule Lingo.Api.Role do
              json: params,
              reason: opts[:reason]
            ) do
-      {:ok, Role.new(data)}
+      {:ok, new_role(data, guild_id)}
     end
   end
 
@@ -43,11 +43,17 @@ defmodule Lingo.Api.Role do
              json: positions,
              reason: opts[:reason]
            ) do
-      {:ok, Enum.map(data, &Role.new/1)}
+      {:ok, Enum.map(data, &new_role(&1, guild_id))}
     end
   end
 
   def get_member_counts(guild_id) do
     Client.request(:get, "/guilds/#{guild_id}/roles/member-counts")
+  end
+
+  defp new_role(data, guild_id) when is_map(data) do
+    data
+    |> Map.put("guild_id", guild_id)
+    |> Role.new()
   end
 end

@@ -36,6 +36,7 @@ defmodule Lingo.Command.ContextTest do
       assert ctx.guild_id == "g1"
       assert ctx.channel_id == "c1"
       assert ctx.user_id == "u1"
+      assert ctx.member.guild_id == "g1"
       assert ctx.command_name == "ban"
       assert ctx.replied == false
       assert ctx.deferred == false
@@ -194,6 +195,44 @@ defmodule Lingo.Command.ContextTest do
 
       user = Context.resolved_user(ctx, "target_user_123")
       assert user.username == "badguy"
+    end
+
+    test "hydrates resolved members with their resolved user and guild" do
+      interaction =
+        Interaction.new(%{
+          "id" => "1",
+          "application_id" => "2",
+          "type" => 2,
+          "token" => "t",
+          "guild_id" => "g1",
+          "data" => %{
+            "name" => "Inspect User",
+            "options" => [%{"type" => 6, "name" => "user", "value" => "target_user_123"}],
+            "resolved" => %{
+              "users" => %{
+                "target_user_123" => %{
+                  "id" => "target_user_123",
+                  "username" => "target",
+                  "discriminator" => "0"
+                }
+              },
+              "members" => %{
+                "target_user_123" => %{
+                  "nick" => "Target",
+                  "roles" => ["role1"]
+                }
+              }
+            }
+          }
+        })
+
+      ctx = Context.from_interaction(interaction)
+
+      assert %{guild_id: "g1", nick: "Target", user: %{id: "target_user_123"}} =
+               Context.resolved_member(ctx, "target_user_123")
+
+      assert %{guild_id: "g1", nick: "Target", user: %{username: "target"}} =
+               Context.get_member(ctx, "user")
     end
   end
 

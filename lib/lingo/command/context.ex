@@ -143,10 +143,16 @@ defmodule Lingo.Command.Context do
   def resolved_user(_, _), do: nil
 
   @spec resolved_member(t(), String.t()) :: Lingo.Type.Member.t() | nil
-  def resolved_member(%__MODULE__{resolved: r}, user_id) when is_map(r) do
+  def resolved_member(%__MODULE__{guild_id: guild_id, resolved: r}, user_id) when is_map(r) do
     case get_in(r, ["members", user_id]) do
-      nil -> nil
-      data -> Lingo.Type.Member.new(data)
+      nil ->
+        nil
+
+      data ->
+        data
+        |> maybe_put_resolved_user(r, user_id)
+        |> maybe_put_context_guild_id(guild_id)
+        |> Lingo.Type.Member.new()
     end
   end
 
@@ -441,4 +447,14 @@ defmodule Lingo.Command.Context do
   rescue
     ArgumentError -> :error
   end
+
+  defp maybe_put_resolved_user(data, resolved, user_id) do
+    case get_in(resolved, ["users", user_id]) do
+      nil -> data
+      user -> Map.put_new(data, "user", user)
+    end
+  end
+
+  defp maybe_put_context_guild_id(data, nil), do: data
+  defp maybe_put_context_guild_id(data, guild_id), do: Map.put_new(data, "guild_id", guild_id)
 end

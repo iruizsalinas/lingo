@@ -435,6 +435,7 @@ defmodule Lingo.TypeTest do
       assert invite.guild_scheduled_event.id == "event1"
       assert [%Role{} = role] = invite.roles
       assert role.id == "role1"
+      assert role.guild_id == "guild1"
       assert role.name == "Guest"
       assert role.position == 1
     end

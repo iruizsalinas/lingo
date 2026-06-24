@@ -161,7 +161,7 @@ defmodule Lingo.Cache do
         put_message(Lingo.Type.Message.new(data))
 
       existing ->
-        merged = merge_into_struct(existing, data)
+        merged = merge_message_struct(existing, data)
         safe_insert(:lingo_messages, {{channel_id, merged.id}, merged})
     end
   end
@@ -169,9 +169,15 @@ defmodule Lingo.Cache do
   # Presences - keyed {guild_id, user_id}
   # user reference stored separately, not duplicated here
 
-  def get_presence(guild_id, user_id), do: ets_get(:lingo_presences, {guild_id, user_id})
+  def get_presence(guild_id, user_id) do
+    case ets_get(:lingo_presences, {guild_id, user_id}) do
+      nil -> nil
+      presence -> %{presence | user: get_user(user_id)}
+    end
+  end
 
   def put_presence(guild_id, %{user: %{id: user_id}} = presence) do
+    put_user(presence.user)
     safe_insert(:lingo_presences, {{guild_id, user_id}, %{presence | user: nil}})
   end
 
@@ -272,22 +278,50 @@ defmodule Lingo.Cache do
     end
   end
 
-  defp merge_into_struct(struct, data) when is_map(data) do
-    fields = struct |> Map.from_struct() |> Map.keys()
+  defp merge_message_struct(%Lingo.Type.Message{} = existing, data) when is_map(data) do
+    parsed =
+      data
+      |> maybe_put_existing_message_context(existing)
+      |> Lingo.Type.Message.new()
 
-    Enum.reduce(fields, struct, fn field, acc ->
-      str_key = Atom.to_string(field)
-
-      case Map.fetch(data, str_key) do
-        {:ok, value} -> Map.put(acc, field, merge_field(Map.get(acc, field), value))
-        :error -> acc
+    existing
+    |> Map.from_struct()
+    |> Map.keys()
+    |> Enum.reduce(existing, fn field, acc ->
+      if message_field_present?(data, field) do
+        Map.put(acc, field, Map.get(parsed, field))
+      else
+        acc
       end
     end)
   end
 
-  defp merge_field(%_{} = existing, value) when is_map(value) and not is_struct(value) do
-    merge_into_struct(existing, value)
+  defp message_field_present?(data, :mention_members),
+    do: Map.has_key?(data, "mention_members") or Map.has_key?(data, "mentions")
+
+  defp message_field_present?(data, field), do: Map.has_key?(data, Atom.to_string(field))
+
+  defp maybe_put_existing_message_context(data, existing) do
+    data
+    |> maybe_put_existing_message_value("guild_id", existing.guild_id)
+    |> maybe_put_existing_message_value("author", existing.author)
   end
 
-  defp merge_field(_existing, value), do: value
+  defp maybe_put_existing_message_value(data, _key, nil), do: data
+
+  defp maybe_put_existing_message_value(data, key, value) do
+    if Map.has_key?(data, key) do
+      data
+    else
+      Map.put(data, key, message_context_value(value))
+    end
+  end
+
+  defp message_context_value(%_{} = struct) do
+    struct
+    |> Map.from_struct()
+    |> Map.new(fn {key, value} -> {Atom.to_string(key), value} end)
+  end
+
+  defp message_context_value(value), do: value
 end

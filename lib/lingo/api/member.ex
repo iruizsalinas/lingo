@@ -6,7 +6,7 @@ defmodule Lingo.Api.Member do
 
   def get(guild_id, user_id) do
     with {:ok, data} <- Client.request(:get, "/guilds/#{guild_id}/members/#{user_id}") do
-      {:ok, Member.new(data)}
+      {:ok, new_member(data, guild_id)}
     end
   end
 
@@ -17,7 +17,7 @@ defmodule Lingo.Api.Member do
       |> Enum.into(%{})
 
     with {:ok, data} <- Client.request(:get, "/guilds/#{guild_id}/members", params: params) do
-      {:ok, Enum.map(data, &Member.new/1)}
+      {:ok, Enum.map(data, &new_member(&1, guild_id))}
     end
   end
 
@@ -28,7 +28,7 @@ defmodule Lingo.Api.Member do
       |> Enum.into(%{query: query})
 
     with {:ok, data} <- Client.request(:get, "/guilds/#{guild_id}/members/search", params: params) do
-      {:ok, Enum.map(data, &Member.new/1)}
+      {:ok, Enum.map(data, &new_member(&1, guild_id))}
     end
   end
 
@@ -38,7 +38,7 @@ defmodule Lingo.Api.Member do
              json: params,
              reason: opts[:reason]
            ) do
-      {:ok, Member.new(data)}
+      {:ok, new_member(data, guild_id)}
     end
   end
 
@@ -48,7 +48,7 @@ defmodule Lingo.Api.Member do
              json: params,
              reason: opts[:reason]
            ) do
-      {:ok, Member.new(data)}
+      {:ok, new_member(data, guild_id)}
     end
   end
 
@@ -66,5 +66,11 @@ defmodule Lingo.Api.Member do
     Client.request(:delete, "/guilds/#{guild_id}/members/#{user_id}/roles/#{role_id}",
       reason: opts[:reason]
     )
+  end
+
+  defp new_member(data, guild_id) when is_map(data) do
+    data
+    |> Map.put("guild_id", guild_id)
+    |> Member.new()
   end
 end
