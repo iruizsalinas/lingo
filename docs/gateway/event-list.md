@@ -213,3 +213,4 @@ Gateway events and the data shape your `handle` block receives.
 | Event | Data |
 |-------|------|
 | `:rate_limit` | `%{method: atom, path: string, retry_after: integer, global: boolean}` |
+| `:rate_limited` | Raw gateway map with `"opcode"`, `"retry_after"`, and `"meta"` |

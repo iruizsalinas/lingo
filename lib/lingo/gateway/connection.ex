@@ -497,6 +497,7 @@ defmodule Lingo.Gateway.Connection do
     "MESSAGE_POLL_VOTE_ADD" => :message_poll_vote_add,
     "MESSAGE_POLL_VOTE_REMOVE" => :message_poll_vote_remove,
     "PRESENCE_UPDATE" => :presence_update,
+    "RATE_LIMITED" => :rate_limited,
     "STAGE_INSTANCE_CREATE" => :stage_instance_create,
     "STAGE_INSTANCE_UPDATE" => :stage_instance_update,
     "STAGE_INSTANCE_DELETE" => :stage_instance_delete,
