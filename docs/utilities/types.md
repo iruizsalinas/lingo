@@ -217,6 +217,7 @@ Channel types: `:guild_text`, `:dm`, `:guild_voice`, `:group_dm`, `:guild_catego
 | Field | Type |
 |-------|------|
 | `id` | snowflake |
+| `guild_id` | snowflake \| nil |
 | `name` | string |
 | `color` | integer |
 | `colors` | map |

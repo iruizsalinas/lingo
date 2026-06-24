@@ -2,7 +2,7 @@ defmodule Lingo.Gateway.DispatcherTest do
   use ExUnit.Case
 
   alias Lingo.Gateway.Dispatcher
-  alias Lingo.Type.{AuditLogEntry, Invite}
+  alias Lingo.Type.{AuditLogEntry, Invite, Role}
 
   defmodule DispatchBot do
     use Lingo.Bot
@@ -14,9 +14,19 @@ defmodule Lingo.Gateway.DispatcherTest do
     handle :invite_create, invite do
       send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:invite_create, invite})
     end
+
+    handle :guild_role_create, role do
+      send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:guild_role_create, role})
+    end
+
+    handle :guild_role_update, data do
+      send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:guild_role_update, data})
+    end
   end
 
   setup do
+    start_supervised!(Lingo.Cache)
+
     previous_bot = Lingo.Config.bot_module()
 
     :persistent_term.put({:lingo_test, :dispatcher_parent}, self())
@@ -68,5 +78,39 @@ defmodule Lingo.Gateway.DispatcherTest do
     assert invite.channel_id == "channel1"
     assert invite.role_ids == ["role1"]
     assert invite.uses == 0
+  end
+
+  test "dispatches guild role create with guild_id intact" do
+    Dispatcher.dispatch(:guild_role_create, %{
+      "guild_id" => "guild1",
+      "role" => %{
+        "id" => "role1",
+        "name" => "Admin",
+        "permissions" => "0"
+      }
+    })
+
+    assert_receive {:guild_role_create, %Role{} = role}
+
+    assert role.id == "role1"
+    assert role.guild_id == "guild1"
+    assert role.name == "Admin"
+  end
+
+  test "dispatches guild role update with guild_id intact" do
+    Dispatcher.dispatch(:guild_role_update, %{
+      "guild_id" => "guild1",
+      "role" => %{
+        "id" => "role1",
+        "name" => "Admin",
+        "permissions" => "0"
+      }
+    })
+
+    assert_receive {:guild_role_update, %{old: nil, new: %Role{} = role}}
+
+    assert role.id == "role1"
+    assert role.guild_id == "guild1"
+    assert role.name == "Admin"
   end
 end

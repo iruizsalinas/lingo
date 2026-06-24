@@ -3,6 +3,7 @@ defmodule Lingo.Type.Role do
 
   @type t :: %__MODULE__{
           id: String.t(),
+          guild_id: String.t() | nil,
           name: String.t(),
           color: integer(),
           colors: map() | nil,
@@ -19,6 +20,7 @@ defmodule Lingo.Type.Role do
 
   defstruct [
     :id,
+    :guild_id,
     :name,
     :icon,
     :unicode_emoji,
@@ -38,6 +40,7 @@ defmodule Lingo.Type.Role do
   def new(data) when is_map(data) do
     %__MODULE__{
       id: data["id"],
+      guild_id: data["guild_id"],
       name: data["name"],
       color: data["color"] || 0,
       colors: data["colors"],

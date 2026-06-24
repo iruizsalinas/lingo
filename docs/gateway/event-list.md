@@ -48,8 +48,8 @@ Gateway events and the data shape your `handle` block receives.
 
 | Event | Data |
 |-------|------|
-| `:guild_role_create` | `Role` struct |
-| `:guild_role_update` | `%{old: Role \| nil, new: Role}` |
+| `:guild_role_create` | `Role` struct with `guild_id` |
+| `:guild_role_update` | `%{old: Role \| nil, new: Role with guild_id}` |
 | `:guild_role_delete` | `%{old: Role \| nil, new: %{guild_id: str, role_id: str}}` |
 
 ## Emojis & Stickers

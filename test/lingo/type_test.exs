@@ -112,6 +112,7 @@ defmodule Lingo.TypeTest do
       guild = Guild.new(data)
       assert length(guild.roles) == 2
       assert hd(guild.roles).name == "Admin"
+      assert hd(guild.roles).guild_id == "1"
       assert length(guild.emojis) == 1
       assert hd(guild.emojis).animated == true
     end
@@ -379,6 +380,7 @@ defmodule Lingo.TypeTest do
       role =
         Role.new(%{
           "id" => "role1",
+          "guild_id" => "guild1",
           "name" => "Gradient",
           "color" => 3_447_003,
           "colors" => %{
@@ -389,6 +391,7 @@ defmodule Lingo.TypeTest do
           "permissions" => "0"
         })
 
+      assert role.guild_id == "guild1"
       assert role.color == 3_447_003
       assert role.colors["primary_color"] == 3_447_003
       assert role.colors["secondary_color"] == 16_759_788

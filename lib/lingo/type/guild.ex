@@ -138,7 +138,9 @@ defmodule Lingo.Type.Guild do
         Map.get(@notification_levels, data["default_message_notifications"], :all_messages),
       explicit_content_filter:
         Map.get(@explicit_filters, data["explicit_content_filter"], :disabled),
-      roles: (data["roles"] || []) |> Enum.map(&Role.new/1),
+      roles:
+        (data["roles"] || [])
+        |> Enum.map(fn role -> Role.new(Map.put(role, "guild_id", data["id"])) end),
       emojis: (data["emojis"] || []) |> Enum.map(&Emoji.new/1),
       features: data["features"] || [],
       mfa_level: Map.get(@mfa_levels, data["mfa_level"], :none),

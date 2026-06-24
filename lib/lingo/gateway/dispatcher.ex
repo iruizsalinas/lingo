@@ -46,7 +46,7 @@ defmodule Lingo.Gateway.Dispatcher do
     end)
 
     Enum.each(guild.members, fn m -> Cache.put_member(guild.id, m) end)
-    Enum.each(guild.roles, fn r -> Cache.put_role(guild.id, r) end)
+    Enum.each(guild.roles, fn r -> Cache.put_role(guild.id, %{r | guild_id: guild.id}) end)
 
     Enum.each(data["voice_states"] || [], fn vs ->
       Cache.put_voice_state(
@@ -68,7 +68,7 @@ defmodule Lingo.Gateway.Dispatcher do
   defp update_and_parse(:guild_update, data) do
     guild = Guild.new(data)
     old = Cache.get_guild(guild.id)
-    Enum.each(guild.roles, fn r -> Cache.put_role(guild.id, r) end)
+    Enum.each(guild.roles, fn r -> Cache.put_role(guild.id, %{r | guild_id: guild.id}) end)
     Cache.put_guild(%{guild | channels: [], members: [], roles: []})
     %{old: old, new: guild}
   end
@@ -175,13 +175,13 @@ defmodule Lingo.Gateway.Dispatcher do
   end
 
   defp update_and_parse(:guild_role_create, data) do
-    role = Lingo.Type.Role.new(data["role"])
+    role = Lingo.Type.Role.new(Map.put(data["role"], "guild_id", data["guild_id"]))
     Cache.put_role(data["guild_id"], role)
     role
   end
 
   defp update_and_parse(:guild_role_update, data) do
-    role = Lingo.Type.Role.new(data["role"])
+    role = Lingo.Type.Role.new(Map.put(data["role"], "guild_id", data["guild_id"]))
     old = Cache.get_role(data["guild_id"], role.id)
     Cache.put_role(data["guild_id"], role)
     %{old: old, new: role}
