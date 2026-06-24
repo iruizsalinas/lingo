@@ -46,12 +46,42 @@ defmodule Lingo.Type.Activity do
           type: activity_type(),
           url: String.t() | nil,
           created_at: integer() | nil,
+          timestamps: map() | nil,
           application_id: String.t() | nil,
+          status_display_type: integer() | nil,
           details: String.t() | nil,
-          state: String.t() | nil
+          details_url: String.t() | nil,
+          state: String.t() | nil,
+          state_url: String.t() | nil,
+          emoji: map() | nil,
+          party: map() | nil,
+          assets: map() | nil,
+          secrets: map() | nil,
+          instance: boolean() | nil,
+          flags: integer() | nil,
+          buttons: [map() | String.t()]
         }
 
-  defstruct [:name, :url, :created_at, :application_id, :details, :state, type: :playing]
+  defstruct [
+    :name,
+    :url,
+    :created_at,
+    :timestamps,
+    :application_id,
+    :status_display_type,
+    :details,
+    :details_url,
+    :state,
+    :state_url,
+    :emoji,
+    :party,
+    :assets,
+    :secrets,
+    :instance,
+    :flags,
+    type: :playing,
+    buttons: []
+  ]
 
   @activity_types %{
     0 => :playing,
@@ -72,9 +102,20 @@ defmodule Lingo.Type.Activity do
       type: Map.get(@activity_types, data["type"], :playing),
       url: data["url"],
       created_at: data["created_at"],
+      timestamps: data["timestamps"],
       application_id: data["application_id"],
+      status_display_type: data["status_display_type"],
       details: data["details"],
-      state: data["state"]
+      details_url: data["details_url"],
+      state: data["state"],
+      state_url: data["state_url"],
+      emoji: data["emoji"],
+      party: data["party"],
+      assets: data["assets"],
+      secrets: data["secrets"],
+      instance: data["instance"],
+      flags: data["flags"],
+      buttons: data["buttons"] || []
     }
   end
 

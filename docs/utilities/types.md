@@ -288,7 +288,7 @@ Fields: `user`, `guild_id`, `status` (`:online | :idle | :dnd | :offline`), `act
 
 ### Activity
 
-Fields: `name`, `type` (`:playing | :streaming | :listening | :watching | :custom | :competing`), `url`, `created_at`, `application_id`, `details`, `state`.
+Fields: `name`, `type` (`:playing | :streaming | :listening | :watching | :custom | :competing`), `url`, `created_at`, `timestamps`, `application_id`, `status_display_type`, `details`, `details_url`, `state`, `state_url`, `emoji`, `party`, `assets`, `secrets`, `instance`, `flags`, `buttons`.
 
 ### ReactionEvent
 
