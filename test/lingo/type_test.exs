@@ -278,6 +278,15 @@ defmodule Lingo.TypeTest do
         "member" => %{"nick" => "Snd", "roles" => ["r1"]},
         "content" => "hello world",
         "timestamp" => "2024-01-01T00:00:00Z",
+        "guild_id" => "g1",
+        "mentions" => [
+          %{
+            "id" => "u2",
+            "username" => "mentioned",
+            "discriminator" => "0",
+            "member" => %{"nick" => "Mentioned", "roles" => ["r2"]}
+          }
+        ],
         "embeds" => [%{"title" => "Test"}],
         "attachments" => [
           %{
@@ -296,6 +305,10 @@ defmodule Lingo.TypeTest do
       assert msg.content == "hello world"
       assert msg.author.username == "sender"
       assert msg.member.nick == "Snd"
+      assert [%User{id: "u2"}] = msg.mentions
+      assert msg.mention_members["u2"].guild_id == "g1"
+      assert msg.mention_members["u2"].nick == "Mentioned"
+      assert msg.mention_members["u2"].user.username == "mentioned"
       assert length(msg.embeds) == 1
       assert hd(msg.embeds).title == "Test"
       assert hd(msg.attachments).filename == "img.png"

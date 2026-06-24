@@ -173,6 +173,7 @@ Channel types: `:guild_text`, `:dm`, `:guild_voice`, `:group_dm`, `:guild_catego
 | `tts` | boolean |
 | `mention_everyone` | boolean |
 | `mentions` | list |
+| `mention_members` | map |
 | `mention_roles` | `[snowflake]` |
 | `attachments` | `[Attachment]` |
 | `embeds` | list |

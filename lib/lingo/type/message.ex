@@ -16,6 +16,7 @@ defmodule Lingo.Type.Message do
           tts: boolean(),
           mention_everyone: boolean(),
           mentions: [User.t()],
+          mention_members: %{optional(String.t()) => Member.t()},
           mention_roles: [String.t()],
           mention_channels: [map()],
           attachments: [Lingo.Type.Attachment.t()],
@@ -76,6 +77,7 @@ defmodule Lingo.Type.Message do
     tts: false,
     mention_everyone: false,
     mentions: [],
+    mention_members: %{},
     mention_roles: [],
     mention_channels: [],
     attachments: [],
@@ -92,6 +94,8 @@ defmodule Lingo.Type.Message do
   def new(nil), do: nil
 
   def new(data) when is_map(data) do
+    mentions = data["mentions"] || []
+
     %__MODULE__{
       id: data["id"],
       channel_id: data["channel_id"],
@@ -104,7 +108,8 @@ defmodule Lingo.Type.Message do
       edited_timestamp: data["edited_timestamp"],
       tts: data["tts"] || false,
       mention_everyone: data["mention_everyone"] || false,
-      mentions: (data["mentions"] || []) |> Enum.map(&User.new/1),
+      mentions: Enum.map(mentions, &User.new/1),
+      mention_members: parse_mention_members(mentions, data["guild_id"]),
       mention_roles: data["mention_roles"] || [],
       mention_channels: data["mention_channels"] || [],
       attachments: (data["attachments"] || []) |> Enum.map(&Lingo.Type.Attachment.new/1),
@@ -143,6 +148,24 @@ defmodule Lingo.Type.Message do
       %{"message" => msg} = snapshot -> Map.put(snapshot, "message", new(msg))
       snapshot -> snapshot
     end)
+  end
+
+  defp parse_mention_members(mentions, guild_id) do
+    mentions
+    |> Enum.flat_map(fn
+      %{"id" => user_id, "member" => member_data} = mention when is_map(member_data) ->
+        member =
+          member_data
+          |> Map.put("guild_id", guild_id)
+          |> Map.put("user", Map.delete(mention, "member"))
+          |> Member.new()
+
+        [{user_id, member}]
+
+      _ ->
+        []
+    end)
+    |> Map.new()
   end
 end
 
