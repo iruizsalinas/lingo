@@ -85,6 +85,7 @@ All types are in the `Lingo.Type` namespace. Each has a `new/1` constructor that
 | `member` | map \| nil |
 | `default_auto_archive_duration` | integer \| nil |
 | `permissions` | string \| nil |
+| `app_permissions` | string \| nil |
 | `flags` | integer |
 | `total_message_sent` | integer \| nil |
 | `available_tags` | list |
@@ -96,6 +97,10 @@ All types are in the `Lingo.Type` namespace. Each has a `new/1` constructor that
 | `message` | `Message \| nil` |
 
 Channel types: `:guild_text`, `:dm`, `:guild_voice`, `:group_dm`, `:guild_category`, `:guild_announcement`, `:announcement_thread`, `:public_thread`, `:private_thread`, `:guild_stage_voice`, `:guild_directory`, `:guild_forum`, `:guild_media`.
+
+`Lingo.Type.Channel.obfuscated?/1` detects Gateway channels whose sensitive metadata Discord hid
+because the bot cannot view them. Only rely on `id`, `type`, `position`, and `parent_id` for an
+obfuscated channel. A later Channel Update replaces the cached value if the bot gains access.
 
 ### Overwrite
 

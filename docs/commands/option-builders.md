@@ -76,6 +76,9 @@ File attachment option. Returns a snowflake ID. Use `resolved_attachment(ctx, id
 
 ```elixir
 attachment("file", "Upload a file", required: true)
+
+# Discord checks filename extensions only; validate file contents yourself.
+attachment("document", "Upload a document", file_types: [".pdf", ".docx"])
 ```
 
 ### `subcommand/3`

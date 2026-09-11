@@ -134,6 +134,7 @@ defmodule Lingo.Type.CommandOption do
           choices: [map()],
           options: [t()],
           channel_types: [integer()],
+          file_types: [String.t()],
           min_value: number() | nil,
           max_value: number() | nil,
           min_length: integer() | nil,
@@ -155,6 +156,7 @@ defmodule Lingo.Type.CommandOption do
     choices: [],
     options: [],
     channel_types: [],
+    file_types: [],
     autocomplete: false
   ]
 
@@ -187,6 +189,7 @@ defmodule Lingo.Type.CommandOption do
       choices: data["choices"] || [],
       options: (data["options"] || []) |> Enum.map(&new/1),
       channel_types: data["channel_types"] || [],
+      file_types: data["file_types"] || [],
       min_value: data["min_value"],
       max_value: data["max_value"],
       min_length: data["min_length"],
@@ -208,6 +211,7 @@ defmodule Lingo.Type.CommandOption do
     |> put_if("choices", non_empty(opt.choices))
     |> put_if("options", non_empty_map(opt.options, &to_payload/1))
     |> put_if("channel_types", non_empty(opt.channel_types))
+    |> put_if("file_types", non_empty(opt.file_types))
     |> put_if("min_value", opt.min_value)
     |> put_if("max_value", opt.max_value)
     |> put_if("min_length", opt.min_length)

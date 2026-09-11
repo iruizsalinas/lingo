@@ -1,6 +1,8 @@
 defmodule Lingo.Type.Channel do
   @moduledoc false
 
+  import Bitwise
+
   alias Lingo.Type.Message
 
   @type channel_type ::
@@ -46,6 +48,7 @@ defmodule Lingo.Type.Channel do
           member: map() | nil,
           default_auto_archive_duration: integer() | nil,
           permissions: String.t() | nil,
+          app_permissions: String.t() | nil,
           flags: integer(),
           total_message_sent: integer() | nil,
           available_tags: [map()],
@@ -81,6 +84,7 @@ defmodule Lingo.Type.Channel do
     :member,
     :default_auto_archive_duration,
     :permissions,
+    :app_permissions,
     :total_message_sent,
     :default_reaction_emoji,
     :default_thread_rate_limit_per_user,
@@ -111,6 +115,14 @@ defmodule Lingo.Type.Channel do
     15 => :guild_forum,
     16 => :guild_media
   }
+
+  @channel_obfuscated 1 <<< 17
+
+  @doc "Returns whether Discord has hidden this channel's sensitive metadata."
+  @spec obfuscated?(t()) :: boolean()
+  def obfuscated?(%__MODULE__{flags: flags}) when is_integer(flags) do
+    band(flags, @channel_obfuscated) == @channel_obfuscated
+  end
 
   def new(nil), do: nil
 
@@ -144,6 +156,7 @@ defmodule Lingo.Type.Channel do
       member: data["member"],
       default_auto_archive_duration: data["default_auto_archive_duration"],
       permissions: data["permissions"],
+      app_permissions: data["app_permissions"],
       flags: data["flags"] || 0,
       total_message_sent: data["total_message_sent"],
       available_tags: data["available_tags"] || [],

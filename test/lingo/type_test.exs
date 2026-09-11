@@ -252,6 +252,7 @@ defmodule Lingo.TypeTest do
           "member" => %{"user_id" => "u1", "join_timestamp" => "2026-01-01T00:00:00Z"},
           "default_auto_archive_duration" => 1440,
           "permissions" => "1024",
+          "app_permissions" => "3072",
           "total_message_sent" => 5,
           "available_tags" => [%{"id" => "tag1", "name" => "News"}],
           "applied_tags" => ["tag1"],
@@ -266,6 +267,7 @@ defmodule Lingo.TypeTest do
       assert channel.member["user_id"] == "u1"
       assert channel.default_auto_archive_duration == 1440
       assert channel.permissions == "1024"
+      assert channel.app_permissions == "3072"
       assert channel.total_message_sent == 5
       assert [%{"id" => "tag1"}] = channel.available_tags
       assert channel.applied_tags == ["tag1"]
@@ -273,6 +275,19 @@ defmodule Lingo.TypeTest do
       assert channel.default_thread_rate_limit_per_user == 10
       assert channel.default_sort_order == 1
       assert channel.default_forum_layout == 2
+    end
+
+    test "detects obfuscated gateway channels from the channel flag" do
+      channel =
+        Channel.new(%{
+          "id" => "1",
+          "type" => 0,
+          "name" => "___hidden___",
+          "flags" => 131_072
+        })
+
+      assert Channel.obfuscated?(channel)
+      refute Channel.obfuscated?(%Channel{id: "2", flags: 0})
     end
   end
 
@@ -552,6 +567,20 @@ defmodule Lingo.TypeTest do
       assert target["required"] == false
     end
 
+    test "attachment options preserve file type filters" do
+      option = %CommandOption{
+        type: :attachment,
+        name: "document",
+        description: "A document",
+        file_types: [".pdf", "image"]
+      }
+
+      assert CommandOption.to_payload(option)["file_types"] == [".pdf", "image"]
+
+      parsed = CommandOption.new(%{"type" => 11, "name" => "document", "file_types" => ["audio"]})
+      assert parsed.file_types == ["audio"]
+    end
+
     test "to_payload omits nil optional fields" do
       cmd = %ApplicationCommand{name: "simple", description: "Desc"}
       payload = ApplicationCommand.to_payload(cmd)
@@ -795,10 +824,11 @@ defmodule Lingo.TypeTest do
     end
 
     test "file_upload builder" do
-      fu = Component.file_upload("upload", max_values: 5)
+      fu = Component.file_upload("upload", max_values: 5, file_types: ["image", ".pdf"])
       assert fu.type == 19
       assert fu.custom_id == "upload"
       assert fu.max_values == 5
+      assert fu.file_types == ["image", ".pdf"]
     end
 
     test "radio_group builder" do

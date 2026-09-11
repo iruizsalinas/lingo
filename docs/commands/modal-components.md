@@ -194,8 +194,13 @@ end
 Lingo.file_upload(custom_id, opts \\ [])
 ```
 
+Use `file_types: ["image"]` or dot-prefixed extensions such as `file_types: [".pdf"]` to filter
+the picker. Discord only checks the filename extension, so applications must still validate the
+uploaded content.
+
 | Option | Type | Description |
 |--------|------|-------------|
 | `required` | boolean | Whether a file is required |
 | `min_values` | integer | Minimum files |
 | `max_values` | integer | Maximum files |
+| `file_types` | `[string]` | Up to 10 Discord groups (`image`, `video`, `audio`) or dot-prefixed extensions |

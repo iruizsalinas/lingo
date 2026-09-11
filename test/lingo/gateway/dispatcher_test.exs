@@ -2,7 +2,7 @@ defmodule Lingo.Gateway.DispatcherTest do
   use ExUnit.Case
 
   alias Lingo.Gateway.Dispatcher
-  alias Lingo.Type.{AuditLogEntry, Guild, Invite, Member, Message, Presence, Role}
+  alias Lingo.Type.{AuditLogEntry, Channel, Guild, Invite, Member, Message, Presence, Role}
 
   defmodule DispatchBot do
     use Lingo.Bot
@@ -76,6 +76,34 @@ defmodule Lingo.Gateway.DispatcherTest do
     assert entry.user_id == "user1"
     assert entry.action_type == 22
     assert entry.changes == [%{"key" => "communication_disabled_until"}]
+  end
+
+  test "a full channel update replaces an obfuscated cached channel" do
+    Dispatcher.dispatch(:channel_create, %{
+      "id" => "channel1",
+      "guild_id" => "guild1",
+      "type" => 0,
+      "name" => "___hidden___",
+      "flags" => 131_072,
+      "permission_overwrites" => [
+        %{"id" => "guild1", "type" => 0, "allow" => "0", "deny" => "1024"}
+      ]
+    })
+
+    assert %Channel{} = hidden = Lingo.Cache.get_channel("channel1")
+    assert Channel.obfuscated?(hidden)
+
+    Dispatcher.dispatch(:channel_update, %{
+      "id" => "channel1",
+      "guild_id" => "guild1",
+      "type" => 0,
+      "name" => "private-room",
+      "flags" => 0,
+      "permission_overwrites" => []
+    })
+
+    assert %Channel{name: "private-room"} = visible = Lingo.Cache.get_channel("channel1")
+    refute Channel.obfuscated?(visible)
   end
 
   test "dispatches invite create with gateway context intact" do

@@ -62,7 +62,8 @@ defmodule Lingo.Bot.OptionBuilders do
       min_length: Keyword.get(opts, :min_length),
       max_length: Keyword.get(opts, :max_length),
       autocomplete: Keyword.get(opts, :autocomplete, false),
-      channel_types: Keyword.get(opts, :channel_types, [])
+      channel_types: Keyword.get(opts, :channel_types, []),
+      file_types: Keyword.get(opts, :file_types, [])
     }
   end
 

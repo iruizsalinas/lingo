@@ -234,6 +234,7 @@ defmodule Lingo.Type.Component do
     |> put_if(:min_values, opts[:min_values])
     |> put_if(:max_values, opts[:max_values])
     |> put_if(:required, opts[:required])
+    |> put_if(:file_types, non_empty(opts[:file_types]))
   end
 
   @spec radio_group(String.t(), [map()], keyword()) :: map()
