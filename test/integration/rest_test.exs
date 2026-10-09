@@ -2,6 +2,17 @@ defmodule Lingo.Integration.RestTest do
   @moduledoc false
   use Lingo.IntegrationCase
 
+  # a raw GET, bypassing the client, with the body decoded and headers as a map
+  defp get(path) do
+    headers = [
+      {"authorization", "Bot #{Lingo.Config.token()}"},
+      {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.3.0)"}
+    ]
+
+    {:ok, response} = Lingo.Api.HTTP.request(:get, "https://discord.com/api/v10" <> path, headers)
+    %{response | body: JSON.decode!(response.body), headers: Map.new(response.headers)}
+  end
+
   describe "GET /users/@me" do
     test "returns the bot's own user" do
       assert {:ok, user} = Lingo.Api.User.get_current()
@@ -27,15 +38,7 @@ defmodule Lingo.Integration.RestTest do
 
   describe "GET /gateway/bot" do
     test "returns gateway URL and shard info" do
-      token = Lingo.Config.token()
-
-      headers = [
-        {"authorization", "Bot #{token}"},
-        {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.3.0)"}
-      ]
-
-      assert {:ok, %{status: 200, body: body}} =
-               Req.get("https://discord.com/api/v10/gateway/bot", headers: headers)
+      assert %{status: 200, body: body} = get("/gateway/bot")
 
       assert is_binary(body["url"])
       assert body["url"] =~ "wss://"
@@ -50,13 +53,7 @@ defmodule Lingo.Integration.RestTest do
 
   describe "GET /applications/@me" do
     test "returns the bot's application info" do
-      {:ok, %{status: 200, body: body}} =
-        Req.get("https://discord.com/api/v10/applications/@me",
-          headers: [
-            {"authorization", "Bot #{Lingo.Config.token()}"},
-            {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.3.0)"}
-          ]
-        )
+      assert %{status: 200, body: body} = get("/applications/@me")
 
       assert is_binary(body["id"])
       assert is_binary(body["name"])
@@ -66,13 +63,7 @@ defmodule Lingo.Integration.RestTest do
 
   describe "GET /voice/regions" do
     test "returns a list of voice regions" do
-      {:ok, %{status: 200, body: body}} =
-        Req.get("https://discord.com/api/v10/voice/regions",
-          headers: [
-            {"authorization", "Bot #{Lingo.Config.token()}"},
-            {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.3.0)"}
-          ]
-        )
+      assert %{status: 200, body: body} = get("/voice/regions")
 
       assert is_list(body)
       assert length(body) > 0
@@ -89,7 +80,7 @@ defmodule Lingo.Integration.RestTest do
       guild_id = System.get_env("GUILD_ID")
 
       if is_nil(guild_id) or guild_id == "" do
-        raise "GUILD_ID not set - add it to .env.local"
+        raise "GUILD_ID not set in the environment"
       end
 
       # get the first text channel
@@ -166,13 +157,7 @@ defmodule Lingo.Integration.RestTest do
 
   describe "rate limit headers" do
     test "Discord returns rate limit headers on API responses" do
-      {:ok, resp} =
-        Req.get("https://discord.com/api/v10/users/@me",
-          headers: [
-            {"authorization", "Bot #{Lingo.Config.token()}"},
-            {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.3.0)"}
-          ]
-        )
+      resp = get("/users/@me")
 
       assert resp.status == 200
 

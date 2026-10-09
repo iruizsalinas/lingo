@@ -62,7 +62,7 @@ defmodule Lingo.Api.RateLimiterTest do
   end
 
   describe "update/2 with map headers" do
-    test "parses map-style headers (as returned by Req)" do
+    test "parses map-style headers" do
       headers = %{
         "x-ratelimit-bucket" => ["def456"],
         "x-ratelimit-remaining" => ["0"],

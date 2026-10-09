@@ -8,7 +8,7 @@ defmodule Lingo.MixProject do
     [
       app: :lingo,
       version: @version,
-      elixir: "~> 1.16",
+      elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       deps: deps(),
@@ -22,7 +22,7 @@ defmodule Lingo.MixProject do
 
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger, :inets, :ssl]
     ]
   end
 
@@ -31,9 +31,6 @@ defmodule Lingo.MixProject do
 
   defp deps do
     [
-      {:req, "~> 0.5"},
-      {:gun, "~> 2.1"},
-      {:jason, "~> 1.4"},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false}
     ]
   end

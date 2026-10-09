@@ -14,7 +14,7 @@ defmodule Lingo.IntegrationCase do
     client_id = System.get_env("CLIENT_ID")
 
     if is_nil(token) or token == "" do
-      raise "BOT_TOKEN not set - add it to .env.local"
+      raise "BOT_TOKEN not set in the environment"
     end
 
     Lingo.Config.put(:token, token)

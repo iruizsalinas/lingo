@@ -32,7 +32,7 @@ defmodule Lingo.Gateway.CompressionTest do
       assert result != nil
       assert result == original
 
-      decoded = Jason.decode!(result)
+      decoded = JSON.decode!(result)
       assert decoded["op"] == 10
       assert decoded["d"]["heartbeat_interval"] == 45000
 

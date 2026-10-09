@@ -3,7 +3,7 @@ defmodule Lingo.Gateway.Connection do
 
   use GenServer, restart: :transient
 
-  alias Lingo.Gateway.{Compression, Heartbeat, Payload}
+  alias Lingo.Gateway.{Compression, Heartbeat, Payload, WebSocket}
 
   require Logger
 
@@ -17,9 +17,8 @@ defmodule Lingo.Gateway.Connection do
   @send_window_ms 60_000
 
   defstruct [
-    :gun_pid,
-    :gun_ref,
-    :stream_ref,
+    :ws,
+    :connect_task,
     :heartbeat_pid,
     :shard_id,
     :shard_count,
@@ -92,13 +91,8 @@ defmodule Lingo.Gateway.Connection do
   end
 
   @impl true
-  def handle_info(:connect, %{gun_pid: nil} = state) do
-    host =
-      (state.resume_gateway_url || state.gateway_url || "gateway.discord.gg")
-      |> String.replace(~r"^wss?://", "")
-      |> String.trim_trailing("/")
-
-    {:noreply, do_connect(%{state | connect_timer: nil}, host)}
+  def handle_info(:connect, %{ws: nil, connect_task: nil} = state) do
+    {:noreply, start_connect(%{state | connect_timer: nil})}
   end
 
   def handle_info(:connect, state), do: {:noreply, %{state | connect_timer: nil}}
@@ -107,7 +101,7 @@ defmodule Lingo.Gateway.Connection do
     {:noreply, reconnect(state)}
   end
 
-  def handle_info(:heartbeat_timeout, %{gun_pid: pid} = state) when not is_nil(pid) do
+  def handle_info(:heartbeat_timeout, %{ws: %WebSocket{}} = state) do
     # zombied connection: close with a non-1000 code so the session stays resumable
     graceful_close(state)
     {:noreply, reconnect(state)}
@@ -126,7 +120,7 @@ defmodule Lingo.Gateway.Connection do
     {:noreply, state}
   end
 
-  def handle_info(:identify, %{gun_pid: pid} = state) when not is_nil(pid) do
+  def handle_info(:identify, %{ws: %WebSocket{}} = state) do
     payload =
       Payload.identify(
         state.token,
@@ -146,74 +140,66 @@ defmodule Lingo.Gateway.Connection do
     {:noreply, flush_send_queue(%{state | send_timer: nil})}
   end
 
-  # :gun messages, only from the current connection
+  def handle_info({ref, result}, %{connect_task: %Task{ref: ref}} = state) do
+    Process.demonitor(ref, [:flush])
 
-  def handle_info({:gun_up, pid, :http}, %{gun_pid: pid} = state) do
-    path = "/?v=10&encoding=json&compress=zlib-stream"
-    stream_ref = :gun.ws_upgrade(pid, path, [], %{silence_pings: false})
-    {:noreply, %{state | stream_ref: stream_ref}}
-  end
-
-  def handle_info(
-        {:gun_upgrade, pid, ref, ["websocket"], _headers},
-        %{gun_pid: pid, stream_ref: ref} = state
-      ) do
-    timer = Process.send_after(self(), :hello_timeout, @hello_timeout)
-    {:noreply, %{state | state: :awaiting_hello, zlib: Compression.new(), hello_timer: timer}}
-  end
-
-  def handle_info({:gun_ws, pid, ref, {:binary, data}}, %{gun_pid: pid, stream_ref: ref} = state) do
-    case Compression.push(state.zlib, data) do
-      {zlib, nil} ->
-        {:noreply, %{state | zlib: zlib}}
-
-      {zlib, decompressed} ->
-        state = %{state | zlib: zlib}
-
-        case safe_decode(decompressed) do
-          {:ok, payload} -> handle_gateway_message(payload, state)
-          :error -> {:noreply, state}
-        end
+    case result do
+      {:ok, ws} -> {:noreply, connected(%{state | connect_task: nil, ws: ws})}
+      {:error, _reason} -> {:noreply, reconnect(%{state | connect_task: nil})}
     end
+  end
+
+  # anything else may come from the socket, stream/2 ignores messages that
+  # belong to an older connection
+  def handle_info(message, %{ws: %WebSocket{} = ws} = state) do
+    case WebSocket.stream(ws, message) do
+      {:ok, ws, frames} -> handle_frames(frames, %{state | ws: ws})
+      {:error, _ws, _reason} -> {:noreply, reconnect(state)}
+      :unknown -> {:noreply, state}
+    end
+  end
+
+  def handle_info(_message, state), do: {:noreply, state}
+
+  # websocket frames
+
+  defp handle_frames([], state), do: {:noreply, state}
+
+  defp handle_frames([frame | rest], state) do
+    ws = state.ws
+
+    case handle_frame(frame, state) do
+      # frames left over from a connection that was just dropped are stale
+      {:noreply, %{ws: ^ws} = state} -> handle_frames(rest, state)
+      result -> result
+    end
+  end
+
+  defp handle_frame({:binary, data}, state) do
+    case inflate(state.zlib, data) do
+      {:ok, zlib, nil} -> {:noreply, %{state | zlib: zlib}}
+      {:ok, zlib, json} -> handle_json(json, %{state | zlib: zlib})
+      :error -> {:noreply, reconnect(state)}
+    end
+  end
+
+  defp handle_frame({:text, json}, state), do: handle_json(json, state)
+
+  defp handle_frame({:close, code, _reason}, state), do: handle_close(state, code)
+
+  defp inflate(zlib, data) do
+    {zlib, json} = Compression.push(zlib, data)
+    {:ok, zlib, json}
   rescue
-    _ -> {:noreply, reconnect(state)}
+    ErlangError -> :error
   end
 
-  def handle_info({:gun_ws, pid, ref, {:text, data}}, %{gun_pid: pid, stream_ref: ref} = state) do
-    case safe_decode(data) do
+  defp handle_json(json, state) do
+    case JSON.decode(json) do
       {:ok, payload} -> handle_gateway_message(payload, state)
-      :error -> {:noreply, state}
+      {:error, _reason} -> {:noreply, state}
     end
   end
-
-  def handle_info(
-        {:gun_ws, pid, ref, {:close, code, _reason}},
-        %{gun_pid: pid, stream_ref: ref} = state
-      ) do
-    handle_close(state, code)
-  end
-
-  def handle_info({:gun_down, pid, _protocol, _reason, _}, %{gun_pid: pid} = state) do
-    {:noreply, reconnect(state)}
-  end
-
-  def handle_info(
-        {:gun_response, pid, ref, _fin, _status, _headers},
-        %{gun_pid: pid, stream_ref: ref} = state
-      ) do
-    # websocket upgrade was refused
-    {:noreply, reconnect(state)}
-  end
-
-  def handle_info({:gun_error, pid, ref, _reason}, %{gun_pid: pid, stream_ref: ref} = state) do
-    {:noreply, reconnect(state)}
-  end
-
-  def handle_info({:DOWN, ref, :process, _pid, _reason}, %{gun_ref: ref} = state) do
-    {:noreply, reconnect(%{state | gun_pid: nil, gun_ref: nil})}
-  end
-
-  def handle_info(_msg, state), do: {:noreply, state}
 
   # gateway opcodes
 
@@ -312,7 +298,7 @@ defmodule Lingo.Gateway.Connection do
     flush_send_queue(%{state | send_queue: :queue.in(data, state.send_queue)})
   end
 
-  defp flush_send_queue(%{state: :connected, gun_pid: pid} = state) when not is_nil(pid) do
+  defp flush_send_queue(%{state: :connected, ws: %WebSocket{}} = state) do
     now = System.monotonic_time(:millisecond)
 
     state =
@@ -356,50 +342,51 @@ defmodule Lingo.Gateway.Connection do
     %{state | state: :disconnected, connect_timer: timer}
   end
 
-  defp do_connect(state, host) do
-    host_charlist = String.to_charlist(host)
+  # Connecting blocks through the TCP, TLS and HTTP handshakes, so it runs in
+  # a task to keep this process responsive. The task hands the socket over.
+  defp start_connect(state) do
+    url = gateway_url(state.resume_gateway_url || state.gateway_url || "gateway.discord.gg")
+    owner = self()
 
-    gun_opts = %{
-      protocols: [:http],
-      transport: :tls,
-      # reconnection is handled here, gun must not reconnect on its own
-      retry: 0,
-      tls_opts: [
-        verify: :verify_peer,
-        cacerts: :public_key.cacerts_get(),
-        customize_hostname_check: [
-          match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-        ]
-      ]
-    }
+    task =
+      Task.async(fn ->
+        with {:ok, ws} <- WebSocket.connect(url) do
+          case WebSocket.controlling_process(ws, owner) do
+            :ok ->
+              {:ok, ws}
 
-    case :gun.open(host_charlist, 443, gun_opts) do
-      {:ok, pid} ->
-        ref = Process.monitor(pid)
-        %{state | gun_pid: pid, gun_ref: ref, state: :connecting}
+            {:error, reason} ->
+              WebSocket.close(ws)
+              {:error, reason}
+          end
+        end
+      end)
+
+    %{state | connect_task: task, state: :connecting}
+  end
+
+  defp connected(state) do
+    case WebSocket.activate(state.ws) do
+      :ok ->
+        timer = Process.send_after(self(), :hello_timeout, @hello_timeout)
+        %{state | state: :awaiting_hello, zlib: Compression.new(), hello_timer: timer}
 
       {:error, _reason} ->
-        %{state | connect_timer: Process.send_after(self(), :connect, 5_000)}
+        reconnect(state)
     end
   end
 
-  defp send_frame(%{gun_pid: pid, stream_ref: ref}, data) when not is_nil(pid) do
-    :gun.ws_send(pid, ref, {:text, data})
+  defp gateway_url(url) do
+    uri = URI.parse(if url =~ "://", do: url, else: "wss://" <> url)
+    URI.to_string(%{uri | path: "/", query: "v=10&encoding=json&compress=zlib-stream"})
   end
 
-  defp send_frame(_, _), do: :ok
+  defp send_frame(%{ws: nil}, _data), do: :ok
+  defp send_frame(%{ws: ws}, data), do: WebSocket.send_frame(ws, {:text, data})
 
-  defp safe_decode(data) do
-    {:ok, Jason.decode!(data)}
-  rescue
-    _ -> :error
-  end
-
-  defp graceful_close(%{gun_pid: pid, stream_ref: ref}) when not is_nil(pid) do
-    :gun.ws_send(pid, ref, {:close, 4000, ""})
-  end
-
-  defp graceful_close(_), do: :ok
+  # any code but 1000 and 1001 keeps the session resumable
+  defp graceful_close(%{ws: nil}), do: :ok
+  defp graceful_close(%{ws: ws}), do: WebSocket.send_frame(ws, {:close, 4000, ""})
 
   defp stop_heartbeat(state) do
     if state.heartbeat_pid && Process.alive?(state.heartbeat_pid) do
@@ -414,19 +401,25 @@ defmodule Lingo.Gateway.Connection do
     if state.identify_timer, do: Process.cancel_timer(state.identify_timer)
     if state.send_timer, do: Process.cancel_timer(state.send_timer)
     if state.zlib, do: Compression.close(state.zlib)
-    if state.gun_ref, do: Process.demonitor(state.gun_ref, [:flush])
-    if state.gun_pid, do: :gun.close(state.gun_pid)
+    if state.connect_task, do: cancel_connect(state.connect_task)
+    if state.ws, do: WebSocket.close(state.ws)
 
     %{
       stop_heartbeat(state)
-      | gun_pid: nil,
-        gun_ref: nil,
-        stream_ref: nil,
+      | ws: nil,
+        connect_task: nil,
         zlib: nil,
         hello_timer: nil,
         identify_timer: nil,
         send_timer: nil
     }
+  end
+
+  defp cancel_connect(task) do
+    case Task.shutdown(task, :brutal_kill) do
+      {:ok, {:ok, ws}} -> WebSocket.close(ws)
+      _other -> :ok
+    end
   end
 
   defp handle_close(state, code) when code in @fatal_codes do

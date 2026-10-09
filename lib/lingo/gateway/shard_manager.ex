@@ -411,21 +411,19 @@ defmodule Lingo.Gateway.ShardManager do
        "DiscordBot (https://github.com/iruizsalinas/lingo, #{Mix.Project.config()[:version]})"}
     ]
 
-    case Req.get("https://discord.com/api/v10/gateway/bot", headers: headers) do
-      {:ok, %{status: 200, body: body}} ->
-        url = body["url"] |> String.trim_trailing("/")
-        shards = body["shards"]
-        ssl = body["session_start_limit"] || %{}
-        max_concurrency = ssl["max_concurrency"] || 1
-        remaining = ssl["remaining"] || 1000
-        reset_after = ssl["reset_after"] || 0
-        {:ok, url, shards, max_concurrency, remaining, reset_after}
-
-      {:ok, %{status: status, body: body}} ->
-        {:error, {status, body}}
-
-      {:error, reason} ->
-        {:error, reason}
+    with {:ok, %{status: 200, body: body}} <-
+           Lingo.Api.HTTP.request(:get, "https://discord.com/api/v10/gateway/bot", headers),
+         {:ok, body} <- JSON.decode(body) do
+      url = body["url"] |> String.trim_trailing("/")
+      shards = body["shards"]
+      ssl = body["session_start_limit"] || %{}
+      max_concurrency = ssl["max_concurrency"] || 1
+      remaining = ssl["remaining"] || 1000
+      reset_after = ssl["reset_after"] || 0
+      {:ok, url, shards, max_concurrency, remaining, reset_after}
+    else
+      {:ok, %{status: status, body: body}} -> {:error, {status, body}}
+      {:error, reason} -> {:error, reason}
     end
   end
 

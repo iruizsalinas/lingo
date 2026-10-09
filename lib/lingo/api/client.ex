@@ -151,26 +151,38 @@ defmodule Lingo.Api.Client do
     {:error, {status, body}}
   end
 
-  defp fire_request(method, path, opts, extra \\ []) do
-    headers = build_headers(opts[:reason])
-    url = @base_url <> path
+  defp fire_request(method, path, opts) do
+    url = @base_url <> path <> query_string(opts[:params])
 
-    req_opts =
-      [method: method, url: url, headers: headers]
-      |> maybe_put_json(opts[:json])
-      |> maybe_put_params(opts[:params])
-      |> maybe_put_multipart(opts[:multipart])
-      # retries are handled here so they stay visible to the rate limiter
-      |> Keyword.put(:retry, false)
-      |> Keyword.merge(extra)
-      |> Keyword.merge(Lingo.Config.get(:req_options) || [])
-
-    case Req.request(req_opts) do
-      {:ok, %Req.Response{status: status, headers: resp_headers, body: body}} ->
-        {:ok, status, body, resp_headers}
+    case http_request().(method, url, build_headers(opts[:reason]), encode_body(opts)) do
+      {:ok, %{status: status, headers: headers, body: body}} ->
+        {:ok, status, decode_body(body, headers), headers}
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  # swappable so tests can stand in for Discord
+  defp http_request, do: Lingo.Config.get(:http_request) || (&Lingo.Api.HTTP.request/4)
+
+  defp query_string(params) when params in [nil, [], %{}], do: ""
+  defp query_string(params), do: "?" <> URI.encode_query(params)
+
+  defp encode_body(opts) do
+    cond do
+      parts = opts[:multipart] -> Lingo.Api.Multipart.encode(parts)
+      json = opts[:json] -> {"application/json", JSON.encode_to_iodata!(json)}
+      true -> nil
+    end
+  end
+
+  defp decode_body(body, headers) do
+    with "application/json" <> _ <- get_header(headers, "content-type", ""),
+         {:ok, decoded} <- JSON.decode(body) do
+      decoded
+    else
+      _ -> body
     end
   end
 
@@ -205,20 +217,6 @@ defmodule Lingo.Api.Client do
     ]
 
     if reason, do: [{"x-audit-log-reason", URI.encode(reason)} | headers], else: headers
-  end
-
-  defp maybe_put_json(opts, nil), do: opts
-  defp maybe_put_json(opts, json), do: Keyword.put(opts, :json, json)
-
-  defp maybe_put_params(opts, nil), do: opts
-  defp maybe_put_params(opts, params), do: Keyword.put(opts, :params, params)
-
-  defp maybe_put_multipart(opts, nil), do: opts
-
-  defp maybe_put_multipart(opts, parts) do
-    opts
-    |> Keyword.delete(:json)
-    |> Keyword.put(:form_multipart, parts)
   end
 
   # route key generation - matches discord.js bucket logic
@@ -323,21 +321,13 @@ defmodule Lingo.Api.Client do
   end
 
   defp get_header(headers, key, default) do
-    value =
-      Map.get(headers, key) ||
-        Enum.find_value(headers, fn {header, value} ->
-          if String.downcase(header) == key, do: value
-        end)
-
-    case value do
-      [value | _] -> value
-      value when is_binary(value) -> value
-      nil -> default
-    end
+    Enum.find_value(headers, default, fn {name, value} ->
+      if String.downcase(name) == key, do: value
+    end)
   end
 
   def build_multipart(json, files) do
-    payload_part = {"payload_json", {Jason.encode!(json), content_type: "application/json"}}
+    payload_part = {"payload_json", {JSON.encode!(json), content_type: "application/json"}}
 
     file_parts =
       files

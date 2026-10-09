@@ -12,7 +12,9 @@ defmodule Lingo.Api.ClientTest do
       start_supervised!(RateLimiter)
     end
 
-    previous = for key <- [:req_options, :max_wait, :bot_module], do: {key, Lingo.Config.get(key)}
+    previous =
+      for key <- [:http_request, :max_wait, :bot_module], do: {key, Lingo.Config.get(key)}
+
     Lingo.Config.put(:bot_module, nil)
     Lingo.Config.put(:max_wait, nil)
 
@@ -25,21 +27,27 @@ defmodule Lingo.Api.ClientTest do
   defp stub(respond) do
     test_pid = self()
 
-    adapter = fn request ->
-      send(test_pid, {:request, request.method, request.url.path})
+    Lingo.Config.put(:http_request, fn method, url, _headers, _body ->
+      send(test_pid, {:request, method, URI.parse(url).path})
       {status, headers, body} = respond.()
 
-      response =
-        Req.Response.new(status: status, body: Jason.encode!(body))
-        |> Req.Response.put_header("content-type", "application/json")
+      {:ok,
+       %{
+         status: status,
+         headers: [{"content-type", "application/json"} | headers],
+         body: JSON.encode!(body)
+       }}
+    end)
+  end
 
-      response =
-        Enum.reduce(headers, response, fn {k, v}, r -> Req.Response.put_header(r, k, v) end)
+  # answers every request with `response` and reports what was sent
+  defp capture(response \\ {:ok, %{status: 200, headers: [], body: ""}}) do
+    test_pid = self()
 
-      {request, response}
-    end
-
-    Lingo.Config.put(:req_options, adapter: adapter)
+    Lingo.Config.put(:http_request, fn method, url, headers, body ->
+      send(test_pid, {:sent, method, url, headers, body})
+      response
+    end)
   end
 
   defp rate_limited(retry_after, global \\ false) do
@@ -79,7 +87,7 @@ defmodule Lingo.Api.ClientTest do
       assert request_count() == 3
     end
 
-    test "Req does not retry 429s on its own" do
+    test "a zero max_wait sends a single request" do
       stub(fn -> rate_limited(0.01) end)
 
       Client.with_max_wait(0, fn -> Client.request(:get, "/channels/102/messages") end)
@@ -164,6 +172,66 @@ defmodule Lingo.Api.ClientTest do
 
       Client.with_max_wait(5, fn -> :ok end)
       assert Process.get(:lingo_max_wait) == nil
+    end
+  end
+
+  describe "requests" do
+    test "sends JSON bodies, query params and the audit log reason" do
+      capture()
+
+      assert :ok =
+               Client.request(:patch, "/guilds/300",
+                 json: %{name: "lingo"},
+                 params: %{with_counts: true},
+                 reason: "tidy up"
+               )
+
+      assert_received {:sent, :patch, url, headers, {"application/json", body}}
+      assert url == "https://discord.com/api/v10/guilds/300?with_counts=true"
+      assert {"x-audit-log-reason", "tidy%20up"} in headers
+      assert {"authorization", "Bot " <> _} = List.keyfind(headers, "authorization", 0)
+      assert JSON.decode!(IO.iodata_to_binary(body)) == %{"name" => "lingo"}
+    end
+
+    test "sends multipart bodies" do
+      capture()
+
+      multipart = Client.build_multipart(%{content: "hi"}, [{"a.txt", "file contents"}])
+      assert :ok = Client.request(:post, "/channels/301/messages", multipart: multipart)
+
+      assert_received {:sent, :post, _url, _headers,
+                       {"multipart/form-data; boundary=" <> _, body}}
+
+      body = IO.iodata_to_binary(body)
+      assert body =~ ~s(name="files[0]"; filename="a.txt")
+      assert body =~ "file contents"
+    end
+
+    test "sends no body when there is nothing to send" do
+      capture()
+
+      assert :ok = Client.request(:post, "/channels/302/typing")
+      assert_received {:sent, :post, "https://discord.com/api/v10/channels/302/typing", _, nil}
+    end
+
+    test "decodes JSON responses and leaves other bodies alone" do
+      capture(
+        {:ok,
+         %{status: 200, headers: [{"Content-Type", "application/json"}], body: ~s({"id":"1"})}}
+      )
+
+      assert {:ok, %{"id" => "1"}} = Client.request(:get, "/users/303")
+
+      csv = "user_id\n1"
+      capture({:ok, %{status: 200, headers: [{"content-type", "text/csv"}], body: csv}})
+      assert {:ok, ^csv} = Client.request(:get, "/invites/abc/target-users")
+    end
+
+    test "returns error statuses with the decoded body" do
+      body = ~s({"code":10013,"message":"Unknown User"})
+      capture({:ok, %{status: 404, headers: [{"content-type", "application/json"}], body: body}})
+
+      assert {:error, {404, %{"code" => 10013}}} = Client.request(:get, "/users/304")
     end
   end
 

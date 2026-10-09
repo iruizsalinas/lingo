@@ -133,8 +133,8 @@ defmodule Lingo.Gateway.Payload do
   end
 
   @spec encode(map()) :: binary()
-  def encode(payload), do: Jason.encode!(payload)
+  def encode(payload), do: JSON.encode!(payload)
 
   @spec decode(binary()) :: map()
-  def decode(data), do: Jason.decode!(data)
+  def decode(data), do: JSON.decode!(data)
 end

@@ -465,23 +465,22 @@ defmodule Lingo.Command.ContextResponseTest do
   setup do
     unless Process.whereis(RateLimiter), do: start_supervised!(RateLimiter)
 
-    previous = for key <- [:req_options, :max_wait], do: {key, Lingo.Config.get(key)}
+    previous = for key <- [:http_request, :max_wait], do: {key, Lingo.Config.get(key)}
     on_exit(fn -> Enum.each(previous, fn {key, value} -> Lingo.Config.put(key, value) end) end)
 
     test_pid = self()
 
-    adapter = fn request ->
-      body = request.body |> IO.iodata_to_binary() |> Jason.decode!()
-      send(test_pid, {:request, request.method, request.url.path, body})
+    Lingo.Config.put(:http_request, fn method, url, _headers, {_content_type, body} ->
+      body = body |> IO.iodata_to_binary() |> JSON.decode!()
+      send(test_pid, {:request, method, URI.parse(url).path, body})
 
-      response =
-        Req.Response.new(status: 200, body: Jason.encode!(%{"id" => "m1"}))
-        |> Req.Response.put_header("content-type", "application/json")
-
-      {request, response}
-    end
-
-    Lingo.Config.put(:req_options, adapter: adapter)
+      {:ok,
+       %{
+         status: 200,
+         headers: [{"content-type", "application/json"}],
+         body: JSON.encode!(%{"id" => "m1"})
+       }}
+    end)
 
     ctx = %Context{interaction_id: "i1", interaction_token: "tok", application_id: "app"}
     {:ok, ctx: ctx}

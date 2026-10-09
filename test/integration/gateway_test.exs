@@ -2,149 +2,85 @@ defmodule Lingo.Integration.GatewayTest do
   @moduledoc false
   use Lingo.IntegrationCase
 
+  alias Lingo.Gateway.{Compression, Intents, Payload, WebSocket}
+
+  # /gateway/bot has a tight rate limit, so ask once for the whole module
+  setup_all do
+    headers = [
+      {"authorization", "Bot #{Lingo.Config.token()}"},
+      {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.3.0)"}
+    ]
+
+    {:ok, %{status: 200, body: body}} =
+      Lingo.Api.HTTP.request(:get, "https://discord.com/api/v10/gateway/bot", headers)
+
+    %{gateway_url: JSON.decode!(body)["url"]}
+  end
+
+  defp connect(gateway_url, query) do
+    {:ok, ws} = WebSocket.connect("#{gateway_url}/?#{query}")
+    :ok = WebSocket.activate(ws)
+    on_exit(fn -> WebSocket.close(ws) end)
+    ws
+  end
+
+  # feeds socket messages to the client until frames arrive
+  defp next_frames(ws, timeout \\ 10_000) do
+    receive do
+      message ->
+        case WebSocket.stream(ws, message) do
+          {:ok, ws, []} -> next_frames(ws, timeout)
+          {:ok, ws, frames} -> {ws, frames}
+        end
+    after
+      timeout -> flunk("no frame from the gateway")
+    end
+  end
+
   describe "gateway handshake" do
-    test "connects to gateway and receives Hello (op 10)" do
-      token = Lingo.Config.token()
+    test "connects to gateway and receives Hello (op 10)", %{gateway_url: url} do
+      ws = connect(url, "v=10&encoding=json")
 
-      headers = [
-        {"authorization", "Bot #{token}"},
-        {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.3.0)"}
-      ]
+      assert {_ws, [{:text, hello_json}]} = next_frames(ws)
 
-      {:ok, %{body: body}} = Req.get("https://discord.com/api/v10/gateway/bot", headers: headers)
-      gateway_host = body["url"] |> String.replace("wss://", "")
-
-      {:ok, pid} =
-        :gun.open(String.to_charlist(gateway_host), 443, %{
-          protocols: [:http],
-          transport: :tls,
-          tls_opts: [
-            verify: :verify_peer,
-            cacerts: :public_key.cacerts_get(),
-            customize_hostname_check: [
-              match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-            ]
-          ]
-        })
-
-      assert_receive {:gun_up, ^pid, :http}, 10_000
-
-      ref = :gun.ws_upgrade(pid, ~c"/?v=10&encoding=json", [], %{silence_pings: false})
-
-      assert_receive {:gun_upgrade, ^pid, ^ref, ["websocket"], _headers}, 10_000
-
-      # first thing we get should be hello
-      assert_receive {:gun_ws, ^pid, ^ref, {:text, hello_json}}, 10_000
-
-      hello = Jason.decode!(hello_json)
+      hello = JSON.decode!(hello_json)
       assert hello["op"] == 10
       assert is_integer(hello["d"]["heartbeat_interval"])
       assert hello["d"]["heartbeat_interval"] > 0
-
-      :gun.close(pid)
     end
   end
 
   describe "zlib-stream gateway connection" do
-    test "connects with zlib compression and receives decompressable Hello" do
-      token = Lingo.Config.token()
+    test "connects with zlib compression and receives decompressable Hello", %{gateway_url: url} do
+      ws = connect(url, "v=10&encoding=json&compress=zlib-stream")
 
-      headers = [
-        {"authorization", "Bot #{token}"},
-        {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.3.0)"}
-      ]
+      assert {_ws, [{:binary, compressed}]} = next_frames(ws)
 
-      {:ok, %{body: body}} = Req.get("https://discord.com/api/v10/gateway/bot", headers: headers)
-      gateway_host = body["url"] |> String.replace("wss://", "")
-
-      {:ok, pid} =
-        :gun.open(String.to_charlist(gateway_host), 443, %{
-          protocols: [:http],
-          transport: :tls,
-          tls_opts: [
-            verify: :verify_peer,
-            cacerts: :public_key.cacerts_get(),
-            customize_hostname_check: [
-              match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-            ]
-          ]
-        })
-
-      assert_receive {:gun_up, ^pid, :http}, 10_000
-
-      ref =
-        :gun.ws_upgrade(pid, ~c"/?v=10&encoding=json&compress=zlib-stream", [], %{
-          silence_pings: false
-        })
-
-      assert_receive {:gun_upgrade, ^pid, ^ref, ["websocket"], _headers}, 10_000
-
-      # binary frame since we asked for zlib
-      assert_receive {:gun_ws, ^pid, ^ref, {:binary, compressed_data}}, 10_000
-
-      ctx = Lingo.Gateway.Compression.new()
-      {ctx, decompressed} = Lingo.Gateway.Compression.push(ctx, compressed_data)
+      ctx = Compression.new()
+      {ctx, decompressed} = Compression.push(ctx, compressed)
+      Compression.close(ctx)
 
       assert decompressed != nil, "Expected decompressed data but got nil (incomplete frame?)"
 
-      hello = Jason.decode!(decompressed)
+      hello = JSON.decode!(decompressed)
       assert hello["op"] == 10
       assert is_integer(hello["d"]["heartbeat_interval"])
-
-      Lingo.Gateway.Compression.close(ctx)
-      :gun.close(pid)
     end
   end
 
   describe "identify flow" do
-    test "sends identify and receives READY" do
-      token = Lingo.Config.token()
+    test "sends identify and receives READY", %{gateway_url: url} do
+      ws = connect(url, "v=10&encoding=json")
 
-      headers = [
-        {"authorization", "Bot #{token}"},
-        {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.3.0)"}
-      ]
+      {ws, [{:text, hello_json}]} = next_frames(ws)
+      assert JSON.decode!(hello_json)["op"] == 10
 
-      {:ok, %{body: body}} = Req.get("https://discord.com/api/v10/gateway/bot", headers: headers)
-      gateway_host = body["url"] |> String.replace("wss://", "")
+      identify = Payload.identify(Lingo.Config.token(), Intents.resolve([:guilds]), 0, 1)
+      :ok = WebSocket.send_frame(ws, {:text, JSON.encode!(identify)})
 
-      {:ok, pid} =
-        :gun.open(String.to_charlist(gateway_host), 443, %{
-          protocols: [:http],
-          transport: :tls,
-          tls_opts: [
-            verify: :verify_peer,
-            cacerts: :public_key.cacerts_get(),
-            customize_hostname_check: [
-              match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-            ]
-          ]
-        })
-
-      assert_receive {:gun_up, ^pid, :http}, 10_000
-
-      ref = :gun.ws_upgrade(pid, ~c"/?v=10&encoding=json", [], %{silence_pings: false})
-      assert_receive {:gun_upgrade, ^pid, ^ref, ["websocket"], _headers}, 10_000
-
-      assert_receive {:gun_ws, ^pid, ^ref, {:text, hello_json}}, 10_000
-      hello = Jason.decode!(hello_json)
-      assert hello["op"] == 10
-
-      identify =
-        Lingo.Gateway.Payload.identify(
-          token,
-          Lingo.Gateway.Intents.resolve([:guilds]),
-          0,
-          1
-        )
-
-      :gun.ws_send(pid, ref, {:text, Jason.encode!(identify)})
-
-      # might get heartbeat requests first, so loop until READY
-      ready = receive_dispatch(pid, ref, "READY", 15_000)
+      ready = receive_dispatch(ws, "READY", System.monotonic_time(:millisecond) + 15_000)
 
       assert ready != nil, "Did not receive READY event within timeout"
-      assert ready["t"] == "READY"
       assert ready["d"]["v"] != nil
       assert is_binary(ready["d"]["session_id"])
       assert is_binary(ready["d"]["resume_gateway_url"])
@@ -152,40 +88,23 @@ defmodule Lingo.Integration.GatewayTest do
       assert ready["d"]["user"]["bot"] == true
       assert is_list(ready["d"]["guilds"])
       assert is_map(ready["d"]["application"])
-
-      :gun.close(pid)
     end
   end
 
   # loop until we see the dispatch event we want or give up
-  defp receive_dispatch(pid, ref, event_type, timeout) do
-    deadline = System.monotonic_time(:millisecond) + timeout
-
-    receive_dispatch_loop(pid, ref, event_type, deadline)
-  end
-
-  defp receive_dispatch_loop(pid, ref, event_type, deadline) do
+  defp receive_dispatch(ws, event_type, deadline) do
     remaining = deadline - System.monotonic_time(:millisecond)
 
-    if remaining <= 0 do
-      nil
-    else
-      receive do
-        {:gun_ws, ^pid, ^ref, {:text, json}} ->
-          msg = Jason.decode!(json)
+    if remaining > 0 do
+      {ws, frames} = next_frames(ws, remaining)
 
-          if msg["op"] == 0 and msg["t"] == event_type do
-            msg
-          else
-            receive_dispatch_loop(pid, ref, event_type, deadline)
-          end
-
-        {:gun_ws, ^pid, ^ref, _other} ->
-          receive_dispatch_loop(pid, ref, event_type, deadline)
-      after
-        min(remaining, 5_000) ->
-          nil
-      end
+      Enum.find_value(frames, fn
+        {:text, json} -> match_dispatch(JSON.decode!(json), event_type)
+        _other -> nil
+      end) || receive_dispatch(ws, event_type, deadline)
     end
   end
+
+  defp match_dispatch(%{"op" => 0, "t" => event_type} = message, event_type), do: message
+  defp match_dispatch(_message, _event_type), do: nil
 end

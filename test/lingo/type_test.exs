@@ -910,7 +910,7 @@ defmodule Lingo.TypeTest do
           Component.button(custom_id: "a", label: "A", style: :success)
         ])
 
-      assert {:ok, _} = Jason.encode(row)
+      assert is_binary(JSON.encode!(row))
     end
 
     test "V2 composition encodes to JSON" do
@@ -933,7 +933,7 @@ defmodule Lingo.TypeTest do
           accent_color: 0x5865F2
         )
 
-      assert {:ok, json} = Jason.encode(payload)
+      json = JSON.encode!(payload)
       assert is_binary(json)
     end
 

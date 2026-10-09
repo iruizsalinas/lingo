@@ -115,7 +115,7 @@ defmodule Lingo.Api.Channel do
 
     [
       multipart: [
-        {"payload_json", {Jason.encode!(json), content_type: "application/json"}},
+        {"payload_json", {JSON.encode!(json), content_type: "application/json"}},
         target_users_file_part(target_users_file)
       ]
     ]
@@ -126,7 +126,7 @@ defmodule Lingo.Api.Channel do
 
     [
       multipart: [
-        {"payload_json", {Jason.encode!(json), content_type: "application/json"}},
+        {"payload_json", {JSON.encode!(json), content_type: "application/json"}},
         target_users_file_part(target_users_file)
       ]
     ]
