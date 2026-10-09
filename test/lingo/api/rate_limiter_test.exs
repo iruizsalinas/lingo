@@ -239,14 +239,14 @@ defmodule Lingo.Api.RateLimiterTest do
 
   describe "acquire/release" do
     test "acquire returns the bucket key" do
-      key = RateLimiter.acquire("GET:/channels/500/messages")
+      {:ok, key} = RateLimiter.acquire("GET:/channels/500/messages")
       assert is_binary(key)
       RateLimiter.release(key)
     end
 
     test "acquire grants immediately when bucket is free" do
       start = System.monotonic_time(:millisecond)
-      key = RateLimiter.acquire("GET:/channels/600/test")
+      {:ok, key} = RateLimiter.acquire("GET:/channels/600/test")
       elapsed = System.monotonic_time(:millisecond) - start
 
       assert elapsed < 50
@@ -254,12 +254,12 @@ defmodule Lingo.Api.RateLimiterTest do
     end
 
     test "second acquire blocks until first releases" do
-      key = RateLimiter.acquire("GET:/channels/700/test")
+      {:ok, key} = RateLimiter.acquire("GET:/channels/700/test")
 
       task =
         Task.async(fn ->
           start = System.monotonic_time(:millisecond)
-          k = RateLimiter.acquire("GET:/channels/700/test")
+          {:ok, k} = RateLimiter.acquire("GET:/channels/700/test")
           elapsed = System.monotonic_time(:millisecond) - start
           RateLimiter.release(k)
           elapsed
@@ -274,10 +274,10 @@ defmodule Lingo.Api.RateLimiterTest do
     end
 
     test "different buckets don't block each other" do
-      key1 = RateLimiter.acquire("GET:/channels/800/test")
+      {:ok, key1} = RateLimiter.acquire("GET:/channels/800/test")
 
       start = System.monotonic_time(:millisecond)
-      key2 = RateLimiter.acquire("GET:/channels/900/test")
+      {:ok, key2} = RateLimiter.acquire("GET:/channels/900/test")
       elapsed = System.monotonic_time(:millisecond) - start
 
       assert elapsed < 50
@@ -287,12 +287,12 @@ defmodule Lingo.Api.RateLimiterTest do
     end
 
     test "FIFO ordering is preserved" do
-      key = RateLimiter.acquire("GET:/channels/1000/test")
+      {:ok, key} = RateLimiter.acquire("GET:/channels/1000/test")
       order = :ets.new(:order, [:set, :public])
 
       t1 =
         Task.async(fn ->
-          k = RateLimiter.acquire("GET:/channels/1000/test")
+          {:ok, k} = RateLimiter.acquire("GET:/channels/1000/test")
           :ets.insert(order, {:t1, System.monotonic_time(:millisecond)})
           # hold it briefly so t2's acquire time is distinguishable
           Process.sleep(10)
@@ -304,7 +304,7 @@ defmodule Lingo.Api.RateLimiterTest do
 
       t2 =
         Task.async(fn ->
-          k = RateLimiter.acquire("GET:/channels/1000/test")
+          {:ok, k} = RateLimiter.acquire("GET:/channels/1000/test")
           :ets.insert(order, {:t2, System.monotonic_time(:millisecond)})
           RateLimiter.release(k)
         end)
@@ -336,7 +336,7 @@ defmodule Lingo.Api.RateLimiterTest do
       Process.sleep(50)
 
       start = System.monotonic_time(:millisecond)
-      key = RateLimiter.acquire("GET:/channels/1100/test")
+      {:ok, key} = RateLimiter.acquire("GET:/channels/1100/test")
       elapsed = System.monotonic_time(:millisecond) - start
 
       assert elapsed < 100
@@ -344,7 +344,7 @@ defmodule Lingo.Api.RateLimiterTest do
     end
 
     test "dead waiter is skipped, next live waiter gets the lock" do
-      key = RateLimiter.acquire("GET:/channels/1200/test")
+      {:ok, key} = RateLimiter.acquire("GET:/channels/1200/test")
 
       # waiter 1 will die while waiting
       {pid1, ref1} =
@@ -357,7 +357,7 @@ defmodule Lingo.Api.RateLimiterTest do
       # waiter 2 is alive
       t2 =
         Task.async(fn ->
-          k = RateLimiter.acquire("GET:/channels/1200/test")
+          {:ok, k} = RateLimiter.acquire("GET:/channels/1200/test")
           RateLimiter.release(k)
           :got_lock
         end)
@@ -376,6 +376,86 @@ defmodule Lingo.Api.RateLimiterTest do
 
       # waiter 2 should get it (waiter 1 was dead, skipped)
       assert Task.await(t2, 5_000) == :got_lock
+    end
+  end
+
+  describe "deadlines" do
+    defp exhaust(route_key, reset_after) do
+      RateLimiter.update(route_key, [
+        {"x-ratelimit-bucket", "deadline_#{:erlang.unique_integer([:positive])}"},
+        {"x-ratelimit-remaining", "0"},
+        {"x-ratelimit-reset-after", reset_after},
+        {"x-ratelimit-limit", "5"}
+      ])
+    end
+
+    test "wait/2 returns the remaining time instead of sleeping past the deadline" do
+      exhaust("GET:/channels/1300/test", "5.0")
+      deadline = System.system_time(:millisecond) + 100
+
+      start = System.monotonic_time(:millisecond)
+      assert {:error, {:rate_limited, ms}} = RateLimiter.wait("GET:/channels/1300/test", deadline)
+      assert System.monotonic_time(:millisecond) - start < 50
+      assert ms > 4_000 and ms <= 5_000
+    end
+
+    test "wait/2 sleeps when the reset is within the deadline" do
+      exhaust("GET:/channels/1400/test", "0.1")
+      deadline = System.system_time(:millisecond) + 1_000
+
+      assert RateLimiter.wait("GET:/channels/1400/test", deadline) == :ok
+    end
+
+    test "wait_global/1 returns the remaining pause past the deadline" do
+      RateLimiter.pause_global(5_000)
+      deadline = System.system_time(:millisecond) + 100
+
+      assert {:error, {:rate_limited, ms}} = RateLimiter.wait_global(deadline)
+      assert ms > 4_000
+    end
+
+    test "wait_time/1 reports the longer of the bucket and global waits" do
+      assert RateLimiter.wait_time("GET:/channels/1500/test") == 0
+
+      exhaust("GET:/channels/1500/test", "1.0")
+      assert RateLimiter.wait_time("GET:/channels/1500/test") in 900..1_000
+
+      RateLimiter.pause_global(3_000)
+      assert RateLimiter.wait_time("GET:/channels/1500/test") in 2_900..3_000
+    end
+  end
+
+  describe "acquire/2 timeout" do
+    test "times out while queued and leaves the queue" do
+      {:ok, key} = RateLimiter.acquire("GET:/channels/1600/test")
+
+      assert RateLimiter.acquire("GET:/channels/1600/test", 50) == :timeout
+
+      # the timed out waiter must not inherit the lock
+      task =
+        Task.async(fn ->
+          {:ok, k} = RateLimiter.acquire("GET:/channels/1600/test")
+          RateLimiter.release(k)
+          :got_lock
+        end)
+
+      Process.sleep(20)
+      RateLimiter.release(key)
+
+      assert Task.await(task, 1_000) == :got_lock
+      assert :sys.get_state(RateLimiter).locks == %{}
+    end
+
+    test "cancel releases a lock that was granted after the timeout" do
+      {:ok, key} = RateLimiter.acquire("GET:/channels/1700/test")
+      waiter = self()
+
+      # simulate the race: the waiter is granted the lock, then cancels
+      GenServer.cast(RateLimiter, {:cancel, key, waiter})
+      assert :sys.get_state(RateLimiter).locks == %{}
+
+      {:ok, key} = RateLimiter.acquire("GET:/channels/1700/test", 50)
+      RateLimiter.release(key)
     end
   end
 end

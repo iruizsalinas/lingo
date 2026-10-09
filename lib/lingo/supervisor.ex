@@ -16,6 +16,7 @@ defmodule Lingo.Supervisor do
     Lingo.Config.put(:token, token)
     Lingo.Config.put(:bot_module, bot_module)
     Lingo.Config.put(:intents, intents)
+    Lingo.Config.put(:max_wait, opts |> Keyword.get(:rate_limit, []) |> Keyword.get(:max_wait))
 
     cache_opts = Keyword.get(opts, :cache, [])
     sharding = Keyword.get(opts, :sharding, [])

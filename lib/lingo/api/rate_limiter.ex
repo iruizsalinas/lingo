@@ -11,11 +11,20 @@ defmodule Lingo.Api.RateLimiter do
     GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
   end
 
-  @spec acquire(String.t()) :: String.t()
-  def acquire(route_key) do
+  @spec acquire(String.t(), timeout()) :: {:ok, String.t()} | :timeout
+  def acquire(route_key, timeout \\ :infinity) do
     bucket_key = resolve_bucket(route_key)
-    GenServer.call(__MODULE__, {:acquire, bucket_key}, :infinity)
-    bucket_key
+
+    try do
+      GenServer.call(__MODULE__, {:acquire, bucket_key}, timeout)
+      {:ok, bucket_key}
+    catch
+      :exit, {:timeout, _} ->
+        # the lock may have been granted after the timeout fired; the late reply
+        # is dropped, so cancel either drops us from the queue or releases it
+        GenServer.cast(__MODULE__, {:cancel, bucket_key, self()})
+        :timeout
+    end
   end
 
   @spec release(String.t()) :: :ok
@@ -23,10 +32,34 @@ defmodule Lingo.Api.RateLimiter do
     GenServer.cast(__MODULE__, {:release, bucket_key})
   end
 
-  @spec wait(String.t()) :: :ok
-  def wait(route_key) do
+  # deadline is an absolute system time in ms, or :infinity. Waits that would
+  # run past it return the remaining rate limit time instead of sleeping.
+  @spec wait(String.t(), integer() | :infinity) ::
+          :ok | {:error, {:rate_limited, non_neg_integer()}}
+  def wait(route_key, deadline \\ :infinity) do
     bucket_key = resolve_bucket(route_key)
-    do_wait(bucket_key)
+    do_wait(bucket_key, deadline)
+  end
+
+  # How long a request on this route would currently have to wait, in ms.
+  @spec wait_time(String.t()) :: non_neg_integer()
+  def wait_time(route_key) do
+    now = System.system_time(:millisecond)
+    bucket_key = resolve_bucket(route_key)
+
+    bucket_wait =
+      if table_exists?(@buckets) do
+        case :ets.lookup(@buckets, bucket_key) do
+          [{^bucket_key, remaining, reset_at, _limit}] when remaining <= 0 -> reset_at - now
+          _ -> 0
+        end
+      else
+        0
+      end
+
+    global_wait = if table_exists?(@global_table), do: global_paused_until() - now, else: 0
+
+    max(max(bucket_wait, global_wait), 0)
   end
 
   @spec pause_global(non_neg_integer()) :: :ok
@@ -41,10 +74,10 @@ defmodule Lingo.Api.RateLimiter do
     :ok
   end
 
-  @spec wait_global() :: :ok
-  def wait_global do
+  @spec wait_global(integer() | :infinity) :: :ok | {:error, {:rate_limited, non_neg_integer()}}
+  def wait_global(deadline \\ :infinity) do
     if table_exists?(@global_table) do
-      do_wait_global()
+      do_wait_global(deadline)
     else
       :ok
     end
@@ -110,6 +143,33 @@ defmodule Lingo.Api.RateLimiter do
   @impl true
   def handle_cast({:release, bucket_key}, state) do
     {:noreply, do_release(state, bucket_key)}
+  end
+
+  def handle_cast({:cancel, bucket_key, pid}, state) do
+    case Map.get(state.locks, bucket_key) do
+      nil ->
+        {:noreply, state}
+
+      {^pid, _owner_ref, _queue} ->
+        {:noreply, do_release(state, bucket_key)}
+
+      {owner, owner_ref, queue} ->
+        queue = :queue.filter(fn {waiter, _} -> waiter != pid end, queue)
+        locks = Map.put(state.locks, bucket_key, {owner, owner_ref, queue})
+
+        monitors =
+          state.monitors
+          |> Enum.filter(fn
+            {_ref, {:waiter, ^bucket_key, {^pid, _}}} -> true
+            _ -> false
+          end)
+          |> Enum.reduce(state.monitors, fn {ref, _}, acc ->
+            Process.demonitor(ref, [:flush])
+            Map.delete(acc, ref)
+          end)
+
+        {:noreply, %{state | locks: locks, monitors: monitors}}
+    end
   end
 
   @impl true
@@ -226,20 +286,25 @@ defmodule Lingo.Api.RateLimiter do
     end
   end
 
-  defp do_wait_global do
+  defp do_wait_global(deadline) do
     case :ets.lookup(@global_table, :paused_until) do
       [{:paused_until, resume_at}] ->
         now = System.system_time(:millisecond)
 
-        if resume_at > now do
-          Process.sleep(resume_at - now + 10)
-          do_wait_global()
-        else
-          :ets.select_delete(@global_table, [
-            {{:paused_until, :"$1"}, [{:"=<", :"$1", now}], [true]}
-          ])
+        cond do
+          resume_at <= now ->
+            :ets.select_delete(@global_table, [
+              {{:paused_until, :"$1"}, [{:"=<", :"$1", now}], [true]}
+            ])
 
-          do_wait_global()
+            do_wait_global(deadline)
+
+          past_deadline?(resume_at, deadline) ->
+            {:error, {:rate_limited, resume_at - now}}
+
+          true ->
+            Process.sleep(resume_at - now + 10)
+            do_wait_global(deadline)
         end
 
       [] ->
@@ -247,18 +312,23 @@ defmodule Lingo.Api.RateLimiter do
     end
   end
 
-  defp do_wait(bucket_key) do
+  defp do_wait(bucket_key, deadline) do
     if table_exists?(@buckets) do
       case :ets.lookup(@buckets, bucket_key) do
         [{^bucket_key, remaining, reset_at, _limit}] when remaining <= 0 ->
           now = System.system_time(:millisecond)
 
-          if reset_at <= now do
-            :ets.delete(@buckets, bucket_key)
-            :ok
-          else
-            Process.sleep(reset_at - now + 50)
-            do_wait(bucket_key)
+          cond do
+            reset_at <= now ->
+              :ets.delete(@buckets, bucket_key)
+              :ok
+
+            past_deadline?(reset_at, deadline) ->
+              {:error, {:rate_limited, reset_at - now}}
+
+            true ->
+              Process.sleep(reset_at - now + 50)
+              do_wait(bucket_key, deadline)
           end
 
         _ ->
@@ -268,6 +338,9 @@ defmodule Lingo.Api.RateLimiter do
       :ok
     end
   end
+
+  defp past_deadline?(_time, :infinity), do: false
+  defp past_deadline?(time, deadline), do: time > deadline
 
   defp extract_major(route_key) do
     case Regex.run(~r"(?:channels|guilds|webhooks)/(\d+)", route_key) do

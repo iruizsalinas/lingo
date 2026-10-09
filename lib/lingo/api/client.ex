@@ -6,6 +6,7 @@ defmodule Lingo.Api.Client do
   @base_url "https://discord.com/api/v10"
   @user_agent "DiscordBot (https://github.com/iruizsalinas/lingo, 0.3.0)"
   @max_retries 3
+  @max_rate_limit_retries 5
   @discord_epoch 1_420_070_400_000
 
   @spec request(atom(), String.t(), keyword()) :: :ok | {:ok, any()} | {:error, any()}
@@ -13,76 +14,140 @@ defmodule Lingo.Api.Client do
     if interaction_endpoint?(path) do
       do_interaction_request(method, path, opts)
     else
-      do_api_request(method, path, opts, 0)
+      do_api_request(method, path, opts, %{errors: 0, rate_limits: 0}, deadline())
     end
   end
 
+  @doc """
+  Caps how long API calls made by `fun` will wait on rate limits, in ms.
+  Calls that would wait longer return `{:error, {:rate_limited, retry_after_ms}}`.
+  """
+  @spec with_max_wait(non_neg_integer() | :infinity, (-> result)) :: result when result: any()
+  def with_max_wait(max_wait, fun) do
+    previous = Process.put(:lingo_max_wait, max_wait)
+
+    try do
+      fun.()
+    after
+      if previous == nil,
+        do: Process.delete(:lingo_max_wait),
+        else: Process.put(:lingo_max_wait, previous)
+    end
+  end
+
+  defp deadline do
+    case Process.get(:lingo_max_wait) || Lingo.Config.get(:max_wait) || :infinity do
+      :infinity -> :infinity
+      ms -> System.system_time(:millisecond) + ms
+    end
+  end
+
+  defp remaining_ms(:infinity), do: :infinity
+  defp remaining_ms(deadline), do: max(deadline - System.system_time(:millisecond), 0)
+
+  defp past_deadline?(_wait_ms, :infinity), do: false
+
+  defp past_deadline?(wait_ms, deadline),
+    do: System.system_time(:millisecond) + wait_ms > deadline
+
   # Interactions skip rate limiting and never retry.
   defp do_interaction_request(method, path, opts) do
-    case fire_request(method, path, opts, retry: false) do
+    case fire_request(method, path, opts) do
       {:ok, status, body, _headers} when status in 200..299 -> parse_body(body)
       {:ok, status, body, _headers} -> {:error, {status, body}}
       {:error, reason} -> {:error, reason}
     end
   end
 
-  # One request at a time per bucket. 429s always retry, 5xx retries are capped.
-  defp do_api_request(_method, _path, _opts, retries) when retries >= @max_retries do
+  # One request at a time per bucket. 429 and 5xx retries are capped separately,
+  # and no single wait may run past the caller's deadline.
+  defp do_api_request(_method, _path, _opts, %{errors: errors}, _deadline)
+       when errors >= @max_retries do
     {:error, :max_retries}
   end
 
-  defp do_api_request(method, path, opts, retries) do
+  defp do_api_request(method, path, opts, attempts, deadline) do
     route_key = route_key(method, path, opts)
-    bucket_key = Lingo.Api.RateLimiter.acquire(route_key)
+    known_wait = Lingo.Api.RateLimiter.wait_time(route_key)
 
-    try do
-      Lingo.Api.RateLimiter.wait(route_key)
-      Lingo.Api.RateLimiter.wait_global()
-
-      case fire_request(method, path, opts) do
-        {:ok, status, body, resp_headers} ->
-          Lingo.Api.RateLimiter.update(route_key, resp_headers)
-          handle_status(method, path, opts, status, body, resp_headers, retries)
-
-        {:error, _reason} ->
-          backoff = 1_000 * (1 <<< retries)
-          Process.sleep(backoff)
-          {:retry, retries + 1}
-      end
-    after
-      Lingo.Api.RateLimiter.release(bucket_key)
-    end
-    |> case do
-      {:retry, new_retries} -> do_api_request(method, path, opts, new_retries)
-      result -> result
+    if past_deadline?(known_wait, deadline) do
+      {:error, {:rate_limited, known_wait}}
+    else
+      locked_request(method, path, opts, route_key, attempts, deadline)
     end
   end
 
-  defp handle_status(_method, _path, _opts, status, body, _headers, _retries)
+  defp locked_request(method, path, opts, route_key, attempts, deadline) do
+    # never time out before the limiter has a chance to answer an uncontended acquire
+    acquire_timeout =
+      case remaining_ms(deadline) do
+        :infinity -> :infinity
+        ms -> max(ms, 100)
+      end
+
+    case Lingo.Api.RateLimiter.acquire(route_key, acquire_timeout) do
+      {:ok, bucket_key} ->
+        try do
+          with :ok <- Lingo.Api.RateLimiter.wait(route_key, deadline),
+               :ok <- Lingo.Api.RateLimiter.wait_global(deadline) do
+            send_request(method, path, opts, route_key, attempts, deadline)
+          end
+        after
+          Lingo.Api.RateLimiter.release(bucket_key)
+        end
+        |> case do
+          {:retry, attempts} -> do_api_request(method, path, opts, attempts, deadline)
+          result -> result
+        end
+
+      :timeout ->
+        {:error, {:rate_limited, Lingo.Api.RateLimiter.wait_time(route_key)}}
+    end
+  end
+
+  defp send_request(method, path, opts, route_key, attempts, deadline) do
+    case fire_request(method, path, opts) do
+      {:ok, status, body, resp_headers} ->
+        Lingo.Api.RateLimiter.update(route_key, resp_headers)
+        handle_status(method, path, opts, status, body, resp_headers, attempts, deadline)
+
+      {:error, _reason} ->
+        backoff = 1_000 * (1 <<< attempts.errors)
+        Process.sleep(backoff)
+        {:retry, %{attempts | errors: attempts.errors + 1}}
+    end
+  end
+
+  defp handle_status(_method, _path, _opts, status, body, _headers, _attempts, _deadline)
        when status in 200..299 do
     parse_body(body)
   end
 
-  defp handle_status(method, path, _opts, 429, body, headers, _retries) do
+  defp handle_status(method, path, _opts, 429, body, headers, attempts, deadline) do
     global = match?(%{"global" => true}, body)
     retry_after = extract_retry_after(body, headers)
 
     notify_rate_limit(method, path, retry_after, global)
 
     if global, do: Lingo.Api.RateLimiter.pause_global(retry_after)
-    Process.sleep(retry_after)
 
-    {:retry, 0}
+    # every 429 counts toward Discord's invalid request limit, so don't retry forever
+    if attempts.rate_limits >= @max_rate_limit_retries or past_deadline?(retry_after, deadline) do
+      {:error, {:rate_limited, retry_after}}
+    else
+      Process.sleep(retry_after)
+      {:retry, %{attempts | rate_limits: attempts.rate_limits + 1}}
+    end
   end
 
-  defp handle_status(_method, _path, _opts, status, _body, _headers, retries)
+  defp handle_status(_method, _path, _opts, status, _body, _headers, attempts, _deadline)
        when status >= 500 do
-    backoff = 1_000 * (1 <<< retries)
+    backoff = 1_000 * (1 <<< attempts.errors)
     Process.sleep(backoff)
-    {:retry, retries + 1}
+    {:retry, %{attempts | errors: attempts.errors + 1}}
   end
 
-  defp handle_status(_method, _path, _opts, status, body, _headers, _retries) do
+  defp handle_status(_method, _path, _opts, status, body, _headers, _attempts, _deadline) do
     {:error, {status, body}}
   end
 
@@ -95,7 +160,10 @@ defmodule Lingo.Api.Client do
       |> maybe_put_json(opts[:json])
       |> maybe_put_params(opts[:params])
       |> maybe_put_multipart(opts[:multipart])
+      # retries are handled here so they stay visible to the rate limiter
+      |> Keyword.put(:retry, false)
       |> Keyword.merge(extra)
+      |> Keyword.merge(Lingo.Config.get(:req_options) || [])
 
     case Req.request(req_opts) do
       {:ok, %Req.Response{status: status, headers: resp_headers, body: body}} ->

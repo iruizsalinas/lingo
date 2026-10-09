@@ -61,7 +61,7 @@ Files work with `send_message`, `edit_message`, interaction responses, and webho
 
 ## Rate Limiting
 
-Lingo handles rate limiting for you. If a request gets rate limited, it waits and retries automatically. Server errors also get retried with backoff.
+Lingo handles rate limiting for you. It tracks Discord's rate limit headers and waits before sending a request that would be rate limited. If a request still gets a 429, it waits the `retry_after` Discord returns and retries, up to 5 times. Server errors also get retried with backoff.
 
 You don't need to think about this, but you can listen for it:
 
@@ -70,6 +70,30 @@ handle :rate_limit, info do
   Logger.warning("Rate limited: #{info.method} #{info.path} for #{info.retry_after}ms")
 end
 ```
+
+When a request can't get through, it returns `{:error, {:rate_limited, retry_after_ms}}`.
+
+### Limiting how long a call waits
+
+By default, API calls wait as long as Discord asks. Some limits reset slowly (renaming a channel allows 2 changes per 10 minutes), so a call can block for minutes. Set `max_wait` to give up instead:
+
+```elixir
+{Lingo,
+ bot: MyBot,
+ token: System.get_env("BOT_TOKEN"),
+ rate_limit: [max_wait: 10_000]}
+```
+
+Or for a single block of code, which overrides the default:
+
+```elixir
+case Lingo.with_max_wait(2_000, fn -> Lingo.edit_channel(channel_id, %{name: "new-name"}) end) do
+  {:ok, channel} -> reply!(ctx, "Renamed to #{channel.name}")
+  {:error, {:rate_limited, ms}} -> reply!(ctx, "Try again in #{div(ms, 1000)}s")
+end
+```
+
+`max_wait` is in milliseconds and covers all waiting on rate limits for the call, including retries. `with_max_wait/2` only applies to the calling process, not to tasks it spawns.
 
 ## API Reference
 

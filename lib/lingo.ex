@@ -8,6 +8,19 @@ defmodule Lingo do
     cache = Keyword.get(opts, :cache, [])
     sharding = Keyword.get(opts, :sharding, [])
     presence = Keyword.get(opts, :presence, [])
+    rate_limit = Keyword.get(opts, :rate_limit, [])
+
+    case Keyword.get(rate_limit, :max_wait, :infinity) do
+      :infinity ->
+        :ok
+
+      ms when is_integer(ms) and ms >= 0 ->
+        :ok
+
+      other ->
+        raise ArgumentError,
+              ":rate_limit :max_wait must be :infinity or ms, got: #{inspect(other)}"
+    end
 
     if Keyword.has_key?(sharding, :ids) and not Keyword.has_key?(sharding, :count) do
       raise ArgumentError, ":sharding :ids requires an explicit :count"
@@ -24,12 +37,16 @@ defmodule Lingo do
              intents: intents,
              cache: cache,
              sharding: sharding,
-             presence: presence
+             presence: presence,
+             rate_limit: rate_limit
            ]
          ]},
       type: :supervisor
     }
   end
+
+  # Rate limits
+  defdelegate with_max_wait(max_wait, fun), to: Lingo.Api.Client
 
   # Guilds
   def get_guild(guild_id, opts \\ []), do: Lingo.Api.Guild.get(guild_id, opts)
