@@ -936,5 +936,41 @@ defmodule Lingo.TypeTest do
       assert {:ok, json} = Jason.encode(payload)
       assert is_binary(json)
     end
+
+    test "text_input sends required: false since Discord defaults it to true" do
+      assert Component.text_input("notes", style: :paragraph, required: false) == %{
+               type: 4,
+               custom_id: "notes",
+               style: 2,
+               required: false
+             }
+
+      refute Map.has_key?(Component.text_input("notes", []), :required)
+      assert Component.text_input("notes", style: 2).style == 2
+    end
+
+    test "modal-capable selects and checkbox groups accept required" do
+      assert Component.string_select("s", options: [], required: false).required == false
+      assert Component.user_select("u", required: false).required == false
+      assert Component.role_select("r", required: false).required == false
+      assert Component.mentionable_select("m", required: false).required == false
+      assert Component.channel_select("c", required: false).required == false
+      assert Component.checkbox_group("g", [], required: false).required == false
+      refute Map.has_key?(Component.user_select("u"), :required)
+    end
+  end
+
+  describe "Activity payloads" do
+    test "custom status keeps its state text" do
+      payload = Activity.to_payload(%Activity{name: "Custom Status", type: :custom, state: "Hi"})
+      assert payload == %{"name" => "Custom Status", "type" => 4, "state" => "Hi"}
+    end
+  end
+
+  describe "ApplicationCommand payloads" do
+    test "integer default_member_permissions are sent as a string" do
+      cmd = %ApplicationCommand{name: "ban", description: "Ban", default_member_permissions: 4}
+      assert ApplicationCommand.to_payload(cmd)["default_member_permissions"] == "4"
+    end
   end
 end

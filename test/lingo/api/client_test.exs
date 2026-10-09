@@ -170,4 +170,42 @@ defmodule Lingo.Api.ClientTest do
   test "Lingo.with_max_wait/2 delegates to the client" do
     assert Lingo.with_max_wait(10, fn -> Process.get(:lingo_max_wait) end) == 10
   end
+
+  describe "webhook buckets" do
+    test "different webhook tokens do not share a rate limit bucket" do
+      stub(fn ->
+        {200,
+         [
+           {"x-ratelimit-bucket", "webhookhash"},
+           {"x-ratelimit-remaining", "0"},
+           {"x-ratelimit-reset-after", "30"},
+           {"x-ratelimit-limit", "5"}
+         ], %{"id" => "1"}}
+      end)
+
+      assert {:ok, _} = Client.request(:post, "/webhooks/111111111111/token_a", json: %{})
+
+      # token_a is exhausted, token_b must still go through right away
+      assert {:ok, _} =
+               Lingo.with_max_wait(100, fn ->
+                 Client.request(:post, "/webhooks/111111111111/token_b", json: %{})
+               end)
+
+      assert {:error, {:rate_limited, _}} =
+               Lingo.with_max_wait(100, fn ->
+                 Client.request(:post, "/webhooks/111111111111/token_a", json: %{})
+               end)
+    end
+
+    test "different webhook ids do not share a rate limit bucket" do
+      stub(fn ->
+        {200, [{"x-ratelimit-remaining", "0"}, {"x-ratelimit-reset-after", "30"}], %{"id" => "1"}}
+      end)
+
+      assert {:ok, _} = Client.request(:get, "/webhooks/111111111111")
+
+      assert {:ok, _} =
+               Lingo.with_max_wait(100, fn -> Client.request(:get, "/webhooks/222222222222") end)
+    end
+  end
 end

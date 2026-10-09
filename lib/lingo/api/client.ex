@@ -4,7 +4,7 @@ defmodule Lingo.Api.Client do
   import Bitwise
 
   @base_url "https://discord.com/api/v10"
-  @user_agent "DiscordBot (https://github.com/iruizsalinas/lingo, 0.3.0)"
+  @user_agent "DiscordBot (https://github.com/iruizsalinas/lingo, #{Mix.Project.config()[:version]})"
   @max_retries 3
   @max_rate_limit_retries 5
   @discord_epoch 1_420_070_400_000
@@ -240,13 +240,17 @@ defmodule Lingo.Api.Client do
 
   defp generalize_path_segments([]), do: []
 
-  # keep major params (channel_id, guild_id, webhook_id)
-  defp generalize_path_segments(["webhooks", id, _token | rest]) do
-    ["webhooks", id, ":token" | generalize_path_segments(rest)]
+  # keep major params (channel_id, guild_id, webhook_id + webhook_token)
+  defp generalize_path_segments(["webhooks", id, token | rest]) do
+    if snowflake?(token) or token in ["messages"] do
+      ["webhooks", id | generalize_path_segments([token | rest])]
+    else
+      ["webhooks", id, token | generalize_path_segments(rest)]
+    end
   end
 
   defp generalize_path_segments([resource, id | rest])
-       when resource in ~w(channels guilds) do
+       when resource in ~w(channels guilds webhooks) do
     [resource, id | generalize_path_segments(rest)]
   end
 

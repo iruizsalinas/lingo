@@ -30,5 +30,9 @@ defmodule Lingo.Api.ReactionTest do
 
       assert Reaction.encode_emoji(emoji) == "blobcat:123456789"
     end
+
+    test "encodes unicode emoji structs without an id" do
+      assert Reaction.encode_emoji(%Emoji{name: "🔥", id: nil}) == "%F0%9F%94%A5"
+    end
   end
 end

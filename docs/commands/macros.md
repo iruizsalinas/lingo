@@ -147,10 +147,10 @@ end
 ## `user_command/2`
 
 ```elixir
-user_command name, do: body
+user_command name, opts \\ [], do: body
 ```
 
-Defines a user context menu command (right-click a user).
+Defines a user context menu command (right-click a user). Accepts `default_member_permissions`, `nsfw`, `integration_types`, `contexts` and `name_localizations`, like `command`.
 
 ```elixir
 user_command "Report User" do
@@ -163,10 +163,10 @@ end
 ## `message_command/2`
 
 ```elixir
-message_command name, do: body
+message_command name, opts \\ [], do: body
 ```
 
-Defines a message context menu command (right-click a message).
+Defines a message context menu command (right-click a message). Takes the same options as `user_command`.
 
 ```elixir
 message_command "Bookmark" do

@@ -79,7 +79,7 @@ defmodule Lingo.Type.ApplicationCommand do
     payload
     |> put_if("name_localizations", cmd.name_localizations)
     |> put_if("description_localizations", cmd.description_localizations)
-    |> put_if("default_member_permissions", cmd.default_member_permissions)
+    |> put_if("default_member_permissions", permissions_string(cmd.default_member_permissions))
     |> put_if("dm_permission", if(cmd.dm_permission == true, do: nil, else: cmd.dm_permission))
     |> put_if("nsfw", if(cmd.nsfw, do: true, else: nil))
     |> maybe_put_handler(cmd)
@@ -100,6 +100,10 @@ defmodule Lingo.Type.ApplicationCommand do
   end
 
   defp maybe_put_handler(payload, _cmd), do: payload
+
+  # Discord types this as a string bitfield
+  defp permissions_string(perms) when is_integer(perms), do: Integer.to_string(perms)
+  defp permissions_string(perms), do: perms
 
   defp put_if(map, _key, nil), do: map
   defp put_if(map, key, value), do: Map.put(map, key, value)

@@ -9,19 +9,7 @@ defmodule Lingo.Collector do
     filter = Keyword.get(opts, :filter, fn _ -> true end)
     timeout = Keyword.get(opts, :timeout, 60_000)
 
-    key = {:component, message_id}
-    ref = make_ref()
-    {:ok, _} = Registry.register(@registry, key, {:await, filter, ref})
-
-    receive do
-      {:lingo_collector, ^ref, data} ->
-        Registry.unregister(@registry, key)
-        {:ok, data}
-    after
-      timeout ->
-        Registry.unregister(@registry, key)
-        :timeout
-    end
+    await({:component, message_id}, filter, timeout)
   end
 
   def await_reaction(channel_id, message_id, opts \\ []) do
@@ -32,19 +20,33 @@ defmodule Lingo.Collector do
       event.channel_id == channel_id and filter.(event)
     end
 
-    key = {:reaction, message_id}
-    ref = make_ref()
-    {:ok, _} = Registry.register(@registry, key, {:await, combined_filter, ref})
+    await({:reaction, message_id}, combined_filter, timeout)
+  end
 
-    receive do
-      {:lingo_collector, ^ref, data} ->
-        Registry.unregister(@registry, key)
-        {:ok, data}
-    after
-      timeout ->
-        Registry.unregister(@registry, key)
-        :timeout
-    end
+  # Each awaiter can be claimed exactly once, so a second matching event (or
+  # one racing the timeout) is never swallowed or left in the mailbox.
+  defp await(key, filter, timeout) do
+    ref = make_ref()
+    claim = :atomics.new(1, [])
+    {:ok, _} = Registry.register(@registry, key, {:await, filter, ref, claim})
+
+    result =
+      receive do
+        {:lingo_collector, ^ref, data} -> {:ok, data}
+      after
+        timeout ->
+          if claim(claim) do
+            :timeout
+          else
+            # a dispatcher claimed us first, its message is on the way
+            receive do
+              {:lingo_collector, ^ref, data} -> {:ok, data}
+            end
+          end
+      end
+
+    Registry.unregister(@registry, key)
+    result
   end
 
   def collect_reactions(channel_id, message_id, opts \\ []) do
@@ -92,13 +94,18 @@ defmodule Lingo.Collector do
 
       entries ->
         matched_await =
-          Enum.reduce(entries, false, fn {pid, {type, filter, ref}}, found ->
-            if safe_filter(filter, data) do
-              send(pid, {:lingo_collector, ref, data})
-              if type == :await, do: true, else: found
-            else
+          Enum.reduce(entries, false, fn
+            {pid, {:await, filter, ref, claim}}, found ->
+              if safe_filter(filter, data) and claim(claim) do
+                send(pid, {:lingo_collector, ref, data})
+                true
+              else
+                found
+              end
+
+            {pid, {:collect, filter, ref}}, found ->
+              if safe_filter(filter, data), do: send(pid, {:lingo_collector, ref, data})
               found
-            end
           end)
 
         case key do
@@ -107,6 +114,8 @@ defmodule Lingo.Collector do
         end
     end
   end
+
+  defp claim(claim), do: :atomics.compare_exchange(claim, 1, 0, 1) == :ok
 
   defp safe_filter(filter, data) do
     filter.(data)

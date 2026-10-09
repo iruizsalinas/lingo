@@ -109,6 +109,7 @@ defmodule Lingo.Type.Component do
     |> put_if(:placeholder, opts[:placeholder])
     |> put_if(:min_values, opts[:min_values])
     |> put_if(:max_values, opts[:max_values])
+    |> put_if(:required, opts[:required])
     |> put_if(:disabled, if(opts[:disabled], do: true, else: nil))
   end
 
@@ -125,15 +126,16 @@ defmodule Lingo.Type.Component do
   end
 
   defp build_text_input(custom_id, opts) do
-    style = if opts[:style] == :paragraph, do: 2, else: 1
-
-    %{type: 4, custom_id: custom_id, style: style}
+    %{type: 4, custom_id: custom_id, style: encode_text_input_style(opts[:style])}
     |> put_if(:placeholder, opts[:placeholder])
     |> put_if(:min_length, opts[:min_length])
     |> put_if(:max_length, opts[:max_length])
-    |> put_if(:required, if(opts[:required], do: true, else: nil))
+    |> put_if(:required, opts[:required])
     |> put_if(:value, opts[:value])
   end
+
+  defp encode_text_input_style(style) when style in [:paragraph, 2], do: 2
+  defp encode_text_input_style(_style), do: 1
 
   @spec user_select(String.t(), keyword()) :: map()
   def user_select(custom_id, opts \\ []) do
@@ -142,6 +144,7 @@ defmodule Lingo.Type.Component do
     |> put_if(:min_values, opts[:min_values])
     |> put_if(:max_values, opts[:max_values])
     |> put_if(:default_values, non_empty(opts[:default_values]))
+    |> put_if(:required, opts[:required])
     |> put_if(:disabled, if(opts[:disabled], do: true, else: nil))
   end
 
@@ -152,6 +155,7 @@ defmodule Lingo.Type.Component do
     |> put_if(:min_values, opts[:min_values])
     |> put_if(:max_values, opts[:max_values])
     |> put_if(:default_values, non_empty(opts[:default_values]))
+    |> put_if(:required, opts[:required])
     |> put_if(:disabled, if(opts[:disabled], do: true, else: nil))
   end
 
@@ -162,6 +166,7 @@ defmodule Lingo.Type.Component do
     |> put_if(:min_values, opts[:min_values])
     |> put_if(:max_values, opts[:max_values])
     |> put_if(:default_values, non_empty(opts[:default_values]))
+    |> put_if(:required, opts[:required])
     |> put_if(:disabled, if(opts[:disabled], do: true, else: nil))
   end
 
@@ -173,6 +178,7 @@ defmodule Lingo.Type.Component do
     |> put_if(:max_values, opts[:max_values])
     |> put_if(:default_values, non_empty(opts[:default_values]))
     |> put_if(:channel_types, non_empty(opts[:channel_types]))
+    |> put_if(:required, opts[:required])
     |> put_if(:disabled, if(opts[:disabled], do: true, else: nil))
   end
 
@@ -248,6 +254,7 @@ defmodule Lingo.Type.Component do
     %{type: 22, custom_id: custom_id, options: options}
     |> put_if(:min_values, opts[:min_values])
     |> put_if(:max_values, opts[:max_values])
+    |> put_if(:required, opts[:required])
   end
 
   @spec checkbox(String.t(), keyword()) :: map()

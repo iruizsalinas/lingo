@@ -80,6 +80,18 @@ defmodule Lingo.CollectorTest do
       Task.await(task, 5_000)
     end
 
+    test "a second matching click is not swallowed once the awaiter is satisfied" do
+      task = Task.async(fn -> Collector.await_component("msg_dbl", timeout: 2_000) end)
+      Process.sleep(20)
+
+      first = %{type: :message_component, message: %{id: "msg_dbl"}, data: %{"n" => 1}}
+      second = %{type: :message_component, message: %{id: "msg_dbl"}, data: %{"n" => 2}}
+
+      assert Collector.try_match(:interaction_create, first) == :collected
+      assert Collector.try_match(:interaction_create, second) == :miss
+      assert {:ok, ^first} = Task.await(task, 5_000)
+    end
+
     test "non-collectable events return :miss immediately" do
       assert Collector.try_match(:message_create, %{id: "123"}) == :miss
       assert Collector.try_match(:guild_update, %{id: "456"}) == :miss

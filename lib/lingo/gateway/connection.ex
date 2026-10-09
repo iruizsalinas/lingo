@@ -5,11 +5,14 @@ defmodule Lingo.Gateway.Connection do
 
   alias Lingo.Gateway.{Compression, Heartbeat, Payload}
 
+  require Logger
+
   @fatal_codes [4004, 4010, 4011, 4012, 4013, 4014]
   @session_dead_codes [4003, 4005, 4007, 4008, 4009]
   @hello_timeout 60_000
 
   # gateway allows 120 sends per 60s, we use 115 as safe margin
+  # (heartbeats, identify and resume bypass the queue)
   @send_limit 115
   @send_window_ms 60_000
 
@@ -28,8 +31,12 @@ defmodule Lingo.Gateway.Connection do
     :seq,
     :zlib,
     :hello_timer,
+    :connect_timer,
+    :identify_timer,
+    :send_timer,
     presence: [],
     state: :disconnected,
+    send_queue: :queue.new(),
     send_count: 0,
     send_window_start: 0
   ]
@@ -40,6 +47,10 @@ defmodule Lingo.Gateway.Connection do
 
   def send_payload(pid, payload) do
     GenServer.cast(pid, {:send, payload})
+  end
+
+  def update_presence(pid, presence) do
+    GenServer.cast(pid, {:update_presence, presence})
   end
 
   def status(pid) do
@@ -70,51 +81,73 @@ defmodule Lingo.Gateway.Connection do
 
   @impl true
   def handle_cast({:send, payload}, state) do
-    state = rate_limited_send(state, Payload.encode(payload))
-    {:noreply, state}
+    {:noreply, enqueue_send(state, Payload.encode(payload))}
+  end
+
+  def handle_cast({:update_presence, presence}, state) do
+    payload =
+      Payload.presence_update(presence[:status] || :online, presence[:text], presence[:activity])
+
+    {:noreply, enqueue_send(%{state | presence: presence}, Payload.encode(payload))}
   end
 
   @impl true
-  def handle_info(:connect, state) do
+  def handle_info(:connect, %{gun_pid: nil} = state) do
     host =
       (state.resume_gateway_url || state.gateway_url || "gateway.discord.gg")
       |> String.replace(~r"^wss?://", "")
       |> String.trim_trailing("/")
 
-    {:noreply, do_connect(state, host)}
+    {:noreply, do_connect(%{state | connect_timer: nil}, host)}
   end
+
+  def handle_info(:connect, state), do: {:noreply, %{state | connect_timer: nil}}
 
   def handle_info(:reconnect, state) do
-    dispatch_event(state, :shard_reconnecting, %{shard_id: state.shard_id})
-    state = close_connection(state)
-    Process.send_after(self(), :connect, 1_000 + :rand.uniform(4_000))
-    {:noreply, %{state | state: :disconnected}}
+    {:noreply, reconnect(state)}
   end
 
-  def handle_info(:heartbeat_timeout, %{state: :connected} = state) do
-    dispatch_event(state, :shard_reconnecting, %{shard_id: state.shard_id})
+  def handle_info(:heartbeat_timeout, %{gun_pid: pid} = state) when not is_nil(pid) do
+    # zombied connection: close with a non-1000 code so the session stays resumable
     graceful_close(state)
-    state = close_connection(state)
-    Process.send_after(self(), :connect, 1_000 + :rand.uniform(4_000))
-    {:noreply, %{state | state: :disconnected}}
+    {:noreply, reconnect(state)}
   end
+
+  def handle_info(:heartbeat_timeout, state), do: {:noreply, state}
 
   def handle_info(:hello_timeout, %{state: :awaiting_hello} = state) do
-    send(self(), :reconnect)
-    {:noreply, state}
+    {:noreply, reconnect(state)}
   end
 
   def handle_info(:hello_timeout, state), do: {:noreply, state}
 
-  def handle_info(:heartbeat_timeout, state), do: {:noreply, state}
-
-  def handle_info({:send_heartbeat, seq}, state) do
-    # heartbeats bypass send rate limit
-    send_frame(state, Payload.encode(Payload.heartbeat(seq)))
+  def handle_info(:send_heartbeat, state) do
+    send_frame(state, Payload.encode(Payload.heartbeat(state.seq)))
     {:noreply, state}
   end
 
-  # :gun messages
+  def handle_info(:identify, %{gun_pid: pid} = state) when not is_nil(pid) do
+    payload =
+      Payload.identify(
+        state.token,
+        state.intents,
+        state.shard_id,
+        state.shard_count,
+        state.presence
+      )
+
+    send_frame(state, Payload.encode(payload))
+    {:noreply, %{state | identify_timer: nil, state: :identifying}}
+  end
+
+  def handle_info(:identify, state), do: {:noreply, %{state | identify_timer: nil}}
+
+  def handle_info(:flush_send, state) do
+    {:noreply, flush_send_queue(%{state | send_timer: nil})}
+  end
+
+  # :gun messages, only from the current connection
+
   def handle_info({:gun_up, pid, :http}, %{gun_pid: pid} = state) do
     path = "/?v=10&encoding=json&compress=zlib-stream"
     stream_ref = :gun.ws_upgrade(pid, path, [], %{silence_pings: false})
@@ -143,9 +176,7 @@ defmodule Lingo.Gateway.Connection do
         end
     end
   rescue
-    _ ->
-      send(self(), :reconnect)
-      {:noreply, state}
+    _ -> {:noreply, reconnect(state)}
   end
 
   def handle_info({:gun_ws, pid, ref, {:text, data}}, %{gun_pid: pid, stream_ref: ref} = state) do
@@ -155,27 +186,31 @@ defmodule Lingo.Gateway.Connection do
     end
   end
 
-  def handle_info({:gun_ws, _pid, _ref, {:close, code, _reason}}, state) do
+  def handle_info(
+        {:gun_ws, pid, ref, {:close, code, _reason}},
+        %{gun_pid: pid, stream_ref: ref} = state
+      ) do
     handle_close(state, code)
   end
 
-  def handle_info({:gun_down, _pid, _protocol, _reason, _}, state) do
-    send(self(), :reconnect)
-    {:noreply, state}
+  def handle_info({:gun_down, pid, _protocol, _reason, _}, %{gun_pid: pid} = state) do
+    {:noreply, reconnect(state)}
   end
 
-  def handle_info({:gun_error, _pid, _ref, _reason}, state), do: {:noreply, state}
-
-  def handle_info({:gun_response, _pid, _ref, _fin, _status}, state) do
-    send(self(), :reconnect)
-    {:noreply, state}
+  def handle_info(
+        {:gun_response, pid, ref, _fin, _status, _headers},
+        %{gun_pid: pid, stream_ref: ref} = state
+      ) do
+    # websocket upgrade was refused
+    {:noreply, reconnect(state)}
   end
 
-  def handle_info({:gun_data, _, _, _, _}, state), do: {:noreply, state}
+  def handle_info({:gun_error, pid, ref, _reason}, %{gun_pid: pid, stream_ref: ref} = state) do
+    {:noreply, reconnect(state)}
+  end
 
   def handle_info({:DOWN, ref, :process, _pid, _reason}, %{gun_ref: ref} = state) do
-    send(self(), :reconnect)
-    {:noreply, %{state | gun_pid: nil, gun_ref: nil}}
+    {:noreply, reconnect(%{state | gun_pid: nil, gun_ref: nil})}
   end
 
   def handle_info(_msg, state), do: {:noreply, state}
@@ -184,11 +219,7 @@ defmodule Lingo.Gateway.Connection do
 
   defp handle_gateway_message(%{"op" => 10, "d" => %{"heartbeat_interval" => interval}}, state) do
     if state.hello_timer, do: Process.cancel_timer(state.hello_timer)
-    state = %{state | hello_timer: nil}
-
-    if state.heartbeat_pid && Process.alive?(state.heartbeat_pid) do
-      GenServer.stop(state.heartbeat_pid, :normal, 5_000)
-    end
+    state = stop_heartbeat(%{state | hello_timer: nil})
 
     {:ok, hb_pid} =
       Heartbeat.start_link(interval: interval, connection: self(), shard_id: state.shard_id)
@@ -199,26 +230,15 @@ defmodule Lingo.Gateway.Connection do
       send_frame(state, Payload.encode(Payload.resume(state.token, state.session_id, state.seq)))
       {:noreply, %{state | state: :resuming}}
     else
-      wait_for_identify_slot(state.shard_id)
-
-      payload =
-        Payload.identify(
-          state.token,
-          state.intents,
-          state.shard_id,
-          state.shard_count,
-          state.presence
-        )
-
-      send_frame(state, Payload.encode(payload))
-      {:noreply, %{state | state: :identifying}}
+      # wait for an identify slot without blocking, so heartbeats keep flowing
+      delay = Lingo.Gateway.ShardManager.reserve_identify(state.shard_id)
+      timer = Process.send_after(self(), :identify, delay)
+      {:noreply, %{state | state: :waiting_to_identify, identify_timer: timer}}
     end
   end
 
   defp handle_gateway_message(%{"op" => 0, "t" => event_type, "d" => data, "s" => seq}, state) do
-    state = %{state | seq: seq}
-    if state.heartbeat_pid, do: Heartbeat.update_seq(state.heartbeat_pid, seq)
-
+    state = %{state | seq: seq || state.seq}
     state = handle_dispatch(event_type, data, state)
     {:noreply, state}
   end
@@ -234,16 +254,11 @@ defmodule Lingo.Gateway.Connection do
   end
 
   defp handle_gateway_message(%{"op" => 7}, state) do
-    dispatch_event(state, :shard_reconnecting, %{shard_id: state.shard_id})
     graceful_close(state)
-    state = close_connection(state)
-    send(self(), :connect)
-    {:noreply, %{state | state: :disconnected}}
+    {:noreply, reconnect(state, 0)}
   end
 
   defp handle_gateway_message(%{"op" => 9, "d" => resumable}, state) do
-    dispatch_event(state, :shard_reconnecting, %{shard_id: state.shard_id})
-
     state =
       if resumable do
         state
@@ -251,10 +266,7 @@ defmodule Lingo.Gateway.Connection do
         %{state | session_id: nil, seq: nil, resume_gateway_url: nil}
       end
 
-    state = close_connection(state)
-    delay = 1_000 + :rand.uniform(4_000)
-    Process.send_after(self(), :connect, delay)
-    {:noreply, %{state | state: :disconnected}}
+    {:noreply, reconnect(state)}
   end
 
   defp handle_gateway_message(_msg, state), do: {:noreply, state}
@@ -274,12 +286,13 @@ defmodule Lingo.Gateway.Connection do
 
     state = dispatch_event(state, :shard_ready, Map.put(data, "shard_id", state.shard_id))
     Lingo.Gateway.ShardManager.shard_ready(state.shard_id)
-    state
+    flush_send_queue(state)
   end
 
   defp handle_dispatch("RESUMED", _data, state) do
     %{state | state: :connected}
     |> dispatch_event(:shard_resumed, %{shard_id: state.shard_id})
+    |> flush_send_queue()
   end
 
   defp handle_dispatch(event_type, data, state) do
@@ -292,33 +305,56 @@ defmodule Lingo.Gateway.Connection do
     state
   end
 
-  # send rate limiting (120/60s, we cap at 115)
+  # send rate limiting: payloads are queued and only sent once the session is
+  # ready, at most @send_limit per @send_window_ms
 
-  defp rate_limited_send(state, data) do
+  defp enqueue_send(state, data) do
+    flush_send_queue(%{state | send_queue: :queue.in(data, state.send_queue)})
+  end
+
+  defp flush_send_queue(%{state: :connected, gun_pid: pid} = state) when not is_nil(pid) do
     now = System.monotonic_time(:millisecond)
 
-    {count, window_start} =
+    state =
       if now - state.send_window_start >= @send_window_ms do
-        {0, now}
+        %{state | send_count: 0, send_window_start: now}
       else
-        {state.send_count, state.send_window_start}
+        state
       end
 
-    if count >= @send_limit do
-      wait = @send_window_ms - (now - window_start) + trunc(:rand.uniform() * 1_500)
-      Process.sleep(max(wait, 0))
+    case :queue.out(state.send_queue) do
+      {:empty, _} ->
+        state
 
-      rate_limited_send(
-        %{state | send_count: 0, send_window_start: System.monotonic_time(:millisecond)},
-        data
-      )
-    else
-      send_frame(state, data)
-      %{state | send_count: count + 1, send_window_start: window_start}
+      {{:value, data}, rest} ->
+        if state.send_count < @send_limit do
+          send_frame(state, data)
+          flush_send_queue(%{state | send_queue: rest, send_count: state.send_count + 1})
+        else
+          schedule_flush(state, state.send_window_start + @send_window_ms - now)
+        end
     end
   end
 
+  defp flush_send_queue(state), do: state
+
+  defp schedule_flush(%{send_timer: nil} = state, delay) do
+    %{state | send_timer: Process.send_after(self(), :flush_send, max(delay, 0))}
+  end
+
+  defp schedule_flush(state, _delay), do: state
+
   # helpers
+
+  defp reconnect(state, delay \\ nil) do
+    dispatch_event(state, :shard_reconnecting, %{shard_id: state.shard_id})
+    state = close_connection(state)
+    delay = delay || 1_000 + :rand.uniform(4_000)
+
+    if state.connect_timer, do: Process.cancel_timer(state.connect_timer)
+    timer = Process.send_after(self(), :connect, delay)
+    %{state | state: :disconnected, connect_timer: timer}
+  end
 
   defp do_connect(state, host) do
     host_charlist = String.to_charlist(host)
@@ -326,6 +362,8 @@ defmodule Lingo.Gateway.Connection do
     gun_opts = %{
       protocols: [:http],
       transport: :tls,
+      # reconnection is handled here, gun must not reconnect on its own
+      retry: 0,
       tls_opts: [
         verify: :verify_peer,
         cacerts: :public_key.cacerts_get(),
@@ -341,8 +379,7 @@ defmodule Lingo.Gateway.Connection do
         %{state | gun_pid: pid, gun_ref: ref, state: :connecting}
 
       {:error, _reason} ->
-        Process.send_after(self(), :connect, 5_000)
-        state
+        %{state | connect_timer: Process.send_after(self(), :connect, 5_000)}
     end
   end
 
@@ -351,34 +388,6 @@ defmodule Lingo.Gateway.Connection do
   end
 
   defp send_frame(_, _), do: :ok
-
-  @identify_table :lingo_identify_throttle
-  @identify_cooldown_ms 5_500
-
-  defp wait_for_identify_slot(shard_id) do
-    try do
-      :ets.new(@identify_table, [:named_table, :public, :set])
-    rescue
-      ArgumentError -> :ok
-    end
-
-    max_concurrency = :persistent_term.get(:lingo_max_concurrency, 1)
-    bucket = rem(shard_id, max_concurrency)
-
-    case :ets.lookup(@identify_table, bucket) do
-      [{_, last_identify}] ->
-        elapsed = System.monotonic_time(:millisecond) - last_identify
-
-        if elapsed < @identify_cooldown_ms do
-          Process.sleep(@identify_cooldown_ms - elapsed + trunc(:rand.uniform() * 500))
-        end
-
-      [] ->
-        :ok
-    end
-
-    :ets.insert(@identify_table, {bucket, System.monotonic_time(:millisecond)})
-  end
 
   defp safe_decode(data) do
     {:ok, Jason.decode!(data)}
@@ -392,44 +401,51 @@ defmodule Lingo.Gateway.Connection do
 
   defp graceful_close(_), do: :ok
 
-  defp close_connection(state) do
-    if state.hello_timer, do: Process.cancel_timer(state.hello_timer)
-
+  defp stop_heartbeat(state) do
     if state.heartbeat_pid && Process.alive?(state.heartbeat_pid) do
       GenServer.stop(state.heartbeat_pid, :normal, 5_000)
     end
 
+    %{state | heartbeat_pid: nil}
+  end
+
+  defp close_connection(state) do
+    if state.hello_timer, do: Process.cancel_timer(state.hello_timer)
+    if state.identify_timer, do: Process.cancel_timer(state.identify_timer)
+    if state.send_timer, do: Process.cancel_timer(state.send_timer)
     if state.zlib, do: Compression.close(state.zlib)
+    if state.gun_ref, do: Process.demonitor(state.gun_ref, [:flush])
     if state.gun_pid, do: :gun.close(state.gun_pid)
 
     %{
-      state
+      stop_heartbeat(state)
       | gun_pid: nil,
         gun_ref: nil,
         stream_ref: nil,
-        heartbeat_pid: nil,
         zlib: nil,
-        hello_timer: nil
+        hello_timer: nil,
+        identify_timer: nil,
+        send_timer: nil
     }
   end
 
   defp handle_close(state, code) when code in @fatal_codes do
+    Logger.error("Lingo shard #{state.shard_id} closed with fatal code #{code}, not reconnecting")
+
     dispatch_event(state, :shard_error, %{shard_id: state.shard_id, code: code})
-    close_connection(state)
-    {:stop, {:shutdown, {:fatal, code}}, state}
+    state = close_connection(state)
+    {:stop, {:shutdown, {:fatal, code}}, %{state | state: :disconnected}}
   end
 
   defp handle_close(state, code) when code in @session_dead_codes do
     dispatch_event(state, :shard_disconnect, %{shard_id: state.shard_id, code: code})
     state = %{state | session_id: nil, seq: nil, resume_gateway_url: nil}
-    send(self(), :reconnect)
-    {:noreply, state}
+    {:noreply, reconnect(state)}
   end
 
   defp handle_close(state, code) do
     dispatch_event(state, :shard_disconnect, %{shard_id: state.shard_id, code: code})
-    send(self(), :reconnect)
-    {:noreply, state}
+    {:noreply, reconnect(state)}
   end
 
   @known_events %{

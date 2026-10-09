@@ -61,6 +61,7 @@ defmodule Lingo.Api.Reaction do
     |> URI.encode(&reaction_path_char?/1)
   end
 
+  def encode_emoji(%{id: nil, name: name}), do: encode_emoji(name)
   def encode_emoji(%{id: id, name: name}), do: encode_emoji("#{name}:#{id}")
 
   defp normalize_custom_emoji_markdown(emoji) do

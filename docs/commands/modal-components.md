@@ -53,7 +53,7 @@ Lingo.text_input(custom_id, label, opts \\ [])
 | `style` | atom | `:short` (default) or `:paragraph` |
 | `min_length` | integer | Minimum length |
 | `max_length` | integer | Maximum length |
-| `required` | boolean | Default `false` |
+| `required` | boolean | Default `true`; pass `required: false` for an optional field |
 | `value` | string | Pre-filled value |
 | `placeholder` | string | Placeholder text |
 
@@ -102,6 +102,12 @@ Lingo.label("Pick a user", Lingo.user_select("target"))
 Lingo.label("Pick a role", Lingo.role_select("role"))
 Lingo.label("Pick a channel", Lingo.channel_select("channel"))
 Lingo.label("Pick a user or role", Lingo.mentionable_select("mention"))
+```
+
+In modals, selects are required by default. Pass `required: false` to make one optional:
+
+```elixir
+Lingo.label("Reviewer (optional)", Lingo.user_select("reviewer", required: false))
 ```
 
 ## Radio Group

@@ -453,3 +453,52 @@ defmodule Lingo.Command.ContextTest do
     end
   end
 end
+
+defmodule Lingo.Command.ContextResponseTest do
+  use ExUnit.Case
+
+  import Bitwise
+
+  alias Lingo.Api.RateLimiter
+  alias Lingo.Command.Context
+
+  setup do
+    unless Process.whereis(RateLimiter), do: start_supervised!(RateLimiter)
+
+    previous = for key <- [:req_options, :max_wait], do: {key, Lingo.Config.get(key)}
+    on_exit(fn -> Enum.each(previous, fn {key, value} -> Lingo.Config.put(key, value) end) end)
+
+    test_pid = self()
+
+    adapter = fn request ->
+      body = request.body |> IO.iodata_to_binary() |> Jason.decode!()
+      send(test_pid, {:request, request.method, request.url.path, body})
+
+      response =
+        Req.Response.new(status: 200, body: Jason.encode!(%{"id" => "m1"}))
+        |> Req.Response.put_header("content-type", "application/json")
+
+      {request, response}
+    end
+
+    Lingo.Config.put(:req_options, adapter: adapter)
+
+    ctx = %Context{interaction_id: "i1", interaction_token: "tok", application_id: "app"}
+    {:ok, ctx: ctx}
+  end
+
+  test "ephemeral keeps existing flags", %{ctx: ctx} do
+    assert {:ok, _} = Context.ephemeral(ctx, %{components: [], flags: 1 <<< 15})
+
+    assert_receive {:request, :post, "/api/v10/interactions/i1/tok/callback", body}
+    assert body["data"]["flags"] == (1 <<< 15 ||| 1 <<< 6)
+  end
+
+  test "replying after a defer does not send the EPHEMERAL flag on the edit", %{ctx: ctx} do
+    ctx = %{ctx | deferred: true}
+    assert {:ok, _} = Context.ephemeral(ctx, "hi")
+
+    assert_receive {:request, :patch, "/api/v10/webhooks/app/tok/messages/@original", body}
+    assert body == %{"content" => "hi"}
+  end
+end

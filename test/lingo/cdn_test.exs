@@ -35,6 +35,23 @@ defmodule Lingo.CDNTest do
       assert CDN.default_avatar(user_id) ==
                "https://cdn.discordapp.com/embed/avatars/#{expected_index}.png"
     end
+
+    test "legacy discriminators use discriminator % 5" do
+      assert CDN.default_avatar("80351110224678912", "1337") ==
+               "https://cdn.discordapp.com/embed/avatars/2.png"
+
+      assert CDN.user_avatar(%{id: "80351110224678912", avatar: nil, discriminator: "1337"}) ==
+               "https://cdn.discordapp.com/embed/avatars/2.png"
+    end
+
+    test "migrated users with discriminator 0 use the user id" do
+      import Bitwise
+      user_id = "80351110224678912"
+      expected_index = rem(String.to_integer(user_id) >>> 22, 6)
+
+      assert CDN.user_avatar(%{id: user_id, avatar: nil, discriminator: "0"}) ==
+               "https://cdn.discordapp.com/embed/avatars/#{expected_index}.png"
+    end
   end
 
   describe "guild_icon/1" do

@@ -20,8 +20,13 @@ defmodule Lingo.Gateway.ShardManager do
     shard_refs: %{},
     ready_shards: %{},
     ready_fired: false,
-    expected_shard_count: 0
+    expected_shard_count: 0,
+    max_concurrency: 1,
+    identify_slots: %{}
   ]
+
+  # Discord allows max_concurrency identifies per 5 seconds, one per bucket
+  @identify_interval_ms 5_500
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -67,6 +72,18 @@ defmodule Lingo.Gateway.ShardManager do
     GenServer.cast(__MODULE__, {:shard_ready, shard_id})
   end
 
+  def update_presence(presence) do
+    GenServer.cast(__MODULE__, {:update_presence, presence})
+  end
+
+  # Reserves the next identify slot for this shard's rate limit bucket and
+  # returns how long to wait, in ms, before sending Identify.
+  def reserve_identify(shard_id) do
+    GenServer.call(__MODULE__, {:reserve_identify, shard_id}, 10_000)
+  catch
+    :exit, _ -> 0
+  end
+
   @impl true
   def init(opts) do
     token = Keyword.fetch!(opts, :token)
@@ -97,11 +114,10 @@ defmodule Lingo.Gateway.ShardManager do
           Process.send_after(self(), :start_shards, reset_after + 1_000)
           {:noreply, state}
         else
-          :persistent_term.put(:lingo_max_concurrency, max_concurrency)
           count = resolve_count(state.configured_count, shard_count)
           ids = resolve_ids(state.configured_ids, count)
-          state = %{state | gateway_url: url}
-          state = start_shards(state, count, ids, max_concurrency)
+          state = %{state | gateway_url: url, max_concurrency: max_concurrency}
+          state = start_shards(state, count, ids)
           {:noreply, %{state | shard_count: count, expected_shard_count: length(ids)}}
         end
 
@@ -194,6 +210,15 @@ defmodule Lingo.Gateway.ShardManager do
     {:noreply, state}
   end
 
+  def handle_cast({:update_presence, presence}, state) do
+    each_connection(state, fn conn_pid ->
+      Lingo.Gateway.Connection.update_presence(conn_pid, presence)
+    end)
+
+    # shards started later identify with the latest presence
+    {:noreply, %{state | presence: presence}}
+  end
+
   def handle_cast({:shard_ready, shard_id}, state) do
     ready_shards = Map.put(state.ready_shards, shard_id, true)
     state = %{state | ready_shards: ready_shards}
@@ -229,10 +254,11 @@ defmodule Lingo.Gateway.ShardManager do
               shard_refs: %{},
               ready_shards: %{},
               ready_fired: false,
-              expected_shard_count: length(ids)
+              expected_shard_count: length(ids),
+              max_concurrency: max_concurrency
           }
 
-          new_state = start_shards(new_state, new_count, ids, max_concurrency)
+          new_state = start_shards(new_state, new_count, ids)
 
           Enum.each(old_shards, fn {_id, old_pid} ->
             DynamicSupervisor.terminate_child(state.shard_supervisor, old_pid)
@@ -249,6 +275,15 @@ defmodule Lingo.Gateway.ShardManager do
   end
 
   @impl true
+  def handle_call({:reserve_identify, shard_id}, _from, state) do
+    now = System.monotonic_time(:millisecond)
+    bucket = rem(shard_id, max(state.max_concurrency, 1))
+    slot = max(now, Map.get(state.identify_slots, bucket, now))
+    slots = Map.put(state.identify_slots, bucket, slot + @identify_interval_ms)
+
+    {:reply, slot - now, %{state | identify_slots: slots}}
+  end
+
   def handle_call({:shard_for_guild, guild_id}, _from, state) do
     {:reply, compute_shard(guild_id, state.shard_count), state}
   end
@@ -372,7 +407,8 @@ defmodule Lingo.Gateway.ShardManager do
   defp fetch_gateway_bot(token) do
     headers = [
       {"authorization", "Bot #{token}"},
-      {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.3.0)"}
+      {"user-agent",
+       "DiscordBot (https://github.com/iruizsalinas/lingo, #{Mix.Project.config()[:version]})"}
     ]
 
     case Req.get("https://discord.com/api/v10/gateway/bot", headers: headers) do
@@ -393,49 +429,31 @@ defmodule Lingo.Gateway.ShardManager do
     end
   end
 
-  defp start_shards(state, shard_count, shard_ids, max_concurrency) do
+  # Identify pacing is enforced per bucket by reserve_identify/1, so shards can
+  # all be started right away without blocking this process.
+  defp start_shards(state, shard_count, shard_ids) do
     manager_pid = self()
 
-    rounds = Enum.chunk_every(shard_ids, max_concurrency)
-
     {shards, refs} =
-      Enum.reduce(rounds, {%{}, %{}}, fn round, {shard_acc, ref_acc} ->
-        {started_shards, started_refs} =
-          round
-          |> Task.async_stream(
-            fn shard_id ->
-              opts = [
-                shard_id: shard_id,
-                shard_count: shard_count,
-                token: state.token,
-                intents: state.intents,
-                gateway_url: state.gateway_url,
-                presence: state.presence,
-                shard_manager: manager_pid
-              ]
+      Enum.reduce(shard_ids, {%{}, %{}}, fn shard_id, {shard_acc, ref_acc} ->
+        opts = [
+          shard_id: shard_id,
+          shard_count: shard_count,
+          token: state.token,
+          intents: state.intents,
+          gateway_url: state.gateway_url,
+          presence: state.presence,
+          shard_manager: manager_pid
+        ]
 
-              case DynamicSupervisor.start_child(state.shard_supervisor, {Shard, opts}) do
-                {:ok, pid} -> {shard_id, pid}
-                {:error, _} -> nil
-              end
-            end,
-            ordered: false,
-            timeout: 30_000
-          )
-          |> Enum.reduce({shard_acc, ref_acc}, fn
-            {:ok, {shard_id, pid}}, {sa, ra} ->
-              ref = Process.monitor(pid)
-              {Map.put(sa, shard_id, pid), Map.put(ra, ref, shard_id)}
+        case DynamicSupervisor.start_child(state.shard_supervisor, {Shard, opts}) do
+          {:ok, pid} ->
+            ref = Process.monitor(pid)
+            {Map.put(shard_acc, shard_id, pid), Map.put(ref_acc, ref, shard_id)}
 
-            _, acc ->
-              acc
-          end)
-
-        if round != List.last(rounds) do
-          Process.sleep(5_500)
+          {:error, _} ->
+            {shard_acc, ref_acc}
         end
-
-        {started_shards, started_refs}
       end)
 
     %{state | shards: shards, shard_refs: refs}

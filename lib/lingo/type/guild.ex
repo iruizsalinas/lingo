@@ -56,6 +56,7 @@ defmodule Lingo.Type.Guild do
           channels: [Channel.t()],
           members: [Lingo.Type.Member.t()],
           member_count: integer() | nil,
+          joined_at: String.t() | nil,
           large: boolean(),
           unavailable: boolean()
         }
@@ -88,6 +89,7 @@ defmodule Lingo.Type.Guild do
     :incidents_data,
     :widget_channel_id,
     :member_count,
+    :joined_at,
     owner: false,
     afk_timeout: 0,
     widget_enabled: false,
@@ -174,6 +176,7 @@ defmodule Lingo.Type.Guild do
           Lingo.Type.Member.new(Map.put(member, "guild_id", data["id"]))
         end),
       member_count: data["member_count"],
+      joined_at: data["joined_at"],
       large: data["large"] || false,
       unavailable: data["unavailable"] || false
     }

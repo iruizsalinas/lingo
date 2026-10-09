@@ -12,13 +12,16 @@ Returns the avatar URL for a user. Falls back to `default_avatar/1` if the user 
 url = Lingo.user_avatar(user)
 ```
 
-### `default_avatar(user_id)`
+### `default_avatar(user_id, discriminator \\ nil)`
 
-Returns the default avatar URL based on the user ID.
+Returns the default avatar URL. Users on the legacy username system (including bots) have a non-zero discriminator, which Discord uses instead of the user ID.
 
 ```elixir
 url = Lingo.default_avatar("123456789")
 # "https://cdn.discordapp.com/embed/avatars/3.png"
+
+url = Lingo.default_avatar("123456789", "1337")
+# "https://cdn.discordapp.com/embed/avatars/2.png"
 ```
 
 ## Guild Images

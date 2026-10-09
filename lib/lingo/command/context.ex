@@ -1,7 +1,11 @@
 defmodule Lingo.Command.Context do
   @moduledoc false
 
+  import Bitwise
+
   alias Lingo.Api.Interaction, as: InteractionApi
+
+  @ephemeral 1 <<< 6
 
   @type t :: %__MODULE__{
           interaction_id: String.t(),
@@ -240,10 +244,11 @@ defmodule Lingo.Command.Context do
   def reply(ctx, data) when is_map(data) do
     cond do
       ctx.deferred ->
+        # ephemerality is fixed by the defer, and edits reject the EPHEMERAL flag
         case InteractionApi.edit_original_response(
                ctx.application_id,
                ctx.interaction_token,
-               data
+               drop_ephemeral_flag(data)
              ) do
           {:ok, _} -> {:ok, %{ctx | deferred: false, replied: true}}
           error -> error
@@ -320,7 +325,7 @@ defmodule Lingo.Command.Context do
 
   defp do_defer(ctx, opts) do
     type = if opts[:update], do: :deferred_update_message, else: :deferred_channel_message
-    flags = if opts[:ephemeral], do: %{flags: 64}, else: nil
+    flags = if opts[:ephemeral], do: %{flags: @ephemeral}, else: nil
 
     case InteractionApi.create_response(ctx.interaction_id, ctx.interaction_token, type, flags) do
       :ok -> {:ok, %{ctx | deferred: true}}
@@ -339,11 +344,13 @@ defmodule Lingo.Command.Context do
 
   @spec ephemeral(t(), String.t() | map()) :: {:ok, t()} | {:error, any()}
   def ephemeral(ctx, content) when is_binary(content) do
-    reply(ctx, %{content: content, flags: 64})
+    reply(ctx, %{content: content, flags: @ephemeral})
   end
 
+  def ephemeral(ctx, opts) when is_list(opts), do: ephemeral(ctx, Map.new(opts))
+
   def ephemeral(ctx, data) when is_map(data) do
-    reply(ctx, Map.put(data, :flags, 64))
+    reply(ctx, Map.update(data, :flags, @ephemeral, &bor(&1 || 0, @ephemeral)))
   end
 
   @spec show_modal(t(), map()) :: :ok | {:ok, any()} | {:error, any()}
@@ -374,6 +381,15 @@ defmodule Lingo.Command.Context do
   def focused_option(%__MODULE__{} = ctx) do
     ctx.raw_options |> find_focused()
   end
+
+  defp drop_ephemeral_flag(%{flags: flags} = data) when is_integer(flags) do
+    case band(flags, bnot(@ephemeral)) do
+      0 -> Map.delete(data, :flags)
+      rest -> %{data | flags: rest}
+    end
+  end
+
+  defp drop_ephemeral_flag(data), do: data
 
   defp find_focused(nil), do: nil
   defp find_focused([]), do: nil

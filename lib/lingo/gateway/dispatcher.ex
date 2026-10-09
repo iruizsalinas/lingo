@@ -24,7 +24,7 @@ defmodule Lingo.Gateway.Dispatcher do
         update_and_parse(event, data)
       rescue
         e ->
-          Logger.error("Dispatcher crash on #{event}: #{Exception.message(e)}")
+          Logger.error("Dispatcher crash on #{inspect(event)}: #{Exception.message(e)}")
           data
       end
 
@@ -43,6 +43,11 @@ defmodule Lingo.Gateway.Dispatcher do
 
     Enum.each(guild.channels, fn ch ->
       Cache.put_channel(%{ch | guild_id: guild.id})
+    end)
+
+    # active threads arrive separately from channels
+    Enum.each(data["threads"] || [], fn thread ->
+      Cache.put_channel(Channel.new(Map.put(thread, "guild_id", guild.id)))
     end)
 
     Enum.each(guild.members, fn m -> Cache.put_member(guild.id, m) end)
@@ -66,8 +71,8 @@ defmodule Lingo.Gateway.Dispatcher do
   end
 
   defp update_and_parse(:guild_update, data) do
-    guild = Guild.new(data)
-    old = Cache.get_guild(guild.id)
+    old = Cache.get_guild(data["id"])
+    guild = data |> Guild.new() |> keep_guild_create_fields(old)
     Enum.each(guild.roles, fn r -> Cache.put_role(guild.id, %{r | guild_id: guild.id}) end)
     Cache.put_guild(%{guild | channels: [], members: [], roles: []})
     %{old: old, new: guild}
@@ -142,6 +147,7 @@ defmodule Lingo.Gateway.Dispatcher do
   defp update_and_parse(:guild_member_add, data) do
     m = Member.new(data)
     Cache.put_member(data["guild_id"], m)
+    adjust_member_count(data["guild_id"], 1)
     m
   end
 
@@ -156,6 +162,7 @@ defmodule Lingo.Gateway.Dispatcher do
     user_id = get_in(data, ["user", "id"])
     old = Cache.get_member(data["guild_id"], user_id)
     Cache.delete_member(data["guild_id"], user_id)
+    adjust_member_count(data["guild_id"], -1)
     %{old: old, new: %{guild_id: data["guild_id"], user: User.new(data["user"])}}
   end
 
@@ -285,10 +292,12 @@ defmodule Lingo.Gateway.Dispatcher do
     %{old: old, new: new}
   end
 
+  # USER_UPDATE is only sent for the current user
   defp update_and_parse(:user_update, data) do
     u = User.new(data)
-    old = Cache.get_user(u.id)
+    old = Cache.get_current_user() || Cache.get_user(u.id)
     Cache.put_user(u)
+    Cache.put_current_user(u)
     %{old: old, new: u}
   end
 
@@ -347,6 +356,29 @@ defmodule Lingo.Gateway.Dispatcher do
   defp update_and_parse(:entitlement_update, data), do: Entitlement.new(data)
   defp update_and_parse(:entitlement_delete, data), do: Entitlement.new(data)
   defp update_and_parse(_event, data), do: data
+
+  # GUILD_UPDATE carries a plain guild object, without the GUILD_CREATE extras
+  defp keep_guild_create_fields(guild, nil), do: guild
+
+  defp keep_guild_create_fields(guild, old) do
+    %{
+      guild
+      | joined_at: old.joined_at,
+        large: old.large,
+        member_count: old.member_count,
+        unavailable: old.unavailable
+    }
+  end
+
+  defp adjust_member_count(guild_id, delta) do
+    case Cache.get_guild(guild_id) do
+      %{member_count: count} = guild when is_integer(count) ->
+        Cache.put_guild(%{guild | member_count: max(count + delta, 0)})
+
+      _ ->
+        :ok
+    end
+  end
 
   # forward to user's bot module
 

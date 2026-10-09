@@ -121,7 +121,9 @@ defmodule Lingo.Type.Activity do
 
   @spec to_payload(t()) :: map()
   def to_payload(%__MODULE__{} = a) do
+    # bots may only set name, state, type and url
     %{"name" => a.name, "type" => Map.get(@activity_types_reverse, a.type, 0)}
     |> then(fn m -> if a.url, do: Map.put(m, "url", a.url), else: m end)
+    |> then(fn m -> if a.state, do: Map.put(m, "state", a.state), else: m end)
   end
 end

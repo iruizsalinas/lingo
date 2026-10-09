@@ -12,7 +12,9 @@ defmodule Lingo.Bot do
           component: 3,
           modal: 3,
           user_command: 2,
-          message_command: 2
+          user_command: 3,
+          message_command: 2,
+          message_command: 3
         ]
 
       import Lingo.Command.Context,
@@ -64,6 +66,8 @@ defmodule Lingo.Bot do
     nsfw_ast = Keyword.get(opts, :nsfw, false)
     integration_types_ast = Keyword.get(opts, :integration_types)
     contexts_ast = Keyword.get(opts, :contexts)
+    name_localizations_ast = Keyword.get(opts, :name_localizations)
+    description_localizations_ast = Keyword.get(opts, :description_localizations)
 
     quote do
       @lingo_commands %Lingo.Type.ApplicationCommand{
@@ -73,7 +77,9 @@ defmodule Lingo.Bot do
         default_member_permissions: unquote(permissions_ast),
         nsfw: unquote(nsfw_ast),
         integration_types: unquote(integration_types_ast),
-        contexts: unquote(contexts_ast)
+        contexts: unquote(contexts_ast),
+        name_localizations: unquote(name_localizations_ast),
+        description_localizations: unquote(description_localizations_ast)
       }
 
       def unquote(func_name)(var!(ctx)) do
@@ -83,33 +89,28 @@ defmodule Lingo.Bot do
     end
   end
 
-  defmacro user_command(name, do: body) do
-    func_name = :"__cmd_#{name}__"
-
-    quote do
-      @lingo_commands %Lingo.Type.ApplicationCommand{
-        name: unquote(name),
-        description: "",
-        type: :user,
-        options: []
-      }
-
-      def unquote(func_name)(var!(ctx)) do
-        _ = var!(ctx)
-        unquote(body)
-      end
-    end
+  defmacro user_command(name, opts \\ [], do: body) do
+    context_menu_command(:user, name, opts, body)
   end
 
-  defmacro message_command(name, do: body) do
+  defmacro message_command(name, opts \\ [], do: body) do
+    context_menu_command(:message, name, opts, body)
+  end
+
+  defp context_menu_command(type, name, opts, body) do
     func_name = :"__cmd_#{name}__"
 
     quote do
       @lingo_commands %Lingo.Type.ApplicationCommand{
         name: unquote(name),
         description: "",
-        type: :message,
-        options: []
+        type: unquote(type),
+        options: [],
+        default_member_permissions: unquote(Keyword.get(opts, :default_member_permissions)),
+        nsfw: unquote(Keyword.get(opts, :nsfw, false)),
+        integration_types: unquote(Keyword.get(opts, :integration_types)),
+        contexts: unquote(Keyword.get(opts, :contexts)),
+        name_localizations: unquote(Keyword.get(opts, :name_localizations))
       }
 
       def unquote(func_name)(var!(ctx)) do

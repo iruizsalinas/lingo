@@ -343,8 +343,9 @@ defmodule Lingo.Api.RateLimiter do
   defp past_deadline?(time, deadline), do: time > deadline
 
   defp extract_major(route_key) do
-    case Regex.run(~r"(?:channels|guilds|webhooks)/(\d+)", route_key) do
-      [_, id] -> id
+    case Regex.run(~r"webhooks/(\d+(?:/[^/:]+)?)|(?:channels|guilds)/(\d+)", route_key) do
+      [_, webhook] -> webhook
+      [_, "", id] -> id
       _ -> "global"
     end
   end

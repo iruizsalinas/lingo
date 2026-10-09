@@ -5,7 +5,7 @@ defmodule Lingo.Gateway.Heartbeat do
 
   @table :lingo_latency
 
-  defstruct [:interval, :connection, :shard_id, :timer_ref, :ack_received, :seq, :last_sent]
+  defstruct [:interval, :connection, :shard_id, :timer_ref, :ack_received, :last_sent]
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts)
@@ -13,10 +13,6 @@ defmodule Lingo.Gateway.Heartbeat do
 
   def ack(pid) do
     GenServer.cast(pid, :ack)
-  end
-
-  def update_seq(pid, seq) do
-    GenServer.cast(pid, {:update_seq, seq})
   end
 
   def latency(shard_id) do
@@ -59,7 +55,6 @@ defmodule Lingo.Gateway.Heartbeat do
        shard_id: shard_id,
        timer_ref: timer_ref,
        ack_received: true,
-       seq: nil,
        last_sent: nil
      }}
   end
@@ -74,10 +69,6 @@ defmodule Lingo.Gateway.Heartbeat do
     {:noreply, %{state | ack_received: true}}
   end
 
-  def handle_cast({:update_seq, seq}, state) do
-    {:noreply, %{state | seq: seq}}
-  end
-
   @impl true
   def handle_info(:beat, %{ack_received: false} = state) do
     send(state.connection, :heartbeat_timeout)
@@ -85,7 +76,8 @@ defmodule Lingo.Gateway.Heartbeat do
   end
 
   def handle_info(:beat, state) do
-    send(state.connection, {:send_heartbeat, state.seq})
+    # the connection fills in its latest sequence number
+    send(state.connection, :send_heartbeat)
     timer_ref = Process.send_after(self(), :beat, state.interval)
 
     {:noreply,

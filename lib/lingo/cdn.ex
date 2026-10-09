@@ -5,10 +5,20 @@ defmodule Lingo.CDN do
 
   @base "https://cdn.discordapp.com"
 
-  def user_avatar(%{id: id, avatar: nil}), do: default_avatar(id)
+  def user_avatar(%{id: id, avatar: nil} = user),
+    do: default_avatar(id, Map.get(user, :discriminator))
+
   def user_avatar(%{id: id, avatar: hash}), do: "#{@base}/avatars/#{id}/#{hash}.#{ext(hash)}"
 
-  def default_avatar(user_id) do
+  # users on the legacy username system (including bots) use discriminator % 5
+  def default_avatar(user_id, discriminator \\ nil)
+
+  def default_avatar(_user_id, discriminator)
+      when is_binary(discriminator) and discriminator not in ["", "0"] do
+    "#{@base}/embed/avatars/#{rem(String.to_integer(discriminator), 5)}.png"
+  end
+
+  def default_avatar(user_id, _discriminator) do
     index = rem(String.to_integer(user_id) >>> 22, 6)
     "#{@base}/embed/avatars/#{index}.png"
   end

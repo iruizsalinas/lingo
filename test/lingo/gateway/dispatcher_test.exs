@@ -327,4 +327,53 @@ defmodule Lingo.Gateway.DispatcherTest do
     assert presence.user.username == "alice"
     assert presence.user.bot == true
   end
+
+  describe "cache bookkeeping" do
+    test "GUILD_CREATE caches active threads" do
+      Dispatcher.dispatch(:guild_create, %{
+        "id" => "g_threads",
+        "name" => "Threads",
+        "channels" => [%{"id" => "c_parent", "type" => 0}],
+        "threads" => [%{"id" => "t_active", "type" => 11, "parent_id" => "c_parent"}]
+      })
+
+      assert %Channel{id: "t_active", guild_id: "g_threads"} = Lingo.Cache.get_channel("t_active")
+    end
+
+    test "GUILD_UPDATE keeps GUILD_CREATE-only fields" do
+      Dispatcher.dispatch(:guild_create, %{
+        "id" => "g_upd",
+        "name" => "Old",
+        "member_count" => 10,
+        "large" => true,
+        "joined_at" => "2024-01-01T00:00:00+00:00"
+      })
+
+      Dispatcher.dispatch(:guild_update, %{"id" => "g_upd", "name" => "New"})
+
+      guild = Lingo.Cache.get_guild("g_upd")
+      assert guild.name == "New"
+      assert guild.member_count == 10
+      assert guild.large == true
+      assert guild.joined_at == "2024-01-01T00:00:00+00:00"
+    end
+
+    test "member add and remove keep member_count current" do
+      Dispatcher.dispatch(:guild_create, %{"id" => "g_count", "member_count" => 5})
+      user = %{"id" => "u_count", "username" => "c"}
+
+      Dispatcher.dispatch(:guild_member_add, %{"guild_id" => "g_count", "user" => user})
+      assert Lingo.Cache.get_guild("g_count").member_count == 6
+
+      Dispatcher.dispatch(:guild_member_remove, %{"guild_id" => "g_count", "user" => user})
+      assert Lingo.Cache.get_guild("g_count").member_count == 5
+    end
+
+    test "USER_UPDATE refreshes the current user" do
+      Dispatcher.dispatch(:shard_ready, %{"user" => %{"id" => "me", "username" => "old"}})
+      Dispatcher.dispatch(:user_update, %{"id" => "me", "username" => "new"})
+
+      assert Lingo.Cache.get_current_user().username == "new"
+    end
+  end
 end

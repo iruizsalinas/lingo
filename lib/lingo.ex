@@ -571,8 +571,8 @@ defmodule Lingo do
 
   # Gateway
   def update_presence(status, opts \\ []) do
-    payload = Lingo.Gateway.Payload.presence_update(status, opts[:text], opts[:activity])
-    Lingo.Gateway.ShardManager.broadcast(payload)
+    presence = [status: status, text: opts[:text], activity: opts[:activity]]
+    Lingo.Gateway.ShardManager.update_presence(presence)
   end
 
   def request_guild_members(guild_id, opts \\ []) do
@@ -611,7 +611,7 @@ defmodule Lingo do
 
   # CDN
   defdelegate user_avatar(user), to: Lingo.CDN
-  defdelegate default_avatar(user_id), to: Lingo.CDN
+  defdelegate default_avatar(user_id, discriminator \\ nil), to: Lingo.CDN
   defdelegate guild_icon(guild), to: Lingo.CDN
   defdelegate guild_splash(guild), to: Lingo.CDN
   defdelegate guild_banner(guild), to: Lingo.CDN
