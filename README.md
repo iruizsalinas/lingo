@@ -8,6 +8,7 @@ Currently covers:
 - Components V2 including sections, containers, media galleries, and more
 - REST API with per-bucket rate limiting and automatic retries
 - Gateway with sharding, caching, and reconnection
+- Voice: play and receive audio, with Discord's end-to-end encryption (DAVE)
 - Collectors for awaiting button clicks and reactions
 - Permission and role hierarchy helpers
 - Embed builder, CDN helpers, and component builders

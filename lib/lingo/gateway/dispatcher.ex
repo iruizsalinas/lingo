@@ -19,6 +19,8 @@ defmodule Lingo.Gateway.Dispatcher do
 
   @spec dispatch(atom() | {:unknown_event, String.t()}, map()) :: :ok
   def dispatch(event, data) do
+    Lingo.Voice.Manager.dispatch(event, data)
+
     parsed =
       try do
         update_and_parse(event, data)

@@ -4,17 +4,17 @@
 
 ### `join_voice(guild_id, channel_id, opts \\ [])`
 
-Join a voice channel. `opts`: `self_mute:` (boolean), `self_deaf:` (boolean).
+Join a voice channel and wait until the voice connection is up. `opts`: `self_mute:` (boolean), `self_deaf:` (boolean), `timeout:` (milliseconds).
 
 ```elixir
-Lingo.join_voice(guild_id, voice_channel_id, self_deaf: true)
+{:ok, _connection} = Lingo.join_voice(guild_id, voice_channel_id, self_deaf: true)
 ```
 
 ### `leave_voice(guild_id)`
 
 Leave the voice channel in a guild.
 
-Lingo doesn't handle voice audio. These functions send the gateway opcode to join/leave. Use a separate library for audio.
+These are shortcuts for `Lingo.Voice.join/3` and `Lingo.Voice.leave/1`. See [Voice](/voice) for playing and receiving audio.
 
 ## Guild Members
 

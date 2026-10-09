@@ -26,6 +26,8 @@ defmodule Lingo.Supervisor do
       {Lingo.Cache, cache_opts},
       Lingo.Api.RateLimiter,
       {Registry, keys: :duplicate, name: Lingo.Collector.Registry},
+      {DynamicSupervisor, name: Lingo.Voice.Supervisor, strategy: :one_for_one},
+      Lingo.Voice.Manager,
       {Lingo.Gateway.ShardManager,
        token: token, intents: intents, sharding: sharding, presence: presence}
     ]

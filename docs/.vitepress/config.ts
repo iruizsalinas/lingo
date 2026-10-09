@@ -17,6 +17,7 @@ export default defineConfig({
           { text: "Interactions", link: "/interactions" },
           { text: "API", link: "/api" },
           { text: "Cache", link: "/cache" },
+          { text: "Voice", link: "/voice" },
         ],
       },
       {

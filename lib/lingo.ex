@@ -580,15 +580,8 @@ defmodule Lingo do
     Lingo.Gateway.ShardManager.send_to_guild_shard(guild_id, payload)
   end
 
-  def join_voice(guild_id, channel_id, opts \\ []) do
-    payload = Lingo.Gateway.Payload.voice_state_update(guild_id, channel_id, opts)
-    Lingo.Gateway.ShardManager.send_to_guild_shard(guild_id, payload)
-  end
-
-  def leave_voice(guild_id) do
-    payload = Lingo.Gateway.Payload.voice_state_update(guild_id, nil)
-    Lingo.Gateway.ShardManager.send_to_guild_shard(guild_id, payload)
-  end
+  defdelegate join_voice(guild_id, channel_id, opts \\ []), to: Lingo.Voice, as: :join
+  defdelegate leave_voice(guild_id), to: Lingo.Voice, as: :leave
 
   def request_soundboard_sounds(guild_ids) when is_list(guild_ids) do
     payload = Lingo.Gateway.Payload.request_soundboard_sounds(guild_ids)

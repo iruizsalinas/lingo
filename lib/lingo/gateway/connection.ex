@@ -263,6 +263,9 @@ defmodule Lingo.Gateway.Connection do
     application_id = get_in(data, ["application", "id"])
     if application_id, do: Lingo.Config.put(:application_id, application_id)
 
+    user_id = get_in(data, ["user", "id"])
+    if user_id, do: Lingo.Config.put(:user_id, user_id)
+
     state = %{
       state
       | session_id: data["session_id"],
