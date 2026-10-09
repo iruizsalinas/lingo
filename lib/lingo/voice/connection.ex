@@ -10,7 +10,8 @@ defmodule Lingo.Voice.Connection do
   transport encrypted over UDP. Subscribers receive:
 
     * `{:lingo_voice, guild_id, :ready}` once connected; with DAVE on, audio
-      is only sent once the group keys are in place (see `info/1`)
+      is only sent once the group keys are in place, so playback asked for
+      before then waits and starts from its first packet (see `info/1`)
     * `{:lingo_voice, guild_id, {:audio, user_id, packet}}` for each Opus packet
       received, where `packet` has `:opus`, `:sequence` and `:timestamp`
     * `{:lingo_voice, guild_id, {:speaking, user_id, flags}}`

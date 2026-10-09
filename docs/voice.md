@@ -36,6 +36,8 @@ Lingo.Voice.play(guild_id, packets)
 
 `play_file/2` needs no ffmpeg and doesn't re-encode, so it's the cheapest way to play audio that is already Opus, such as YouTube's WebM audio. It tells the container from the file's contents, plays chained Ogg files (one track after another) through, and refuses surround Opus, which Discord can't play; downmix it with ffmpeg first. HTTP inputs to `play_url/3` reconnect if the stream drops.
 
+Playback starts as soon as audio can actually be sent, from its first packet: right away on a connection that is up, or once the connection and its encryption keys are ready if you play straight after joining. A bot alone in an end-to-end encrypted call can't send audio to anyone, so its playback waits and starts when the first person joins.
+
 Playing replaces whatever is already playing. `Lingo.Voice.stop(guild_id)` stops it. Packets are paced in real time from their own durations; if the source falls behind, playback picks up the beat again instead of rushing to catch up. It ends with a few frames of silence, as Discord recommends.
 
 To convert audio ahead of time:
@@ -80,7 +82,7 @@ While end-to-end encryption is on, audio is never sent unencrypted. In particula
 
 ```elixir
 Lingo.Voice.connection(guild_id) |> Lingo.Voice.Connection.info()
-#=> %{status: :connected, dave_active?: true, dave_protocol_version: 1, epoch_authenticator: <<...>>, ...}
+#=> %{status: :connected, playback: :playing, dave_active?: true, dave_protocol_version: 1, epoch_authenticator: <<...>>, ...}
 ```
 
-Two clients that show the same `epoch_authenticator` share the same keys.
+`playback` is `:idle`, `:waiting` (asked to play, audio can't be sent yet) or `:playing`. Two clients that show the same `epoch_authenticator` share the same keys.

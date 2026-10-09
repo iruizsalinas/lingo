@@ -191,6 +191,26 @@ defmodule Lingo.Integration.VoiceTest do
     assert Connection.info(two).epoch_authenticator == Connection.info(one).epoch_authenticator
   end
 
+  test "playing right after joining loses nothing", context do
+    two = join(context, :two)
+    Process.sleep(1_000)
+
+    # :one joins and plays at once, before its connection or keys are up
+    {:ok, opts} = VoiceBot.join_voice(context.bots.one, context.guild_id, context.channel_id)
+    {:ok, one} = Connection.start_link(opts)
+    sent = fixture("stereo_20ms.opus", 100)
+    Connection.play(one, sent)
+    assert Connection.info(one).playback in [:waiting, :playing]
+
+    received = collect(6_000)
+    events = audio(received, :two, context.user_ids.one)
+
+    # the very first packet arrives, and everything after it
+    assert hd(events).opus == hd(sent), "the start of playback was cut off"
+    assert_exact(events, sent, :two, :one)
+    assert Connection.info(two).dave_active?
+  end
+
   test "replacing and stopping playback, and a source that fails", context do
     connections = join_all(context)
     one = connections.one
