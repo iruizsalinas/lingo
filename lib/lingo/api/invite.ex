@@ -45,6 +45,26 @@ defmodule Lingo.Api.Invite do
     Client.request(:put, "/invites/#{invite_code}/target-users", multipart: multipart)
   end
 
+  def add_target_user(invite_code, user_id) do
+    Client.request(:put, "/invites/#{invite_code}/target-users/#{user_id}")
+  end
+
+  def remove_target_user(invite_code, user_id) do
+    Client.request(:delete, "/invites/#{invite_code}/target-users/#{user_id}")
+  end
+
+  def bulk_add_target_users(invite_code, user_ids) when is_list(user_ids) do
+    Client.request(:post, "/invites/#{invite_code}/target-users/bulk-add",
+      json: %{user_ids: user_ids}
+    )
+  end
+
+  def bulk_delete_target_users(invite_code, user_ids) when is_list(user_ids) do
+    Client.request(:post, "/invites/#{invite_code}/target-users/bulk-delete",
+      json: %{user_ids: user_ids}
+    )
+  end
+
   def get_target_users_status(invite_code) do
     Client.request(:get, "/invites/#{invite_code}/target-users/job-status")
   end

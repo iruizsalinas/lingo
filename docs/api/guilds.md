@@ -122,6 +122,22 @@ Lingo.edit_onboarding(guild_id, params, opts \\ [])
 
 `edit_onboarding` supports `reason`.
 
+### edit_guild_incident_actions
+
+```elixir
+# Pause invites for an hour and clear the DM restriction.
+until = DateTime.utc_now() |> DateTime.add(3600, :second) |> DateTime.to_iso8601()
+
+Lingo.edit_guild_incident_actions(guild_id, %{
+  invites_disabled_until: until,
+  dms_disabled_until: nil
+})
+```
+
+Requires `MANAGE_GUILD`. Accepts a map or keyword list with optional `invites_disabled_until` and `dms_disabled_until` ISO8601 timestamps, at most 24 hours into the future. Omit a field to leave it unchanged; pass `nil` to clear that restriction. Discord validates the timestamps and permissions.
+
+Returns `{:ok, incidents_data}` as a string-keyed map, including the restriction timestamps and any detection timestamps returned by Discord, or `{:error, reason}`. See [Discord's incident actions endpoint](https://docs.discord.com/developers/resources/guild#modify-guild-incident-actions).
+
 ### get_prune_count / begin_prune
 
 ```elixir

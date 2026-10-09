@@ -115,6 +115,14 @@ defmodule Lingo.Api.Guild do
     Client.request(:put, "/guilds/#{guild_id}/onboarding", json: params, reason: opts[:reason])
   end
 
+  def modify_incident_actions(guild_id, params) when is_list(params) do
+    modify_incident_actions(guild_id, Map.new(params))
+  end
+
+  def modify_incident_actions(guild_id, params) when is_map(params) do
+    Client.request(:put, "/guilds/#{guild_id}/incident-actions", json: params)
+  end
+
   def get_prune_count(guild_id, opts \\ []) do
     params =
       opts

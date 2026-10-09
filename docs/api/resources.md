@@ -171,6 +171,26 @@ Lingo.set_invite_target_users(code, user_ids)
 Lingo.get_invite_target_users_status(code)
 ```
 
+### add_invite_target_user / remove_invite_target_user
+
+```elixir
+Lingo.add_invite_target_user(code, user_id)
+Lingo.remove_invite_target_user(code, user_id)
+```
+
+Add or remove one user from an existing invite's target list. Both return `:ok` on success.
+
+### add_invite_target_users / remove_invite_target_users
+
+```elixir
+Lingo.add_invite_target_users(code, [user_id_1, user_id_2])
+Lingo.remove_invite_target_users(code, [user_id_1, user_id_2])
+```
+
+Add or remove up to 1000 users per call using JSON, without replacing the entire list or uploading a CSV. Both return `:ok` on success. Larger lists must be split by the caller; Discord validates the limit.
+
+All four operations require the bot to be the inviter or have `MANAGE_GUILD`. Errors return `{:error, reason}`. See [Discord's target user endpoints](https://docs.discord.com/developers/resources/invite#add-target-user).
+
 ## Scheduled Events
 
 ```elixir

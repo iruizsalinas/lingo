@@ -82,6 +82,9 @@ defmodule Lingo do
   def edit_onboarding(guild_id, params, opts \\ []),
     do: Lingo.Api.Guild.modify_onboarding(guild_id, params, opts)
 
+  def edit_guild_incident_actions(guild_id, params),
+    do: Lingo.Api.Guild.modify_incident_actions(guild_id, params)
+
   def get_prune_count(guild_id, opts \\ []), do: Lingo.Api.Guild.get_prune_count(guild_id, opts)
 
   def begin_prune(guild_id, params \\ %{}, opts \\ []),
@@ -345,6 +348,18 @@ defmodule Lingo do
 
   def set_invite_target_users(code, user_ids),
     do: Lingo.Api.Invite.set_target_users(code, user_ids)
+
+  def add_invite_target_user(code, user_id),
+    do: Lingo.Api.Invite.add_target_user(code, user_id)
+
+  def remove_invite_target_user(code, user_id),
+    do: Lingo.Api.Invite.remove_target_user(code, user_id)
+
+  def add_invite_target_users(code, user_ids),
+    do: Lingo.Api.Invite.bulk_add_target_users(code, user_ids)
+
+  def remove_invite_target_users(code, user_ids),
+    do: Lingo.Api.Invite.bulk_delete_target_users(code, user_ids)
 
   def get_invite_target_users_status(code),
     do: Lingo.Api.Invite.get_target_users_status(code)
