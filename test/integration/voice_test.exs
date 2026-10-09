@@ -4,8 +4,8 @@ defmodule Lingo.Integration.VoiceTest do
   # Three real bots in one voice channel, hearing each other through DAVE
   # end-to-end encryption.
   #
-  # Needs TEVY_E2E_TOKEN_1..3 and TEVY_E2E_GUILD, a guild with a voice
-  # channel all three bots can join (TEVY_E2E_VOICE_CHANNEL picks one). The
+  # Needs TEST_BOT_TOKEN_1..3 and TEST_GUILD_ID, a guild with a voice
+  # channel all three bots can join (TEST_VOICE_CHANNEL_ID picks one). The
   # real-audio test also needs ffmpeg, to make the audio and to decode what
   # was heard.
 
@@ -23,11 +23,11 @@ defmodule Lingo.Integration.VoiceTest do
   @silence <<0xF8, 0xFF, 0xFE>>
 
   setup_all do
-    tokens = for n <- 1..3, do: System.get_env("TEVY_E2E_TOKEN_#{n}")
-    guild_id = System.get_env("TEVY_E2E_GUILD")
+    tokens = for n <- 1..3, do: System.get_env("TEST_BOT_TOKEN_#{n}")
+    guild_id = System.get_env("TEST_GUILD_ID")
 
     if Enum.any?([guild_id | tokens], &(&1 in [nil, ""])),
-      do: raise("TEVY_E2E_TOKEN_1..3 and TEVY_E2E_GUILD must be set")
+      do: raise("TEST_BOT_TOKEN_1..3 and TEST_GUILD_ID must be set")
 
     bots =
       for {name, token} <- Enum.zip(@names, tokens), into: %{} do
@@ -422,7 +422,7 @@ defmodule Lingo.Integration.VoiceTest do
   end
 
   defp voice_channel(token, guild_id) do
-    System.get_env("TEVY_E2E_VOICE_CHANNEL") || first_voice_channel(token, guild_id)
+    System.get_env("TEST_VOICE_CHANNEL_ID") || first_voice_channel(token, guild_id)
   end
 
   defp first_voice_channel(token, guild_id) do
