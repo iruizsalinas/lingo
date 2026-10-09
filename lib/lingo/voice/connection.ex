@@ -35,6 +35,8 @@ defmodule Lingo.Voice.Connection do
   @max_attempts 5
   @discovery_attempts 5
   @keepalive_interval 5_000
+  @max_unmapped_ssrcs 8
+  @max_unmapped_packets 50
 
   @enforce_keys [:guild_id, :channel_id, :user_id, :session_id, :token, :endpoint]
   defstruct [
@@ -55,6 +57,8 @@ defmodule Lingo.Voice.Connection do
     :secret_key,
     :dave,
     :player,
+    # packets to play once audio can be sent
+    :pending,
     status: :connecting,
     seq: -1,
     ready?: false,
@@ -68,6 +72,8 @@ defmodule Lingo.Voice.Connection do
     timestamp: 0,
     keepalive: 0,
     ssrc_users: %{},
+    # packets from SSRCs not yet tied to a user, newest first
+    unmapped: %{},
     subscribers: %{}
   ]
 
@@ -131,14 +137,11 @@ defmodule Lingo.Voice.Connection do
   end
 
   @impl true
-  def handle_call({:play, packets}, _from, state) do
-    state = stop_player(state)
-    {:ok, player} = Player.start_link(self(), packets)
-    {:reply, :ok, %{state | player: player}}
-  end
+  def handle_call({:play, packets}, _from, state),
+    do: {:reply, :ok, %{stop_player(state) | pending: packets} |> start_pending()}
 
   def handle_call(:stop_playback, _from, state),
-    do: {:reply, :ok, state |> stop_player() |> set_speaking(false)}
+    do: {:reply, :ok, %{stop_player(state) | pending: nil} |> set_speaking(false)}
 
   def handle_call({:subscribe, pid}, _from, state) do
     state = add_subscriber(state, pid)
@@ -150,6 +153,7 @@ defmodule Lingo.Voice.Connection do
     info = %{
       status: state.status,
       ready?: state.ready?,
+      playback: playback(state),
       ssrc: state.ssrc,
       mode: state.mode,
       dave_protocol_version: state.dave.protocol_version,
@@ -369,7 +373,15 @@ defmodule Lingo.Voice.Connection do
   defp handle_op(5, %{"user_id" => user_id, "ssrc" => ssrc} = data, state) do
     user_id = to_integer(user_id)
     notify(state, {:speaking, user_id, data["speaking"]})
-    {:noreply, %{state | ssrc_users: Map.put(state.ssrc_users, ssrc, user_id)}}
+
+    # a speaker's first packets often beat this message here; hear them now
+    {early, unmapped} = Map.pop(state.unmapped, ssrc, [])
+    state = %{state | ssrc_users: Map.put(state.ssrc_users, ssrc, user_id), unmapped: unmapped}
+
+    {:noreply,
+     early
+     |> Enum.reverse()
+     |> Enum.reduce(state, fn {header, opus}, state -> deliver(state, user_id, header, opus) end)}
   end
 
   # Heartbeat ACK
@@ -377,7 +389,7 @@ defmodule Lingo.Voice.Connection do
 
   # Resumed
   defp handle_op(9, _data, state) do
-    {:noreply, %{state | resuming?: false, status: :connected, attempts: 0}}
+    {:noreply, %{state | resuming?: false, status: :connected, attempts: 0} |> check_ready()}
   end
 
   # Clients Connect
@@ -451,20 +463,10 @@ defmodule Lingo.Voice.Connection do
 
   defp handle_udp(packet, %{secret_key: key} = state) when key != nil do
     with true <- RTP.voice_packet?(packet),
-         {:ok, header, opus} <- RTP.decrypt(state.mode, key, packet),
-         {:ok, user_id} <- Map.fetch(state.ssrc_users, header.ssrc) do
-      case Dave.decrypt(state.dave, user_id, opus, now()) do
-        {:ok, opus, dave} ->
-          notify(
-            state,
-            {:audio, user_id,
-             %{opus: opus, sequence: header.sequence, timestamp: header.timestamp}}
-          )
-
-          {:noreply, %{state | dave: dave}}
-
-        {:error, _reason, dave} ->
-          {:noreply, %{state | dave: dave}}
+         {:ok, header, opus} <- RTP.decrypt(state.mode, key, packet) do
+      case Map.fetch(state.ssrc_users, header.ssrc) do
+        {:ok, user_id} -> {:noreply, deliver(state, user_id, header, opus)}
+        :error -> {:noreply, hold_unmapped(state, header, opus)}
       end
     else
       _not_audio -> {:noreply, state}
@@ -472,6 +474,31 @@ defmodule Lingo.Voice.Connection do
   end
 
   defp handle_udp(_packet, state), do: {:noreply, state}
+
+  defp deliver(state, user_id, header, opus) do
+    case Dave.decrypt(state.dave, user_id, opus, now()) do
+      {:ok, opus, dave} ->
+        packet = %{opus: opus, sequence: header.sequence, timestamp: header.timestamp}
+        notify(state, {:audio, user_id, packet})
+        %{state | dave: dave}
+
+      {:error, _reason, dave} ->
+        %{state | dave: dave}
+    end
+  end
+
+  # kept until a Speaking message says whose they are; a second's worth per
+  # SSRC, for a handful of SSRCs, so stray traffic can't pile up
+  defp hold_unmapped(%{unmapped: unmapped} = state, header, opus) do
+    if Map.has_key?(unmapped, header.ssrc) or map_size(unmapped) < @max_unmapped_ssrcs do
+      held =
+        [{header, opus} | Map.get(unmapped, header.ssrc, [])] |> Enum.take(@max_unmapped_packets)
+
+      %{state | unmapped: Map.put(unmapped, header.ssrc, held)}
+    else
+      state
+    end
+  end
 
   ## Sending audio
 
@@ -521,10 +548,31 @@ defmodule Lingo.Voice.Connection do
   # group keys, which a lone member never gets until someone else joins
   defp check_ready(%{ready?: false, status: :connected} = state) do
     notify(state, :ready)
-    %{state | ready?: true}
+    start_pending(%{state | ready?: true})
   end
 
-  defp check_ready(state), do: state
+  defp check_ready(state), do: start_pending(state)
+
+  # Playback starts once audio can actually go out, from its first packet:
+  # nothing is lost to a connection still coming up, and a bot alone in an
+  # end-to-end encrypted call starts playing when someone joins.
+  defp start_pending(%{pending: packets} = state) when packets != nil do
+    if can_send?(state) do
+      {:ok, player} = Player.start_link(self(), packets)
+      %{state | player: player, pending: nil}
+    else
+      state
+    end
+  end
+
+  defp start_pending(state), do: state
+
+  defp can_send?(state),
+    do: state.status == :connected and state.secret_key != nil and Dave.ready?(state.dave)
+
+  defp playback(%{player: player}) when player != nil, do: :playing
+  defp playback(%{pending: pending}) when pending != nil, do: :waiting
+  defp playback(_state), do: :idle
 
   defp send_dave(state, messages) do
     Enum.each(messages, fn

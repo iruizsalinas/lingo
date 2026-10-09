@@ -66,6 +66,10 @@ defmodule Lingo.Voice.Dave.Session do
   @spec active?(t()) :: boolean()
   def active?(session), do: session.protocol_version > 0 and session.encryptor != nil
 
+  @doc "Whether `encrypt/2` can take media now: DAVE is off, or our keys are in place."
+  @spec ready?(t()) :: boolean()
+  def ready?(session), do: session.protocol_version == 0 or session.encryptor != nil
+
   @spec epoch_authenticator(t()) :: binary() | nil
   def epoch_authenticator(%{group: nil}), do: nil
   def epoch_authenticator(%{group: group}), do: Group.epoch_authenticator(group)
