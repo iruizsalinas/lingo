@@ -5,7 +5,7 @@ defmodule Lingo.Api.ScheduledEvent do
   alias Lingo.Type.ScheduledEvent
 
   def list(guild_id, opts \\ []) do
-    params = if opts[:with_user_count], do: %{with_user_count: true}, else: nil
+    params = opts |> Keyword.drop([:reason]) |> Map.new()
 
     with {:ok, data} <-
            Client.request(:get, "/guilds/#{guild_id}/scheduled-events", params: params) do
@@ -14,7 +14,7 @@ defmodule Lingo.Api.ScheduledEvent do
   end
 
   def get(guild_id, event_id, opts \\ []) do
-    params = if opts[:with_user_count], do: %{with_user_count: true}, else: nil
+    params = opts |> Keyword.drop([:reason]) |> Map.new()
 
     with {:ok, data} <-
            Client.request(:get, "/guilds/#{guild_id}/scheduled-events/#{event_id}",
@@ -51,7 +51,7 @@ defmodule Lingo.Api.ScheduledEvent do
   def get_users(guild_id, event_id, opts \\ []) do
     params =
       opts
-      |> Keyword.take([:limit, :with_member, :before, :after])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
 
     Client.request(:get, "/guilds/#{guild_id}/scheduled-events/#{event_id}/users", params: params)

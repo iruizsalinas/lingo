@@ -82,8 +82,10 @@ defmodule Lingo.Permissions do
 
   @spec resolve([permission()]) :: integer()
   def resolve(permissions) when is_list(permissions) do
-    Enum.reduce(permissions, 0, fn perm, acc ->
-      Bitwise.bor(acc, Map.fetch!(@permissions, perm))
+    Enum.reduce(permissions, 0, fn
+      # raw bits allow permissions Lingo doesn't know about yet
+      bits, acc when is_integer(bits) -> Bitwise.bor(acc, bits)
+      perm, acc -> Bitwise.bor(acc, Map.fetch!(@permissions, perm))
     end)
   end
 

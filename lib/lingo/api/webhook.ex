@@ -63,7 +63,7 @@ defmodule Lingo.Api.Webhook do
   def execute_slack(webhook_id, webhook_token, params, opts \\ []) do
     query_params =
       opts
-      |> Keyword.take([:wait, :thread_id])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
 
     Client.request(:post, "/webhooks/#{webhook_id}/#{webhook_token}/slack",
@@ -75,7 +75,7 @@ defmodule Lingo.Api.Webhook do
   def execute_github(webhook_id, webhook_token, params, opts \\ []) do
     query_params =
       opts
-      |> Keyword.take([:wait, :thread_id])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
 
     Client.request(:post, "/webhooks/#{webhook_id}/#{webhook_token}/github",
@@ -87,7 +87,7 @@ defmodule Lingo.Api.Webhook do
   def execute(webhook_id, webhook_token, params, opts \\ []) when is_map(params) do
     query_params =
       opts
-      |> Keyword.take([:wait, :thread_id, :with_components])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
 
     {files, json} = Map.pop(params, :files)
@@ -106,7 +106,7 @@ defmodule Lingo.Api.Webhook do
   end
 
   def get_message(webhook_id, webhook_token, message_id, opts \\ []) do
-    params = if opts[:thread_id], do: %{thread_id: opts[:thread_id]}, else: nil
+    params = opts |> Keyword.drop([:reason]) |> Map.new()
 
     with {:ok, data} <-
            Client.request(:get, "/webhooks/#{webhook_id}/#{webhook_token}/messages/#{message_id}",
@@ -120,7 +120,7 @@ defmodule Lingo.Api.Webhook do
       when is_map(params) do
     query_params =
       opts
-      |> Keyword.take([:thread_id, :with_components])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
 
     {files, json} = Map.pop(params, :files)
@@ -143,7 +143,7 @@ defmodule Lingo.Api.Webhook do
   end
 
   def delete_message(webhook_id, webhook_token, message_id, opts \\ []) do
-    query_params = if opts[:thread_id], do: %{thread_id: opts[:thread_id]}, else: nil
+    query_params = opts |> Keyword.drop([:reason]) |> Map.new()
 
     Client.request(:delete, "/webhooks/#{webhook_id}/#{webhook_token}/messages/#{message_id}",
       params: query_params

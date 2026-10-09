@@ -7,7 +7,7 @@ defmodule Lingo.Api.Invite do
   def get(invite_code, opts \\ []) do
     params =
       opts
-      |> Keyword.take([:with_counts, :with_expiration, :guild_scheduled_event_id])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
 
     with {:ok, data} <- Client.request(:get, "/invites/#{invite_code}", params: params) do

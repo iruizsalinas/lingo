@@ -13,7 +13,7 @@ defmodule Lingo.Api.Member do
   def list(guild_id, opts \\ []) do
     params =
       opts
-      |> Keyword.take([:limit, :after])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
 
     with {:ok, data} <- Client.request(:get, "/guilds/#{guild_id}/members", params: params) do
@@ -24,7 +24,7 @@ defmodule Lingo.Api.Member do
   def search(guild_id, query, opts \\ []) do
     params =
       opts
-      |> Keyword.take([:limit])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{query: query})
 
     with {:ok, data} <- Client.request(:get, "/guilds/#{guild_id}/members/search", params: params) do

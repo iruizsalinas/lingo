@@ -5,7 +5,7 @@ defmodule Lingo.Api.Guild do
   alias Lingo.Type.{Channel, Guild}
 
   def get(guild_id, opts \\ []) do
-    params = if opts[:with_counts], do: %{with_counts: true}, else: nil
+    params = opts |> Keyword.drop([:reason]) |> Map.new()
 
     with {:ok, data} <- Client.request(:get, "/guilds/#{guild_id}", params: params) do
       {:ok, Guild.new(data)}
@@ -88,7 +88,7 @@ defmodule Lingo.Api.Guild do
   end
 
   def get_widget_image(guild_id, opts \\ []) do
-    params = if opts[:style], do: %{style: opts[:style]}, else: nil
+    params = opts |> Keyword.drop([:reason]) |> Map.new()
     Client.request(:get, "/guilds/#{guild_id}/widget.png", params: params)
   end
 
@@ -118,7 +118,7 @@ defmodule Lingo.Api.Guild do
   def get_prune_count(guild_id, opts \\ []) do
     params =
       opts
-      |> Keyword.take([:days, :include_roles])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
 
     Client.request(:get, "/guilds/#{guild_id}/prune", params: params)

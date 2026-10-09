@@ -18,7 +18,7 @@ defmodule Lingo.Format do
         n when is_integer(n) -> n
       end
 
-    case Map.get(@styles, style) do
+    case Map.get(@styles, style, style) do
       nil -> "<t:#{unix}>"
       code -> "<t:#{unix}:#{code}>"
     end

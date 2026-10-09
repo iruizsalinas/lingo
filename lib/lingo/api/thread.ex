@@ -47,14 +47,14 @@ defmodule Lingo.Api.Thread do
   end
 
   def get_member(channel_id, user_id, opts \\ []) do
-    params = if opts[:with_member], do: %{with_member: true}, else: nil
+    params = opts |> Keyword.drop([:reason]) |> Map.new()
     Client.request(:get, "/channels/#{channel_id}/thread-members/#{user_id}", params: params)
   end
 
   def list_members(channel_id, opts \\ []) do
     params =
       opts
-      |> Keyword.take([:with_member, :after, :limit])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
 
     Client.request(:get, "/channels/#{channel_id}/thread-members", params: params)
@@ -63,7 +63,7 @@ defmodule Lingo.Api.Thread do
   def list_public_archived(channel_id, opts \\ []) do
     params =
       opts
-      |> Keyword.take([:before, :limit])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
 
     Client.request(:get, "/channels/#{channel_id}/threads/archived/public", params: params)
@@ -72,7 +72,7 @@ defmodule Lingo.Api.Thread do
   def list_private_archived(channel_id, opts \\ []) do
     params =
       opts
-      |> Keyword.take([:before, :limit])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
 
     Client.request(:get, "/channels/#{channel_id}/threads/archived/private", params: params)
@@ -81,7 +81,7 @@ defmodule Lingo.Api.Thread do
   def list_joined_private_archived(channel_id, opts \\ []) do
     params =
       opts
-      |> Keyword.take([:before, :limit])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
 
     Client.request(:get, "/channels/#{channel_id}/users/@me/threads/archived/private",

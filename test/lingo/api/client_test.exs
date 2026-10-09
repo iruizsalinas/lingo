@@ -239,6 +239,18 @@ defmodule Lingo.Api.ClientTest do
     assert Lingo.with_max_wait(10, fn -> Process.get(:lingo_max_wait) end) == 10
   end
 
+  describe "query params" do
+    test "options Lingo doesn't know about still reach Discord" do
+      capture({:ok, %{status: 200, headers: [{"content-type", "application/json"}], body: "[]"}})
+
+      assert {:ok, []} = Lingo.Api.Member.list("123456789012", limit: 5, some_new_param: true)
+
+      assert_receive {:sent, :get, url, _, _}
+      query = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+      assert query == %{"limit" => "5", "some_new_param" => "true"}
+    end
+  end
+
   describe "webhook buckets" do
     test "different webhook tokens do not share a rate limit bucket" do
       stub(fn ->

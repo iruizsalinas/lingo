@@ -35,11 +35,16 @@ defmodule Lingo.Gateway.Intents do
   def resolve(intents) when is_integer(intents), do: intents
 
   def resolve(intents) when is_list(intents) do
-    Enum.reduce(intents, 0, fn intent, acc ->
-      case Map.fetch(@intents, intent) do
-        {:ok, value} -> Bitwise.bor(acc, value)
-        :error -> raise ArgumentError, "unknown intent: #{inspect(intent)}"
-      end
+    Enum.reduce(intents, 0, fn
+      # raw bits allow intents Lingo doesn't know about yet
+      bits, acc when is_integer(bits) ->
+        Bitwise.bor(acc, bits)
+
+      intent, acc ->
+        case Map.fetch(@intents, intent) do
+          {:ok, value} -> Bitwise.bor(acc, value)
+          :error -> raise ArgumentError, "unknown intent: #{inspect(intent)}"
+        end
     end)
   end
 

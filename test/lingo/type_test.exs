@@ -973,4 +973,33 @@ defmodule Lingo.TypeTest do
       assert ApplicationCommand.to_payload(cmd)["default_member_permissions"] == "4"
     end
   end
+
+  describe "pass-through of values Lingo doesn't know" do
+    test "component builders send explicit values as given" do
+      assert Component.text_input("t", style: 3).style == 3
+      assert Component.text_input("t", style: :short).style == 1
+      assert Component.button(custom_id: "b", disabled: false).disabled == false
+      assert Component.user_select("u", default_values: []).default_values == []
+      assert Component.default_value("1", :guild) == %{id: "1", type: "guild"}
+    end
+
+    test "unknown enum values are kept instead of replaced by a default" do
+      assert ApplicationCommand.new(%{"type" => 99}).type == 99
+      assert ApplicationCommand.new(%{}).type == :chat_input
+      assert Guild.new(%{"verification_level" => 9}).verification_level == 9
+
+      assert ApplicationCommand.to_payload(%ApplicationCommand{name: "x", type: 99})["type"] ==
+               99
+
+      assert CommandOption.to_payload(%CommandOption{type: 12, name: "x", description: "x"})[
+               "type"
+             ] == 12
+    end
+
+    test "intents and permissions accept raw bits" do
+      import Bitwise
+      assert Lingo.Gateway.Intents.resolve([:guilds, 1 <<< 30]) == (1 ||| 1 <<< 30)
+      assert Lingo.Permissions.resolve([:kick_members, 1 <<< 60]) == (2 ||| 1 <<< 60)
+    end
+  end
 end

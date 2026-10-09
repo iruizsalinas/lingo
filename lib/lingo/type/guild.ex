@@ -135,17 +135,30 @@ defmodule Lingo.Type.Guild do
       afk_timeout: data["afk_timeout"] || 0,
       widget_enabled: data["widget_enabled"] || false,
       widget_channel_id: data["widget_channel_id"],
-      verification_level: Map.get(@verification_levels, data["verification_level"], :none),
+      verification_level:
+        Map.get(
+          @verification_levels,
+          data["verification_level"],
+          data["verification_level"] || :none
+        ),
       default_message_notifications:
-        Map.get(@notification_levels, data["default_message_notifications"], :all_messages),
+        Map.get(
+          @notification_levels,
+          data["default_message_notifications"],
+          data["default_message_notifications"] || :all_messages
+        ),
       explicit_content_filter:
-        Map.get(@explicit_filters, data["explicit_content_filter"], :disabled),
+        Map.get(
+          @explicit_filters,
+          data["explicit_content_filter"],
+          data["explicit_content_filter"] || :disabled
+        ),
       roles:
         (data["roles"] || [])
         |> Enum.map(fn role -> Role.new(Map.put(role, "guild_id", data["id"])) end),
       emojis: (data["emojis"] || []) |> Enum.map(&Emoji.new/1),
       features: data["features"] || [],
-      mfa_level: Map.get(@mfa_levels, data["mfa_level"], :none),
+      mfa_level: Map.get(@mfa_levels, data["mfa_level"], data["mfa_level"] || :none),
       application_id: data["application_id"],
       system_channel_id: data["system_channel_id"],
       system_channel_flags: data["system_channel_flags"] || 0,
@@ -155,7 +168,7 @@ defmodule Lingo.Type.Guild do
       vanity_url_code: data["vanity_url_code"],
       description: data["description"],
       banner: data["banner"],
-      premium_tier: Map.get(@premium_tiers, data["premium_tier"], :none),
+      premium_tier: Map.get(@premium_tiers, data["premium_tier"], data["premium_tier"] || :none),
       premium_subscription_count: data["premium_subscription_count"] || 0,
       preferred_locale: data["preferred_locale"] || "en-US",
       public_updates_channel_id: data["public_updates_channel_id"],
@@ -164,7 +177,7 @@ defmodule Lingo.Type.Guild do
       approximate_member_count: data["approximate_member_count"],
       approximate_presence_count: data["approximate_presence_count"],
       welcome_screen: data["welcome_screen"],
-      nsfw_level: Map.get(@nsfw_levels, data["nsfw_level"], :default),
+      nsfw_level: Map.get(@nsfw_levels, data["nsfw_level"], data["nsfw_level"] || :default),
       stickers: (data["stickers"] || []) |> Enum.map(&Sticker.new/1),
       premium_progress_bar_enabled: data["premium_progress_bar_enabled"] || false,
       safety_alerts_channel_id: data["safety_alerts_channel_id"],

@@ -30,7 +30,7 @@ defmodule Lingo.Api.Reaction do
   def get_users(channel_id, message_id, emoji, opts \\ []) do
     params =
       opts
-      |> Keyword.take([:after, :limit, :type])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
 
     with {:ok, data} <-

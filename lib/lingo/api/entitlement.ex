@@ -7,16 +7,7 @@ defmodule Lingo.Api.Entitlement do
   def list(application_id, opts \\ []) do
     params =
       opts
-      |> Keyword.take([
-        :user_id,
-        :sku_ids,
-        :before,
-        :after,
-        :limit,
-        :guild_id,
-        :exclude_ended,
-        :exclude_deleted
-      ])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
       |> normalize_params()
 

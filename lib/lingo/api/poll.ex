@@ -6,7 +6,7 @@ defmodule Lingo.Api.Poll do
   def get_answer_voters(channel_id, message_id, answer_id, opts \\ []) do
     params =
       opts
-      |> Keyword.take([:after, :limit])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
 
     Client.request(

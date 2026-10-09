@@ -7,7 +7,7 @@ defmodule Lingo.Api.Ban do
   def list(guild_id, opts \\ []) do
     params =
       opts
-      |> Keyword.take([:limit, :before, :after])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
 
     with {:ok, data} <- Client.request(:get, "/guilds/#{guild_id}/bans", params: params) do

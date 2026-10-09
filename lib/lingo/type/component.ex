@@ -98,19 +98,19 @@ defmodule Lingo.Type.Component do
     |> put_if(:label, opts[:label])
     |> put_if(:emoji, opts[:emoji])
     |> put_if(:url, opts[:url])
-    |> put_if(:disabled, if(opts[:disabled], do: true, else: nil))
+    |> put_if(:disabled, opts[:disabled])
     |> put_if(:sku_id, opts[:sku_id])
   end
 
   @spec string_select(String.t(), keyword()) :: map()
   def string_select(custom_id, opts \\ []) do
     %{type: 3, custom_id: custom_id}
-    |> put_if(:options, non_empty(opts[:options]))
+    |> put_if(:options, opts[:options])
     |> put_if(:placeholder, opts[:placeholder])
     |> put_if(:min_values, opts[:min_values])
     |> put_if(:max_values, opts[:max_values])
     |> put_if(:required, opts[:required])
-    |> put_if(:disabled, if(opts[:disabled], do: true, else: nil))
+    |> put_if(:disabled, opts[:disabled])
   end
 
   @spec text_input(String.t(), String.t() | keyword(), keyword()) :: map()
@@ -134,8 +134,10 @@ defmodule Lingo.Type.Component do
     |> put_if(:value, opts[:value])
   end
 
-  defp encode_text_input_style(style) when style in [:paragraph, 2], do: 2
-  defp encode_text_input_style(_style), do: 1
+  defp encode_text_input_style(nil), do: 1
+  defp encode_text_input_style(:short), do: 1
+  defp encode_text_input_style(:paragraph), do: 2
+  defp encode_text_input_style(style), do: style
 
   @spec user_select(String.t(), keyword()) :: map()
   def user_select(custom_id, opts \\ []) do
@@ -143,9 +145,9 @@ defmodule Lingo.Type.Component do
     |> put_if(:placeholder, opts[:placeholder])
     |> put_if(:min_values, opts[:min_values])
     |> put_if(:max_values, opts[:max_values])
-    |> put_if(:default_values, non_empty(opts[:default_values]))
+    |> put_if(:default_values, opts[:default_values])
     |> put_if(:required, opts[:required])
-    |> put_if(:disabled, if(opts[:disabled], do: true, else: nil))
+    |> put_if(:disabled, opts[:disabled])
   end
 
   @spec role_select(String.t(), keyword()) :: map()
@@ -154,9 +156,9 @@ defmodule Lingo.Type.Component do
     |> put_if(:placeholder, opts[:placeholder])
     |> put_if(:min_values, opts[:min_values])
     |> put_if(:max_values, opts[:max_values])
-    |> put_if(:default_values, non_empty(opts[:default_values]))
+    |> put_if(:default_values, opts[:default_values])
     |> put_if(:required, opts[:required])
-    |> put_if(:disabled, if(opts[:disabled], do: true, else: nil))
+    |> put_if(:disabled, opts[:disabled])
   end
 
   @spec mentionable_select(String.t(), keyword()) :: map()
@@ -165,9 +167,9 @@ defmodule Lingo.Type.Component do
     |> put_if(:placeholder, opts[:placeholder])
     |> put_if(:min_values, opts[:min_values])
     |> put_if(:max_values, opts[:max_values])
-    |> put_if(:default_values, non_empty(opts[:default_values]))
+    |> put_if(:default_values, opts[:default_values])
     |> put_if(:required, opts[:required])
-    |> put_if(:disabled, if(opts[:disabled], do: true, else: nil))
+    |> put_if(:disabled, opts[:disabled])
   end
 
   @spec channel_select(String.t(), keyword()) :: map()
@@ -176,10 +178,10 @@ defmodule Lingo.Type.Component do
     |> put_if(:placeholder, opts[:placeholder])
     |> put_if(:min_values, opts[:min_values])
     |> put_if(:max_values, opts[:max_values])
-    |> put_if(:default_values, non_empty(opts[:default_values]))
-    |> put_if(:channel_types, non_empty(opts[:channel_types]))
+    |> put_if(:default_values, opts[:default_values])
+    |> put_if(:channel_types, opts[:channel_types])
     |> put_if(:required, opts[:required])
-    |> put_if(:disabled, if(opts[:disabled], do: true, else: nil))
+    |> put_if(:disabled, opts[:disabled])
   end
 
   # V2 message components
@@ -198,7 +200,7 @@ defmodule Lingo.Type.Component do
   def thumbnail(url, opts \\ []) do
     %{type: 11, media: %{url: url}}
     |> put_if(:description, opts[:description])
-    |> put_if(:spoiler, if(opts[:spoiler], do: true, else: nil))
+    |> put_if(:spoiler, opts[:spoiler])
   end
 
   @spec media_gallery([map()]) :: map()
@@ -209,7 +211,7 @@ defmodule Lingo.Type.Component do
   @spec file(String.t(), keyword()) :: map()
   def file(url, opts \\ []) do
     %{type: 13, file: %{url: url}}
-    |> put_if(:spoiler, if(opts[:spoiler], do: true, else: nil))
+    |> put_if(:spoiler, opts[:spoiler])
   end
 
   @spec separator(keyword()) :: map()
@@ -223,7 +225,7 @@ defmodule Lingo.Type.Component do
   def container(components, opts \\ []) do
     %{type: 17, components: components}
     |> put_if(:accent_color, opts[:accent_color])
-    |> put_if(:spoiler, if(opts[:spoiler], do: true, else: nil))
+    |> put_if(:spoiler, opts[:spoiler])
   end
 
   # Modal components
@@ -240,7 +242,7 @@ defmodule Lingo.Type.Component do
     |> put_if(:min_values, opts[:min_values])
     |> put_if(:max_values, opts[:max_values])
     |> put_if(:required, opts[:required])
-    |> put_if(:file_types, non_empty(opts[:file_types]))
+    |> put_if(:file_types, opts[:file_types])
   end
 
   @spec radio_group(String.t(), [map()], keyword()) :: map()
@@ -274,7 +276,7 @@ defmodule Lingo.Type.Component do
   def gallery_item(url, opts \\ []) do
     %{media: %{url: url}}
     |> put_if(:description, opts[:description])
-    |> put_if(:spoiler, if(opts[:spoiler], do: true, else: nil))
+    |> put_if(:spoiler, opts[:spoiler])
   end
 
   @spec unfurled_media(String.t()) :: map()
@@ -287,17 +289,12 @@ defmodule Lingo.Type.Component do
     %{label: label, value: value}
     |> put_if(:description, opts[:description])
     |> put_if(:emoji, opts[:emoji])
-    |> put_if(:default, if(opts[:default], do: true, else: nil))
+    |> put_if(:default, opts[:default])
   end
 
   @spec default_value(String.t(), String.t() | atom()) :: map()
-  def default_value(id, type) when type in ["user", "role", "channel"] do
-    %{id: id, type: type}
-  end
-
-  def default_value(id, type) when type in [:user, :role, :channel] do
-    %{id: id, type: Atom.to_string(type)}
-  end
+  def default_value(id, type) when is_atom(type), do: %{id: id, type: Atom.to_string(type)}
+  def default_value(id, type), do: %{id: id, type: type}
 
   # Private
 
@@ -313,8 +310,4 @@ defmodule Lingo.Type.Component do
     do: Map.get(@separator_spacings, spacing, spacing)
 
   defp encode_spacing(spacing), do: spacing
-
-  defp non_empty(nil), do: nil
-  defp non_empty([]), do: nil
-  defp non_empty(list), do: list
 end

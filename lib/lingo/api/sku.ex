@@ -10,7 +10,7 @@ defmodule Lingo.Api.SKU do
   def list_subscriptions(sku_id, opts \\ []) do
     params =
       opts
-      |> Keyword.take([:before, :after, :limit, :user_id])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
 
     Client.request(:get, "/skus/#{sku_id}/subscriptions", params: params)

@@ -25,7 +25,7 @@ defmodule Lingo.Api.User do
   def get_guilds(opts \\ []) do
     params =
       opts
-      |> Keyword.take([:before, :after, :limit, :with_counts])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
 
     Client.request(:get, "/users/@me/guilds", params: params)

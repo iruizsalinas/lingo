@@ -7,7 +7,7 @@ defmodule Lingo.Api.AuditLog do
   def get(guild_id, opts \\ []) do
     params =
       opts
-      |> Keyword.take([:user_id, :action_type, :before, :after, :limit])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
 
     with {:ok, data} <- Client.request(:get, "/guilds/#{guild_id}/audit-logs", params: params) do

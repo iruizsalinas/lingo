@@ -17,7 +17,7 @@ defmodule Lingo.Api.Interaction do
 
   def create_response(interaction_id, interaction_token, type, data \\ nil, opts \\ []) do
     type_int = Map.get(@response_types, type, type)
-    params = if opts[:with_response], do: %{with_response: true}, else: nil
+    params = opts |> Keyword.drop([:reason]) |> Map.new()
 
     case data do
       %{files: files} = data_map when is_list(files) ->

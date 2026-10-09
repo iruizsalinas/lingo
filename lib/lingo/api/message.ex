@@ -31,7 +31,7 @@ defmodule Lingo.Api.Message do
   def list(channel_id, opts \\ []) do
     params =
       opts
-      |> Keyword.take([:around, :before, :after, :limit])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
 
     with {:ok, data} <- Client.request(:get, "/channels/#{channel_id}/messages", params: params) do
@@ -127,32 +127,7 @@ defmodule Lingo.Api.Message do
 
     params =
       opts
-      |> Keyword.take([
-        :content,
-        :author_id,
-        :author_type,
-        :mentions,
-        :mentions_role_id,
-        :mention_everyone,
-        :replied_to_user_id,
-        :replied_to_message_id,
-        :has,
-        :slop,
-        :min_id,
-        :max_id,
-        :channel_id,
-        :pinned,
-        :embed_type,
-        :embed_provider,
-        :link_hostname,
-        :attachment_filename,
-        :attachment_extension,
-        :limit,
-        :offset,
-        :sort_by,
-        :sort_order,
-        :include_nsfw
-      ])
+      |> Keyword.drop([:search_index_retries, :search_index_short_delay])
       |> normalize_search_params()
 
     do_search(guild_id, params, search_index_retries, search_index_short_delay)

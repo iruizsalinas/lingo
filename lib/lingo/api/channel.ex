@@ -78,7 +78,7 @@ defmodule Lingo.Api.Channel do
   def get_pinned_messages(channel_id, opts \\ []) do
     params =
       opts
-      |> Keyword.take([:before, :limit])
+      |> Keyword.drop([:reason])
       |> Enum.into(%{})
 
     with {:ok, data} <-

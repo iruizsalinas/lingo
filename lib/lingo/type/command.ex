@@ -49,7 +49,7 @@ defmodule Lingo.Type.ApplicationCommand do
   def new(data) when is_map(data) do
     %__MODULE__{
       id: data["id"],
-      type: Map.get(@command_types, data["type"], :chat_input),
+      type: Map.get(@command_types, data["type"], data["type"] || :chat_input),
       application_id: data["application_id"],
       guild_id: data["guild_id"],
       name: data["name"],
@@ -72,7 +72,7 @@ defmodule Lingo.Type.ApplicationCommand do
     payload =
       %{
         "name" => cmd.name,
-        "type" => Map.get(@command_types_reverse, cmd.type, 1)
+        "type" => Map.get(@command_types_reverse, cmd.type, cmd.type)
       }
       |> maybe_put_command_body(cmd)
 
@@ -205,7 +205,7 @@ defmodule Lingo.Type.CommandOption do
   @spec to_payload(t()) :: map()
   def to_payload(%__MODULE__{} = opt) do
     %{
-      "type" => Map.fetch!(@option_types_reverse, opt.type),
+      "type" => Map.get(@option_types_reverse, opt.type, opt.type),
       "name" => opt.name,
       "description" => opt.description,
       "required" => opt.required

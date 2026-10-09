@@ -29,7 +29,7 @@ defmodule Lingo.Type.Presence do
     %__MODULE__{
       user: User.new(data["user"]),
       guild_id: data["guild_id"],
-      status: Map.get(@statuses, data["status"], :offline),
+      status: Map.get(@statuses, data["status"], data["status"] || :offline),
       activities: (data["activities"] || []) |> Enum.map(&Lingo.Type.Activity.new/1),
       client_status: data["client_status"]
     }
@@ -99,7 +99,7 @@ defmodule Lingo.Type.Activity do
   def new(data) when is_map(data) do
     %__MODULE__{
       name: data["name"],
-      type: Map.get(@activity_types, data["type"], :playing),
+      type: Map.get(@activity_types, data["type"], data["type"] || :playing),
       url: data["url"],
       created_at: data["created_at"],
       timestamps: data["timestamps"],
@@ -122,7 +122,7 @@ defmodule Lingo.Type.Activity do
   @spec to_payload(t()) :: map()
   def to_payload(%__MODULE__{} = a) do
     # bots may only set name, state, type and url
-    %{"name" => a.name, "type" => Map.get(@activity_types_reverse, a.type, 0)}
+    %{"name" => a.name, "type" => Map.get(@activity_types_reverse, a.type, a.type)}
     |> then(fn m -> if a.url, do: Map.put(m, "url", a.url), else: m end)
     |> then(fn m -> if a.state, do: Map.put(m, "state", a.state), else: m end)
   end

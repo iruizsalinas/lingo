@@ -95,6 +95,14 @@ defmodule Lingo.Gateway.PayloadTest do
       payload = Payload.request_guild_members("g1", nonce: "abc")
       assert payload["d"]["nonce"] == "abc"
     end
+
+    test "passes explicit values through for Discord to judge" do
+      d = Payload.request_guild_members("g1", user_ids: ["u1"], query: "a", presences: false)["d"]
+      assert d["user_ids"] == ["u1"]
+      assert d["query"] == "a"
+      assert d["limit"] == 0
+      assert d["presences"] == false
+    end
   end
 
   describe "request_channel_info/2" do

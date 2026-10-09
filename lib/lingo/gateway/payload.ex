@@ -104,20 +104,22 @@ defmodule Lingo.Gateway.Payload do
   def request_guild_members(guild_id, opts \\ []) do
     d = %{"guild_id" => guild_id}
 
+    # with neither user_ids nor query, request the whole member list
     d =
-      cond do
-        opts[:user_ids] ->
-          Map.put(d, "user_ids", opts[:user_ids])
+      if opts[:user_ids] == nil and opts[:query] == nil,
+        do: Map.merge(d, %{"query" => "", "limit" => 0}),
+        else: d
 
-        opts[:query] != nil ->
-          Map.merge(d, %{"query" => opts[:query], "limit" => opts[:limit] || 0})
+    d =
+      Enum.reduce([:user_ids, :query, :limit, :presences, :nonce], d, fn key, acc ->
+        case Keyword.fetch(opts, key) do
+          {:ok, value} when value != nil -> Map.put(acc, Atom.to_string(key), value)
+          _ -> acc
+        end
+      end)
 
-        true ->
-          Map.merge(d, %{"query" => "", "limit" => opts[:limit] || 0})
-      end
-
-    d = if opts[:presences], do: Map.put(d, "presences", true), else: d
-    d = if opts[:nonce], do: Map.put(d, "nonce", opts[:nonce]), else: d
+    # limit is required alongside query
+    d = if Map.has_key?(d, "query"), do: Map.put_new(d, "limit", 0), else: d
 
     %{"op" => 8, "d" => d}
   end
