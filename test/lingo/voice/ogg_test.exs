@@ -25,7 +25,7 @@ defmodule Lingo.Voice.OggTest do
 
   test "reads packets and skips the Opus headers" do
     data =
-      page([{"OpusHead" <> <<1, 2>>, true}]) <>
+      page([{<<"OpusHead", 1, 2, 0::64, 0>>, true}]) <>
         page([{"OpusTags", true}]) <>
         page([{"one", true}, {"two", true}])
 
@@ -62,7 +62,13 @@ defmodule Lingo.Voice.OggTest do
 
   test "reads a file lazily" do
     path = Path.join(System.tmp_dir!(), "lingo-ogg-#{System.unique_integer([:positive])}.opus")
-    File.write!(path, page([{"OpusHead", true}]) <> page([{"a", true}, {"b", true}]))
+
+    File.write!(
+      path,
+      page([{<<"OpusHead", 1, 2, 0::64, 0>>, true}]) <>
+        page([{"OpusTags", true}]) <> page([{"a", true}, {"b", true}])
+    )
+
     on_exit(fn -> File.rm(path) end)
 
     assert Enum.to_list(Ogg.stream!(path)) == ["a", "b"]
@@ -71,7 +77,7 @@ defmodule Lingo.Voice.OggTest do
   test "ffmpeg is asked for 48 kHz stereo Opus in Ogg on stdout" do
     args = FFmpeg.args("song.mp3", bitrate: 96_000)
 
-    assert ["-hide_banner", "-loglevel", "error", "-i", "song.mp3" | _] = args
+    assert ["-hide_banner", "-loglevel", "error", "-nostdin", "-i", "song.mp3" | _] = args
     assert Enum.chunk_every(args, 2, 1) |> Enum.member?(["-b:a", "96000"])
     assert List.last(args) == "pipe:1"
   end
@@ -87,5 +93,21 @@ defmodule Lingo.Voice.OggTest do
 
     # ten 20 ms frames: the last one goes out about 180 ms in
     assert System.monotonic_time(:millisecond) - start >= 170
+  end
+
+  test "the player picks up the beat after a stalled source instead of bursting" do
+    stall = Stream.map([:stall], fn _ -> Process.sleep(300) && <<0xFC, 0>> end)
+    packets = Stream.concat([stall, for(n <- 1..6, do: <<0xFC, n>>)])
+    {:ok, player} = Player.start_link(self(), packets)
+
+    times =
+      for n <- 0..6 do
+        assert_receive {:player_frame, ^player, <<0xFC, ^n>>}, 1_000
+        System.monotonic_time(:millisecond)
+      end
+
+    # the late first packet restarts the clock: the rest still come 20 ms apart
+    intervals = times |> Enum.chunk_every(2, 1, :discard) |> Enum.map(fn [a, b] -> b - a end)
+    assert Enum.all?(intervals, &(&1 >= 10)), "burst: #{inspect(intervals)}"
   end
 end

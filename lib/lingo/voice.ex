@@ -3,8 +3,8 @@ defmodule Lingo.Voice do
   Voice: joining channels, playing audio and receiving it.
 
   Audio is Opus all the way through. Lingo has no native dependencies, so it
-  can't encode or decode raw PCM itself; play Ogg Opus files with
-  `play_file/2`, anything ffmpeg understands with `play_url/3`, or any
+  can't encode or decode raw PCM itself; play Ogg, WebM or Matroska Opus
+  files with `play_file/2`, anything ffmpeg understands with `play_url/3`, or any
   enumerable of Opus packets with `play/2`. Received audio arrives as Opus
   packets per user.
 
@@ -21,7 +21,7 @@ defmodule Lingo.Voice do
       end
   """
 
-  alias Lingo.Voice.{Connection, FFmpeg, Manager, Ogg}
+  alias Lingo.Voice.{Connection, FFmpeg, Manager, Ogg, WebM}
 
   @doc """
   Joins a voice channel and waits until audio can flow.
@@ -39,9 +39,24 @@ defmodule Lingo.Voice do
   @spec play(String.t() | integer(), Enumerable.t()) :: :ok | {:error, :not_connected}
   def play(guild_id, packets), do: with_connection(guild_id, &Connection.play(&1, packets))
 
-  @doc "Plays an Ogg Opus file."
-  @spec play_file(String.t() | integer(), Path.t()) :: :ok | {:error, :not_connected}
-  def play_file(guild_id, path), do: play(guild_id, Ogg.stream!(path))
+  @doc """
+  Plays an Opus file without transcoding: Ogg (`.opus`, `.ogg`) or WebM and
+  Matroska (`.webm`, `.mkv`), told apart by their contents.
+  """
+  @spec play_file(String.t() | integer(), Path.t()) ::
+          :ok | {:error, :not_connected | :unsupported_format | File.posix()}
+  def play_file(guild_id, path) do
+    with {:ok, reader} <- container(path), do: play(guild_id, reader.stream!(path))
+  end
+
+  defp container(path) do
+    case File.open(path, [:read, :binary], &IO.binread(&1, 4)) do
+      {:ok, "OggS"} -> {:ok, Ogg}
+      {:ok, <<0x1A, 0x45, 0xDF, 0xA3>>} -> {:ok, WebM}
+      {:ok, _other} -> {:error, :unsupported_format}
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
   @doc "Plays anything ffmpeg can read, transcoding it on the fly. Needs ffmpeg installed."
   @spec play_url(String.t() | integer(), String.t(), keyword()) :: :ok | {:error, :not_connected}

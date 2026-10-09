@@ -23,11 +23,18 @@ defmodule Lingo.Voice.FFmpeg do
 
   @doc false
   def args(input, opts) do
-    ~w(-hide_banner -loglevel error -i) ++
-      [input] ++
+    ~w(-hide_banner -loglevel error -nostdin) ++
+      reconnect(input) ++
+      ["-i", input] ++
       ~w(-vn -c:a libopus -ar 48000 -ac 2 -frame_duration 20 -application audio) ++
       ["-b:a", to_string(Keyword.get(opts, :bitrate, 64_000))] ++ ~w(-f ogg pipe:1)
   end
+
+  # streams over HTTP drop now and then; ffmpeg can pick them up where they stopped
+  defp reconnect("http" <> _url),
+    do: ~w(-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5)
+
+  defp reconnect(_file), do: []
 
   defp open(input, opts) do
     executable = Keyword.get_lazy(opts, :ffmpeg, fn -> System.find_executable("ffmpeg") end)
@@ -39,7 +46,8 @@ defmodule Lingo.Voice.FFmpeg do
   defp read(port) do
     receive do
       {^port, {:data, data}} -> {[data], port}
-      {^port, {:exit_status, _status}} -> {:halt, port}
+      {^port, {:exit_status, 0}} -> {:halt, port}
+      {^port, {:exit_status, status}} -> raise "ffmpeg failed with exit status #{status}"
     end
   end
 

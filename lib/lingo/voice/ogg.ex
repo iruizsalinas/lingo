@@ -4,10 +4,16 @@ defmodule Lingo.Voice.Ogg do
 
   Parsing works on a stream of binary chunks, so files and pipes are read
   lazily. Pages with a bad checksum are skipped, as are the OpusHead and
-  OpusTags header packets.
+  OpusTags header packets. Chained files, one track after another as radio
+  streams send them, play through.
   """
 
   import Bitwise
+
+  alias Lingo.Voice.Opus
+
+  # an Opus packet holds at most 120 ms: 48 frames of 1275 bytes, and framing
+  @max_packet 65_536
 
   @crc_table (for i <- 0..255 do
                 Enum.reduce(1..8, i <<< 24, fn _bit, crc ->
@@ -25,14 +31,12 @@ defmodule Lingo.Voice.Ogg do
   @doc "Turns a stream of Ogg data chunks into a stream of Opus packets."
   @spec packets(Enumerable.t()) :: Enumerable.t()
   def packets(chunks) do
-    chunks
-    |> Stream.transform(%{buffer: <<>>, partial: [], serial: nil}, &parse/2)
-    |> Stream.reject(&header_packet?/1)
+    Stream.transform(
+      chunks,
+      %{buffer: <<>>, partial: {[], 0}, serial: nil, tags?: false},
+      &parse/2
+    )
   end
-
-  defp header_packet?(<<"OpusHead", _::binary>>), do: true
-  defp header_packet?(<<"OpusTags", _::binary>>), do: true
-  defp header_packet?(_packet), do: false
 
   defp parse(chunk, state), do: read_pages(%{state | buffer: state.buffer <> chunk}, [])
 
@@ -50,24 +54,57 @@ defmodule Lingo.Voice.Ogg do
     end
   end
 
-  # one logical stream: pages of any other stream are ignored
+  # An OpusHead starts an Opus stream and makes it the one we read. That's how
+  # chained files (one track after another, as radio streams do) and files
+  # with other codecs alongside work. The OpusTags packet after it is skipped.
+  defp collect(
+         state,
+         %{continued?: false, segments: [{<<"OpusHead", _::binary>> = head, true} | _]} = page,
+         packets
+       ) do
+    case Opus.check_head(head) do
+      :ok -> {%{state | serial: page.serial, partial: {[], 0}, tags?: true}, packets}
+      {:error, reason} -> raise ArgumentError, reason
+    end
+  end
+
+  # pages of any other logical stream are ignored
   defp collect(%{serial: serial} = state, %{serial: page_serial}, packets)
        when serial != nil and serial != page_serial,
        do: {state, packets}
 
   defp collect(state, page, packets) do
-    # a continued packet without its beginning (we started mid-stream) is dropped
-    partial = if page.continued?, do: state.partial, else: []
+    partial =
+      cond do
+        not page.continued? -> {[], 0}
+        state.partial != {[], 0} -> state.partial
+        # the rest of a packet whose beginning we never saw (we started mid-stream)
+        true -> :drop
+      end
 
-    {partial, packets} =
-      Enum.reduce(page.segments, {partial, packets}, fn {segment, complete?},
-                                                        {partial, packets} ->
-        if complete?,
-          do: {[], [IO.iodata_to_binary([partial, segment]) | packets]},
-          else: {[partial, segment], packets}
-      end)
+    {partial, tags?, packets} =
+      Enum.reduce(page.segments, {partial, state.tags?, packets}, &segment/2)
 
-    {%{state | partial: partial, serial: page.serial}, packets}
+    {%{state | partial: partial, serial: page.serial, tags?: tags?}, packets}
+  end
+
+  # the OpusTags packet, cover art and all, is dropped as it goes by
+  defp segment({_data, complete?}, {_partial, true, packets}),
+    do: {{[], 0}, not complete?, packets}
+
+  defp segment({_data, complete?}, {:drop, false, packets}),
+    do: {if(complete?, do: {[], 0}, else: :drop), false, packets}
+
+  defp segment({data, true}, {{partial, _size}, false, packets}),
+    do: {{[], 0}, false, [IO.iodata_to_binary([partial, data]) | packets]}
+
+  defp segment({data, false}, {{partial, size}, false, packets}) do
+    size = size + byte_size(data)
+
+    if size > @max_packet,
+      do: raise(ArgumentError, "an Ogg packet is larger than #{@max_packet} bytes")
+
+    {{[partial, data], size}, false, packets}
   end
 
   defp next_page(

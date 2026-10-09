@@ -24,17 +24,19 @@ Moving the bot to another channel is another `join/3`. If Discord moves the bot 
 Audio is Opus. Lingo has no native dependencies, so it doesn't encode raw PCM itself. There are three ways to play something:
 
 ```elixir
-# an Ogg Opus file (.opus / .ogg)
+# an Opus file, played as is: Ogg (.opus, .ogg) or WebM/Matroska (.webm, .mkv)
 Lingo.Voice.play_file(guild_id, "priv/hello.opus")
 
-# anything ffmpeg can read: mp3, wav, a URL... (needs ffmpeg installed)
+# anything ffmpeg can read: mp3, m4a, flac, wav, video files, a URL... (needs ffmpeg installed)
 Lingo.Voice.play_url(guild_id, "https://example.com/song.mp3", bitrate: 96_000)
 
 # any enumerable of Opus packets
 Lingo.Voice.play(guild_id, packets)
 ```
 
-Playing replaces whatever is already playing. `Lingo.Voice.stop(guild_id)` stops it. Packets are paced in real time from their own durations, and playback ends with a few frames of silence, as Discord recommends.
+`play_file/2` needs no ffmpeg and doesn't re-encode, so it's the cheapest way to play audio that is already Opus, such as YouTube's WebM audio. It tells the container from the file's contents, plays chained Ogg files (one track after another) through, and refuses surround Opus, which Discord can't play; downmix it with ffmpeg first. HTTP inputs to `play_url/3` reconnect if the stream drops.
+
+Playing replaces whatever is already playing. `Lingo.Voice.stop(guild_id)` stops it. Packets are paced in real time from their own durations; if the source falls behind, playback picks up the beat again instead of rushing to catch up. It ends with a few frames of silence, as Discord recommends.
 
 To convert audio ahead of time:
 
@@ -61,6 +63,7 @@ end
 | `{:lingo_voice, guild_id, {:audio, user_id, packet}}` | An Opus packet arrived |
 | `{:lingo_voice, guild_id, {:speaking, user_id, flags}}` | Someone started or stopped speaking |
 | `{:lingo_voice, guild_id, :playback_finished}` | Our playback ended |
+| `{:lingo_voice, guild_id, {:playback_failed, reason}}` | The audio source failed, e.g. ffmpeg couldn't read the input |
 | `{:lingo_voice, guild_id, {:disconnected, reason}}` | The connection closed for good |
 
 Packets come in network order. Some may be missing, which is normal for real-time audio. Decoding Opus to PCM needs an external decoder such as ffmpeg.
@@ -71,7 +74,7 @@ Every voice packet is encrypted between the bot and Discord with AES-256-GCM, or
 
 On top of that, DAVE encrypts audio end to end between everyone in the call, using an MLS group (RFC 9420) that Discord's voice server coordinates. Lingo joins the group, follows membership changes, and switches keys exactly when Discord says to.
 
-While end-to-end encryption is on, audio is never sent unencrypted. In particular, a bot alone in a channel holds its audio until someone else joins and the group's keys exist.
+While end-to-end encryption is on, audio is never sent unencrypted. In particular, a bot alone in a channel holds its audio until someone else joins and the group's keys exist. On the receiving side, unencrypted audio is only accepted for 10 seconds after a key change, as in libdave, so people still upgrading aren't cut off.
 
 `Lingo.Voice.Connection.info/1` reports the current state:
 

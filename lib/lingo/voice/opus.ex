@@ -35,4 +35,21 @@ defmodule Lingo.Voice.Opus do
   end
 
   def samples(_packet), do: 960
+
+  @doc """
+  Checks an OpusHead header (RFC 7845, section 5.1) describes a single Opus
+  stream, mono or stereo: the only kind Discord plays. Surround audio packs
+  several streams into each packet and has to be downmixed first.
+  """
+  @spec check_head(binary()) :: :ok | {:error, String.t()}
+  def check_head(<<"OpusHead", version, channels, _::binary-size(8), family, rest::binary>>)
+      when version < 16 do
+    case {family, rest} do
+      {0, _} when channels in 1..2 -> :ok
+      {_family, <<1, _::binary>>} when channels > 0 -> :ok
+      _surround -> {:error, "#{channels}-channel Opus can't be played; downmix it to stereo"}
+    end
+  end
+
+  def check_head(_head), do: {:error, "not a valid OpusHead"}
 end

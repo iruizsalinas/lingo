@@ -15,6 +15,8 @@ defmodule Lingo.Voice.Connection do
       received, where `packet` has `:opus`, `:sequence` and `:timestamp`
     * `{:lingo_voice, guild_id, {:speaking, user_id, flags}}`
     * `{:lingo_voice, guild_id, :playback_finished}`
+    * `{:lingo_voice, guild_id, {:playback_failed, reason}}` when the audio
+      source fails, for example ffmpeg can't read the input
     * `{:lingo_voice, guild_id, {:disconnected, reason}}`
   """
 
@@ -235,7 +237,14 @@ defmodule Lingo.Voice.Connection do
   end
 
   def handle_info({:EXIT, player, reason}, %{player: player} = state) when reason != :normal do
-    Logger.error("Lingo voice #{state.guild_id}: playback crashed: #{inspect(reason)}")
+    reason =
+      case reason do
+        {exception, _stacktrace} when is_exception(exception) -> exception
+        reason -> reason
+      end
+
+    Logger.error("Lingo voice #{state.guild_id}: playback failed: #{inspect(reason)}")
+    notify(state, {:playback_failed, reason})
     {:noreply, %{state | player: nil} |> set_speaking(false)}
   end
 
