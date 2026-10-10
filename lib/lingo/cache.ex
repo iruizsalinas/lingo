@@ -101,6 +101,23 @@ defmodule Lingo.Cache do
       never overwrites newer data or brings back a deleted entry. This can
       also skip a refresh after an unrelated change.
 
+  ## Several nodes
+
+  When one bot runs on several connected nodes (see `Lingo.Gateway`), each
+  node caches what its own shards receive. Reads stay on the node they're
+  made on, so they stay ETS lookups. Pass `cluster: true` to ask the other
+  nodes on a miss: reads of a guild's data (guilds, members, roles,
+  presences, voice states) ask the node running that guild's shard, the
+  others (channels, users, messages) ask every node at once, and
+  `Lingo.Cache.Guild.list(cluster: true)` gathers every node's guilds.
+
+      Lingo.Cache.Member.get(guild_id, user_id, cluster: true)
+
+  A remote read is a network round trip, given up after 2 seconds (a node
+  that doesn't answer counts as a miss). Event payloads' `old` and the
+  `Lingo.Helper.*` checks read this node only: a guild's events arrive on
+  the node that runs its shard.
+
   ## Legacy options
 
   `:enabled` and `:max_messages_per_channel` still work; prefer `:only` and

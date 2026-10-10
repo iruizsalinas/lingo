@@ -2,14 +2,14 @@ defmodule Lingo.Gateway.ShardManager do
   @moduledoc false
 
   # Starts a bot's shards on this node, restarts dead ones, routes payloads
-  # to the right shard (on whichever connected node runs it) and fires :ready
-  # once every shard here is up. Resharding is in Reshard; each generation of
-  # shards is a Pool.
+  # to the right shard (on whichever connected node runs it), and once every
+  # shard here is up registers commands and answers await_ready/1. Resharding
+  # is in Reshard; each generation of shards is a Pool.
 
   # time for every shard to close before the session store saves
   use GenServer, shutdown: 30_000
 
-  alias Lingo.Gateway.{Connection, Dispatcher, Groups, Intents, Sessions, Shard, Sharding}
+  alias Lingo.Gateway.{Connection, Groups, Intents, Sessions, Shard, Sharding}
   alias Lingo.Gateway.ShardManager.{Pool, Reshard}
   alias Lingo.Instance
 
@@ -29,7 +29,8 @@ defmodule Lingo.Gateway.ShardManager do
     compression: :zlib,
     presence: [],
     current: %Pool{},
-    ready_fired: false
+    ready: false,
+    ready_waiters: []
   ]
 
   def start_link(opts) do
@@ -47,12 +48,30 @@ defmodule Lingo.Gateway.ShardManager do
     do: GenServer.cast(server(), {:send_to_guild_shard, guild_id, payload})
 
   def shard_ready(shard_id, count), do: GenServer.cast(server(), {:shard_ready, shard_id, count})
-  def reshard, do: GenServer.cast(server(), :reshard)
+
+  # Discord's plan is fetched here, in the caller, so the manager never
+  # waits on HTTP; the manager checks again when it gets it
+  def reshard do
+    with :ok <- GenServer.call(server(), :reshard_allowed),
+         {:ok, plan} <- Sharding.fetch() do
+      GenServer.call(server(), {:reshard, plan})
+    end
+  end
+
   def shard_for_guild(guild_id), do: GenServer.call(server(), {:shard_for_guild, guild_id})
   def shard_count, do: GenServer.call(server(), :shard_count)
   def shard_status(shard_id), do: GenServer.call(server(), {:shard_status, shard_id})
   def shard_statuses, do: GenServer.call(server(), :shard_statuses)
   def restart_shard(shard_id), do: GenServer.call(server(), {:restart_shard, shard_id}, 30_000)
+
+  # the flag answers without a call once ready, even with a timeout of 0
+  def await_ready(timeout) do
+    if Instance.get(:gateway_ready, false),
+      do: :ok,
+      else: GenServer.call(server(), :await_ready, timeout)
+  catch
+    :exit, {:timeout, _} -> {:error, :timeout}
+  end
 
   defp cluster_cast(message) do
     case Groups.managers(Instance.current()) do
@@ -188,13 +207,28 @@ defmodule Lingo.Gateway.ShardManager do
     end
   end
 
-  def handle_cast(:reshard, state), do: {:noreply, Reshard.begin(state)}
-
   @impl true
   def handle_call({:shard_for_guild, guild_id}, _from, state),
     do: {:reply, Sharding.shard_for(guild_id, state.current.count), state}
 
   def handle_call(:shard_count, _from, state), do: {:reply, state.current.count, state}
+
+  def handle_call(:reshard_allowed, _from, state) do
+    case Reshard.blocked(state) do
+      nil -> {:reply, :ok, state}
+      reason -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:reshard, plan}, _from, state) do
+    {reply, state} = Reshard.request(state, plan)
+    {:reply, reply, state}
+  end
+
+  def handle_call(:await_ready, _from, %{ready: true} = state), do: {:reply, :ok, state}
+
+  def handle_call(:await_ready, from, state),
+    do: {:noreply, %{state | ready_waiters: [from | state.ready_waiters]}}
 
   def handle_call({:shard_status, shard_id}, _from, state) do
     status = if shard = state.current.shards[shard_id], do: Shard.status(shard), else: :dead
@@ -215,10 +249,14 @@ defmodule Lingo.Gateway.ShardManager do
     end
   end
 
-  defp maybe_fire_ready(%{ready_fired: false, current: pool} = state) do
+  # once, at startup: a reshard or a reconnecting shard doesn't count
+  defp maybe_fire_ready(%{ready: false, current: pool} = state) do
     if Pool.all_ready?(pool) do
-      Dispatcher.dispatch(:ready, %{shard_count: pool.count})
-      %{state | ready_fired: true}
+      Instance.put(state.bot, :gateway_ready, true)
+      Lingo.Telemetry.execute([:gateway, :ready], %{}, %{shard_count: pool.count})
+      Lingo.Bot.Sync.register_on_ready()
+      Enum.each(state.ready_waiters, &GenServer.reply(&1, :ok))
+      %{state | ready: true, ready_waiters: []}
     else
       state
     end

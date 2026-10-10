@@ -1,13 +1,13 @@
 defmodule Lingo.Gateway.Dispatcher.Message do
   @moduledoc false
 
-  # Message and reaction events. Each parse/2 updates the cache and
-  # returns what the bot's handle_event/2 receives.
+  # Message events. Each parse/2 updates the cache and returns the event's
+  # payload; reactions touch no cache, so the catalog builds them.
 
   alias Lingo.Cache
   alias Lingo.Cache.Store
-
-  alias Lingo.Type.{Message, ReactionEvent}
+  alias Lingo.Event.{MessageDelete, MessageDeleteBulk}
+  alias Lingo.Type.Message
 
   def parse(:message_create, data) do
     msg = Message.new(data)
@@ -24,30 +24,18 @@ defmodule Lingo.Gateway.Dispatcher.Message do
   end
 
   def parse(:message_delete, data) do
-    old = Cache.Message.get(data["channel_id"], data["id"])
-    Store.delete_message(data["channel_id"], data["id"])
-
-    %{
-      old: old,
-      new: %{id: data["id"], channel_id: data["channel_id"], guild_id: data["guild_id"]}
-    }
+    event = MessageDelete.new(data)
+    old = Cache.Message.get(event.channel_id, event.id)
+    Store.delete_message(event.channel_id, event.id)
+    %{event | old: old}
   end
 
   def parse(:message_delete_bulk, data) do
-    ids = data["ids"] || []
-    Store.put_all(:messages, ids, fn id -> Store.delete_message(data["channel_id"], id) end)
-    %{ids: ids, channel_id: data["channel_id"], guild_id: data["guild_id"]}
+    event = MessageDeleteBulk.new(data)
+    old = for id <- event.ids, msg = Cache.Message.get(event.channel_id, id), do: msg
+    Store.put_all(:messages, event.ids, &Store.delete_message(event.channel_id, &1))
+    %{event | old: old}
   end
-
-  def parse(:message_reaction_add, data), do: ReactionEvent.new(data)
-
-  def parse(:message_reaction_remove, data), do: ReactionEvent.new(data)
-
-  def parse(:message_reaction_remove_all, data) do
-    %{channel_id: data["channel_id"], message_id: data["message_id"], guild_id: data["guild_id"]}
-  end
-
-  def parse(:message_reaction_remove_emoji, data), do: ReactionEvent.new(data)
 
   def parse(_event, _data), do: :skip
 end

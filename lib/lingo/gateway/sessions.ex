@@ -6,9 +6,12 @@ defmodule Lingo.Gateway.Sessions do
   # are keyed by {shard_id, shard_count}: a session only resumes under the
   # shard count it was identified with.
   #
-  # With a session store configured, sessions are loaded when the bot starts
-  # and saved when it stops. This process starts before the shard manager, so
-  # it stops after every shard has closed.
+  # With a session store configured, sessions are loaded when the bot starts,
+  # each shard's is saved when it starts or resumes and forgotten when it
+  # can't be resumed, and every shard's is saved again when the bot stops,
+  # with its last sequence number. Store calls run here, one at a time, never
+  # in a connection. This process starts before the shard manager, so it
+  # stops after every shard has closed.
 
   use GenServer
 
@@ -18,7 +21,7 @@ defmodule Lingo.Gateway.Sessions do
 
   def start_link(opts) do
     bot = Keyword.fetch!(opts, :bot)
-    GenServer.start_link(__MODULE__, opts, name: Instance.process_name(bot, __MODULE__))
+    GenServer.start_link(__MODULE__, opts, name: name(bot))
   end
 
   @spec fetch(term(), non_neg_integer(), pos_integer()) ::
@@ -32,12 +35,17 @@ defmodule Lingo.Gateway.Sessions do
     end
   end
 
+  @doc "Records a new session (READY), and saves it to the store."
   @spec put(term(), non_neg_integer(), pos_integer(), String.t(), String.t(), non_neg_integer()) ::
           :ok
   def put(bot, shard_id, count, session_id, url, seq) do
     if table = table(bot), do: :ets.insert(table, {{shard_id, count}, session_id, url, seq})
-    :ok
+    save(bot, shard_id, count)
   end
+
+  @doc "Saves a shard's session to the store, as it is now (RESUMED)."
+  @spec save(term(), non_neg_integer(), pos_integer()) :: :ok
+  def save(bot, shard_id, count), do: GenServer.cast(name(bot), {:save, {shard_id, count}})
 
   @doc "Records the latest sequence number of a stored session."
   @spec seq(term(), non_neg_integer(), pos_integer(), non_neg_integer()) :: :ok
@@ -46,10 +54,11 @@ defmodule Lingo.Gateway.Sessions do
     :ok
   end
 
+  @doc "Forgets a session that can't be resumed, here and in the store."
   @spec delete(term(), non_neg_integer(), pos_integer()) :: :ok
   def delete(bot, shard_id, count) do
     if table = table(bot), do: :ets.delete(table, {shard_id, count})
-    :ok
+    GenServer.cast(name(bot), {:delete, shard_id, count})
   end
 
   @spec list(term()) :: [Lingo.Gateway.SessionStore.session()]
@@ -60,6 +69,7 @@ defmodule Lingo.Gateway.Sessions do
     end
   end
 
+  defp name(bot), do: Instance.process_name(bot, __MODULE__)
   defp table(bot), do: Instance.get(bot, :sessions_table, nil)
 
   defp to_session({{shard_id, count}, session_id, url, seq}),
@@ -82,28 +92,67 @@ defmodule Lingo.Gateway.Sessions do
     Instance.put(bot, :sessions_table, table)
 
     store = opts[:store]
-    for session <- load(store, bot), valid?(session), do: insert(table, session)
+    ids = Keyword.get(opts, :ids, :all)
 
-    {:ok, %{bot: bot, store: store}}
+    if store && opts[:cache?] do
+      Logger.warning(
+        "Lingo resumes #{inspect(bot)}'s saved gateway sessions with its cache on: " <>
+          "resumed sessions don't resend the guilds, so the cache starts without them"
+      )
+    end
+
+    loaded = call(store, :load, [bot])
+
+    for session <- (is_list(loaded) && loaded) || [],
+        valid?(session),
+        ids == :all or session.shard_id in ids,
+        do: insert(table, session)
+
+    {:ok, %{bot: bot, store: store, table: table}}
   end
 
   @impl true
-  def terminate(_reason, %{store: nil}), do: :ok
+  def handle_cast(_request, %{store: nil} = state), do: {:noreply, state}
 
-  def terminate(_reason, %{bot: bot, store: {module, opts}}) do
-    module.save(bot, list(bot), opts)
-  rescue
-    e -> Logger.error("Lingo couldn't save gateway sessions: #{Exception.message(e)}")
+  def handle_cast({:save, key}, state) do
+    case :ets.lookup(state.table, key) do
+      [row] -> call(state.store, :save, [state.bot, to_session(row)])
+      [] -> :ok
+    end
+
+    {:noreply, state}
   end
 
-  defp load(nil, _bot), do: []
+  def handle_cast({:delete, shard_id, count}, state) do
+    call(state.store, :delete, [state.bot, shard_id, count])
+    {:noreply, state}
+  end
 
-  defp load({module, opts}, bot) do
-    module.load(bot, opts)
+  # every live session, with its last sequence number; sessions under
+  # another shard count can't resume anymore
+  @impl true
+  def terminate(_reason, %{store: nil}), do: :ok
+
+  def terminate(_reason, %{bot: bot, store: store}) do
+    count = Instance.get(bot, :shard_count, nil)
+
+    for session <- list(bot) do
+      if count == nil or session.shard_count == count,
+        do: call(store, :save, [bot, session]),
+        else: call(store, :delete, [bot, session.shard_id, session.shard_count])
+    end
+
+    :ok
+  end
+
+  defp call(nil, _fun, _args), do: nil
+
+  defp call({module, opts}, fun, args) do
+    apply(module, fun, args ++ [opts])
   rescue
     e ->
-      Logger.error("Lingo couldn't load gateway sessions: #{Exception.message(e)}")
-      []
+      Logger.error("Lingo's session store failed to #{fun}: #{Exception.message(e)}")
+      nil
   end
 
   defp valid?(%{

@@ -76,7 +76,6 @@ defmodule Lingo.Gateway.Connection do
   def init(opts) do
     bot = Keyword.fetch!(opts, :bot)
     Lingo.Instance.put_current(bot)
-    Lingo.Cache.Cluster.local_only()
 
     state = %__MODULE__{
       bot: bot,

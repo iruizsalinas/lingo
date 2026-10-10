@@ -102,35 +102,43 @@ defmodule Lingo.EndpointTest do
   end
 
   describe "interactions" do
-    test "answers PING with PONG", %{secret: secret} do
+    test "answers PING with PONG", %{secret: secret, bot: bot} do
       body = ~s({"type":1,"id":"1","application_id":"200","token":"t","version":1})
 
       assert {200, [{"content-type", "application/json"}], ~s({"type":1})} =
-               Endpoint.interaction(signed(body, secret), body)
+               Endpoint.interaction(bot, signed(body, secret), body)
 
       refute_received {:rest, _, _, _}
     end
 
-    test "rejects bad signatures with 401", %{secret: secret} do
+    test "rejects bad signatures with 401", %{secret: secret, bot: bot} do
       body = interaction("ping")
       headers = signed(body, secret)
 
-      assert {401, _, _} = Endpoint.interaction(headers, body <> " ")
+      assert {401, _, _} = Endpoint.interaction(bot, headers, body <> " ")
       # signed for another timestamp
       [signature, _timestamp] = headers
-      assert {401, _, _} = Endpoint.interaction([signature, {"x-signature-timestamp", "1"}], body)
-      assert {401, _, _} = Endpoint.interaction([], body)
+
+      assert {401, _, _} =
+               Endpoint.interaction(bot, [signature, {"x-signature-timestamp", "1"}], body)
+
+      assert {401, _, _} = Endpoint.interaction(bot, [], body)
       refute_received {:event, _, _}
     end
 
-    test "rejects signed bodies that aren't interactions", %{secret: secret} do
-      assert {400, _, _} = Endpoint.interaction(signed("nope", secret), "nope")
-      assert {400, _, _} = Endpoint.interaction(signed("{}", secret), "{}")
+    test "rejects signed bodies that aren't interactions", %{secret: secret, bot: bot} do
+      assert {400, _, _} = Endpoint.interaction(bot, signed("nope", secret), "nope")
+      assert {400, _, _} = Endpoint.interaction(bot, signed("{}", secret), "{}")
     end
 
-    test "hands the interaction to the bot and returns 202 once it's answered", %{secret: secret} do
+    test "hands the interaction to the bot and returns 202 once it's answered", %{
+      secret: secret,
+      bot: bot
+    } do
       body = interaction("ping")
-      {time, response} = :timer.tc(fn -> Endpoint.interaction(signed(body, secret), body) end)
+
+      {time, response} =
+        :timer.tc(fn -> Endpoint.interaction(bot, signed(body, secret), body) end)
 
       assert {202, _, ""} = response
       # the callback went out before the HTTP request was answered
@@ -139,9 +147,11 @@ defmodule Lingo.EndpointTest do
     end
 
     @tag timeout: 10_000
-    test "returns 202 after a while when the bot never answers", %{secret: secret} do
+    test "returns 202 after a while when the bot never answers", %{secret: secret, bot: bot} do
       body = interaction("silent")
-      {time, response} = :timer.tc(fn -> Endpoint.interaction(signed(body, secret), body) end)
+
+      {time, response} =
+        :timer.tc(fn -> Endpoint.interaction(bot, signed(body, secret), body) end)
 
       assert {202, _, ""} = response
       assert time >= 2_400_000 and time < 3_000_000
@@ -149,22 +159,44 @@ defmodule Lingo.EndpointTest do
     end
   end
 
+  describe "the bot" do
+    test "is given explicitly, so any process can call", %{secret: secret, bot: bot} do
+      body = ~s({"type":1,"id":"1","application_id":"200","token":"t","version":1})
+
+      test_pid = self()
+      headers = signed(body, secret)
+
+      # a bare process: no current bot, no $callers to find one through
+      spawn(fn -> send(test_pid, {:response, Endpoint.interaction(bot, headers, body)}) end)
+
+      assert_receive {:response, {200, _, _}}
+    end
+
+    test "raises when the bot has no :endpoint", %{bot: bot} do
+      Lingo.Instance.put(bot, :endpoint, nil)
+
+      assert_raise ArgumentError, ~r/no :endpoint option/, fn ->
+        Endpoint.interaction(bot, [], "{}")
+      end
+    end
+  end
+
   describe "webhook events" do
-    test "answers PING with an empty 204", %{secret: secret} do
+    test "answers PING with an empty 204", %{secret: secret, bot: bot} do
       body = ~s({"version":1,"application_id":"200","type":0})
 
       assert {204, [{"content-type", "application/json"}], ""} =
-               Endpoint.event(signed(body, secret), body)
+               Endpoint.event(bot, signed(body, secret), body)
 
       refute_received {:event, _, _}
     end
 
-    test "rejects bad signatures with 401", %{secret: secret} do
+    test "rejects bad signatures with 401", %{secret: secret, bot: bot} do
       body = ~s({"version":1,"application_id":"200","type":0})
-      assert {401, _, _} = Endpoint.event(signed(body, secret), body <> "x")
+      assert {401, _, _} = Endpoint.event(bot, signed(body, secret), body <> "x")
     end
 
-    test "delivers an app authorization to handle_event", %{secret: secret} do
+    test "delivers an app authorization to handle_event", %{secret: secret, bot: bot} do
       body =
         JSON.encode!(%{
           version: 1,
@@ -182,10 +214,10 @@ defmodule Lingo.EndpointTest do
           }
         })
 
-      assert {204, _, ""} = Endpoint.event(signed(body, secret), body)
+      assert {204, _, ""} = Endpoint.event(bot, signed(body, secret), body)
 
       assert_receive {:event, :application_authorized,
-                      %{
+                      %Lingo.Event.ApplicationAuthorized{
                         integration_type: :guild,
                         scopes: ["applications.commands", "bot"],
                         user: %User{id: "30"},
@@ -193,7 +225,10 @@ defmodule Lingo.EndpointTest do
                       }}
     end
 
-    test "delivers entitlements as structs, and unknown events raw", %{secret: secret} do
+    test "delivers entitlements as structs, and unknown events as Unknown", %{
+      secret: secret,
+      bot: bot
+    } do
       entitlement = %{id: "1", sku_id: "2", application_id: "200", user_id: "30", type: 8}
 
       wrap = fn type, data ->
@@ -201,12 +236,24 @@ defmodule Lingo.EndpointTest do
       end
 
       body = wrap.("ENTITLEMENT_CREATE", entitlement)
-      assert {204, _, ""} = Endpoint.event(signed(body, secret), body)
+      assert {204, _, ""} = Endpoint.event(bot, signed(body, secret), body)
       assert_receive {:event, :entitlement_create, %Entitlement{id: "1", sku_id: "2"}}
 
       body = wrap.("SOMETHING_NEW", %{"a" => 1})
-      assert {204, _, ""} = Endpoint.event(signed(body, secret), body)
-      assert_receive {:event, {:unknown_event, "SOMETHING_NEW"}, %{"a" => 1}}
+      assert {204, _, ""} = Endpoint.event(bot, signed(body, secret), body)
+
+      assert_receive {:event, :unknown,
+                      %Lingo.Event.Unknown{type: "SOMETHING_NEW", data: %{"a" => 1}}}
+
+      body = wrap.("ENTITLEMENT_UPDATE", entitlement)
+      assert {204, _, ""} = Endpoint.event(bot, signed(body, secret), body)
+      assert_receive {:event, :entitlement_update, %{old: nil, new: %Entitlement{id: "1"}}}
+
+      body = wrap.("LOBBY_MESSAGE_DELETE", %{id: "5", lobby_id: "6"})
+      assert {204, _, ""} = Endpoint.event(bot, signed(body, secret), body)
+
+      assert_receive {:event, :lobby_message_delete,
+                      %Lingo.Event.LobbyMessageDelete{id: "5", lobby_id: "6"}}
     end
   end
 end

@@ -1,10 +1,14 @@
 defmodule Lingo.Config.Gateway do
   @moduledoc false
 
-  # Validates the :sharding and :gateway options.
+  # Validates the :sharding and :gateway options. A session store goes under
+  # :gateway: there's none without a gateway connection.
 
   def validate_sharding!(sharding) do
-    sharding = Keyword.validate!(sharding, [:count, :ids, :auto_reshard, :session_store])
+    if Keyword.has_key?(sharding, :session_store),
+      do: raise(ArgumentError, ":session_store moved from :sharding to :gateway")
+
+    sharding = Keyword.validate!(sharding, [:count, :ids, :auto_reshard])
 
     if Keyword.has_key?(sharding, :ids) and not Keyword.has_key?(sharding, :count) do
       raise ArgumentError, ":sharding :ids requires an explicit :count"
@@ -22,7 +26,7 @@ defmodule Lingo.Config.Gateway do
               ":sharding :auto_reshard must be a boolean or ms, got: #{inspect(other)}"
     end
 
-    Keyword.update(sharding, :session_store, nil, &validate_session_store!/1)
+    sharding
   end
 
   defp validate_session_store!(nil), do: nil
@@ -33,20 +37,21 @@ defmodule Lingo.Config.Gateway do
   defp validate_session_store!({module, opts}) when is_atom(module) and is_list(opts) do
     Code.ensure_loaded(module)
 
-    unless function_exported?(module, :load, 2) and function_exported?(module, :save, 3),
-      do: raise(ArgumentError, "#{inspect(module)} is not a Lingo.Gateway.SessionStore")
+    unless function_exported?(module, :load, 2) and function_exported?(module, :save, 3) and
+             function_exported?(module, :delete, 4),
+           do: raise(ArgumentError, "#{inspect(module)} is not a Lingo.Gateway.SessionStore")
 
     {module, opts}
   end
 
   defp validate_session_store!(other),
-    do: raise(ArgumentError, "invalid :sharding :session_store: #{inspect(other)}")
+    do: raise(ArgumentError, "invalid :gateway :session_store: #{inspect(other)}")
 
   def validate_gateway!(false), do: false
   def validate_gateway!(nil), do: validate_gateway!([])
 
   def validate_gateway!(gateway) do
-    gateway = Keyword.validate!(gateway, encoding: :json, compression: :zlib)
+    gateway = Keyword.validate!(gateway, [:session_store, encoding: :json, compression: :zlib])
 
     unless gateway[:encoding] in [:json, :etf],
       do: raise(ArgumentError, ":gateway :encoding must be :json or :etf")
@@ -57,6 +62,8 @@ defmodule Lingo.Config.Gateway do
     if gateway[:compression] == :zstd and not Lingo.Gateway.Compression.zstd_available?(),
       do: raise(ArgumentError, ":gateway compression: :zstd needs OTP 28 or later")
 
-    gateway
+    if Keyword.has_key?(gateway, :session_store),
+      do: Keyword.update!(gateway, :session_store, &validate_session_store!/1),
+      else: gateway
   end
 end

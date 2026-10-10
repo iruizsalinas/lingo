@@ -8,7 +8,7 @@ defmodule Lingo.Type.Channel do
 
   import Bitwise
 
-  alias Lingo.Type.{Codes, Message, Overwrite, Parse, User}
+  alias Lingo.Type.{Codes, Message, Overwrite, Parse, ThreadMember, User}
 
   @type channel_type ::
           :guild_text
@@ -50,7 +50,7 @@ defmodule Lingo.Type.Channel do
           message_count: integer() | nil,
           member_count: integer() | nil,
           thread_metadata: map() | nil,
-          member: map() | nil,
+          member: Lingo.Type.ThreadMember.t() | nil,
           default_auto_archive_duration: integer() | nil,
           permissions: String.t() | nil,
           app_permissions: String.t() | nil,
@@ -122,7 +122,8 @@ defmodule Lingo.Type.Channel do
       permission_overwrites: Parse.list(data["permission_overwrites"], &Overwrite.new/1),
       recipients: Parse.list(data["recipients"], &User.new/1),
       last_pin_timestamp: Parse.timestamp(data["last_pin_timestamp"]),
-      message: Message.new(data["message"])
+      message: Message.new(data["message"]),
+      member: ThreadMember.new(data["member"])
     )
   end
 end

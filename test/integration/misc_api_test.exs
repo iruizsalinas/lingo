@@ -79,13 +79,13 @@ defmodule Lingo.Integration.MiscApiTest do
 
   describe "soundboard" do
     test "list_defaults returns default sounds" do
-      assert {:ok, data} = Lingo.Api.Soundboard.list_defaults()
-      assert is_list(data) or is_map(data)
+      assert {:ok, [%Lingo.Type.SoundboardSound{guild_id: nil} | _]} =
+               Lingo.Api.Soundboard.list_defaults()
     end
 
     test "list_guild returns guild sounds", %{guild_id: guild_id} do
-      assert {:ok, data} = Lingo.Api.Soundboard.list_guild(guild_id)
-      assert is_list(data) or is_map(data)
+      assert {:ok, sounds} = Lingo.Api.Soundboard.list_guild(guild_id)
+      assert Enum.all?(sounds, &match?(%Lingo.Type.SoundboardSound{}, &1))
     end
   end
 

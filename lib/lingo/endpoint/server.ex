@@ -87,9 +87,7 @@ defmodule Lingo.Endpoint.Server do
     headers = request[:parsed_header]
     body = IO.iodata_to_binary(request[:entity_body])
 
-    Lingo.Instance.with_current(bot, fn ->
-      apply(Lingo.Endpoint, kind, [headers, body])
-    end)
+    apply(Lingo.Endpoint, kind, [bot, headers, body])
   end
 
   defp handle(_method, _kind, _bot, _request), do: {405, [], ""}

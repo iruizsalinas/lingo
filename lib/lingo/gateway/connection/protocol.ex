@@ -6,7 +6,8 @@ defmodule Lingo.Gateway.Connection.Protocol do
 
   require Logger
 
-  alias Lingo.Gateway.{Connection, Dispatcher, Events, Heartbeat, Identify, Payload}
+  alias Lingo.Event.Catalog
+  alias Lingo.Gateway.{Connection, Dispatcher, Heartbeat, Identify, Payload}
   alias Lingo.Gateway.{Sessions, ShardManager}
   alias Lingo.Gateway.Connection.Transport
   alias Lingo.Telemetry
@@ -103,21 +104,18 @@ defmodule Lingo.Gateway.Connection.Protocol do
 
   def close(state, code) when code in @fatal_codes do
     Logger.error("Lingo shard #{state.shard_id} closed with fatal code #{code}, not reconnecting")
-    disconnected(state, code)
-    Dispatcher.dispatch(:shard_error, %{shard_id: state.shard_id, code: code})
+    disconnected(state, code, true)
     state = forget_session(state)
     {:stop, {:shutdown, {:fatal, code}}, %{Transport.close(state) | state: :disconnected}}
   end
 
   def close(state, code) when code in @session_dead_codes do
     disconnected(state, code)
-    deliver(state, :shard_disconnect, %{shard_id: state.shard_id, code: code})
     {:noreply, Transport.reconnect(forget_session(state))}
   end
 
   def close(state, code) do
     disconnected(state, code)
-    deliver(state, :shard_disconnect, %{shard_id: state.shard_id, code: code})
     {:noreply, Transport.reconnect(state)}
   end
 
@@ -151,19 +149,20 @@ defmodule Lingo.Gateway.Connection.Protocol do
       )
     end
 
-    deliver(state, :shard_ready, Map.put(data, "shard_id", state.shard_id))
+    deliver(state, :ready, Map.put(data, "shard", [state.shard_id, state.shard_count]))
     ready(state, false)
   end
 
   defp dispatch("RESUMED", _data, state) do
     ensure_user_id(state.bot)
-    deliver(state, :shard_resumed, %{shard_id: state.shard_id})
+    Sessions.save(state.bot, state.shard_id, state.shard_count)
+    deliver(state, :resumed, %{"shard" => [state.shard_id, state.shard_count]})
     ready(%{state | state: :connected}, true)
   end
 
   defp dispatch(type, data, state) do
     state = Connection.maybe_join(state)
-    deliver(state, Events.name(type), data)
+    deliver(state, Catalog.gateway_name(type), data)
     state
   end
 
@@ -192,8 +191,10 @@ defmodule Lingo.Gateway.Connection.Protocol do
     :exit, _no_task_supervisor -> :ok
   end
 
-  defp disconnected(state, code),
-    do: Telemetry.execute([:shard, :disconnected], %{}, Map.put(meta(state), :code, code))
+  defp disconnected(state, code, fatal \\ false) do
+    meta = Map.merge(meta(state), %{code: code, fatal: fatal})
+    Telemetry.execute([:shard, :disconnected], %{}, meta)
+  end
 
   defp meta(state), do: %{shard_id: state.shard_id, shard_count: state.shard_count}
 

@@ -18,13 +18,58 @@ defmodule Lingo.Gateway.ShardManager.Reshard do
 
   @default_interval :timer.hours(1)
 
-  @doc "Starts a reshard to Discord's recommended count, when it differs."
-  def begin(state), do: maybe_start(state, &(&1 != state.current.count))
+  @doc """
+  Why a reshard can't start now, or nil: a fixed count or ids, one already
+  under way, or shards not started yet.
+  """
+  @spec blocked(map()) :: nil | :fixed_count | :fixed_ids | :in_progress | :not_started
+  def blocked(state) do
+    cond do
+      state.configured_count != :auto -> :fixed_count
+      state.configured_ids != :all -> :fixed_ids
+      state.next != nil -> :in_progress
+      state.current.count == 0 -> :not_started
+      true -> nil
+    end
+  end
+
+  @doc """
+  A requested reshard, with Discord's plan fetched by the caller (so the
+  manager never waits on HTTP): starts it when the count differs, and says
+  what happened.
+  """
+  def request(state, plan) do
+    cond do
+      reason = blocked(state) ->
+        {{:error, reason}, state}
+
+      plan.recommended == state.current.count ->
+        {:noop, state}
+
+      plan.remaining < plan.recommended ->
+        {{:error, :identify_limit}, state}
+
+      true ->
+        {{:ok, %{from: state.current.count, to: plan.recommended}}, start(state, plan)}
+    end
+  end
 
   @doc "The periodic check of `auto_reshard`: grows when Discord recommends more shards."
   def check(state) do
     schedule(state)
-    maybe_start(state, &(&1 > state.current.count))
+
+    with nil <- blocked(state),
+         {:ok, plan} <- Sharding.fetch(),
+         true <- plan.recommended > state.current.count do
+      if plan.remaining >= plan.recommended do
+        start(state, plan)
+      else
+        Logger.warning("Lingo can't reshard: #{plan.remaining} identifies left today")
+        state
+      end
+    else
+      _no -> state
+    end
   end
 
   def schedule(%{auto_reshard: nil}), do: :ok
@@ -33,29 +78,6 @@ defmodule Lingo.Gateway.ShardManager.Reshard do
     do: Process.send_after(self(), :check_reshard, @default_interval)
 
   def schedule(%{auto_reshard: ms}), do: Process.send_after(self(), :check_reshard, ms)
-
-  defp maybe_start(state, wanted?) do
-    with true <- reshardable?(state),
-         {:ok, plan} <- Sharding.fetch(),
-         true <- wanted?.(plan.recommended),
-         true <- enough_identifies?(plan) do
-      start(state, plan)
-    else
-      _no -> state
-    end
-  end
-
-  defp reshardable?(state) do
-    state.configured_count == :auto and state.configured_ids == :all and state.next == nil and
-      state.current.count > 0
-  end
-
-  defp enough_identifies?(plan) do
-    if plan.remaining < plan.recommended,
-      do: Logger.warning("Lingo can't reshard: #{plan.remaining} identifies left today")
-
-    plan.remaining >= plan.recommended
-  end
 
   defp start(state, plan) do
     {from, count} = {state.current.count, plan.recommended}

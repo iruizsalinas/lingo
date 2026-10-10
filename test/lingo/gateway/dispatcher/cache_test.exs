@@ -93,7 +93,7 @@ defmodule Lingo.Gateway.Dispatcher.CacheTest do
 
       assert_receive {:voice_state_update, %{new: %VoiceState{}}}
       Dispatcher.dispatch(:guild_delete, %{"id" => "g"})
-      assert_receive {:guild_delete, %{new: %{id: "g"}}}
+      assert_receive {:guild_delete, %Lingo.Event.GuildDelete{id: "g", unavailable: false}}
     end
   end
 
@@ -147,8 +147,8 @@ defmodule Lingo.Gateway.Dispatcher.CacheTest do
 
   test "explicit permission caches retain self without caching other members" do
     start(guilds: true, channels: true, roles: true, users: :self, members: :self)
-    Dispatcher.dispatch(:shard_ready, %{"user" => %{"id" => "me", "username" => "bot"}})
-    assert_receive {:shard_ready, _}
+    Dispatcher.dispatch(:ready, %{"user" => %{"id" => "me", "username" => "bot"}})
+    assert_receive {:ready, %Lingo.Event.Ready{user: %User{id: "me"}}}
     Dispatcher.dispatch(:guild_create, guild())
     assert_receive {:guild_create, %Guild{}}
     assert Lingo.Helper.Channel.viewable?("c")

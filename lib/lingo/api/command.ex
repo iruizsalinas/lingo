@@ -8,7 +8,7 @@ defmodule Lingo.Api.Command do
 
   alias Lingo.Api
   alias Lingo.Rest.Client
-  alias Lingo.Type.ApplicationCommand
+  alias Lingo.Type.{ApplicationCommand, CommandPermissions}
 
   @doc "Lists the global application commands."
   @spec list_global() :: Api.result([ApplicationCommand.t()])
@@ -135,24 +135,26 @@ defmodule Lingo.Api.Command do
   end
 
   @doc "Lists the permission settings of every command in a guild."
-  @spec list_permissions(Api.id()) :: Api.result([map()])
+  @spec list_permissions(Api.id()) :: Api.result([CommandPermissions.t()])
   def list_permissions(guild_id) do
     Client.app(fn application_id ->
       Client.request(
         :get,
         "/applications/#{application_id}/guilds/#{guild_id}/commands/permissions"
       )
+      |> Client.into(&CommandPermissions.new/1)
     end)
   end
 
   @doc "Fetches the permission settings of one command in a guild."
-  @spec get_permissions(Api.id(), Api.id()) :: Api.result(map())
+  @spec get_permissions(Api.id(), Api.id()) :: Api.result(CommandPermissions.t())
   def get_permissions(guild_id, command_id) do
     Client.app(fn application_id ->
       Client.request(
         :get,
         "/applications/#{application_id}/guilds/#{guild_id}/commands/#{command_id}/permissions"
       )
+      |> Client.into(&CommandPermissions.new/1)
     end)
   end
 end

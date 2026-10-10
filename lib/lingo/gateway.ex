@@ -22,7 +22,8 @@ defmodule Lingo.Gateway do
       same `:name` and `:count`, and its own `:ids`. The nodes share the
       identify limits, and gateway requests reach the node that runs the
       guild's shard; `update_presence/2` reaches every node. Shard statuses
-      and latencies are this node's.
+      and latencies are this node's, and so are cache reads unless they ask
+      for `cluster: true` (see `Lingo.Cache`).
     * **Encoding and compression.** `gateway: [encoding: :etf]` receives
       Erlang terms instead of JSON. `compression: :zstd` (OTP 28 or later)
       uses less CPU than the default `:zlib`; `:none` turns it off.
@@ -59,6 +60,33 @@ defmodule Lingo.Gateway do
   def request_channel_info(guild_id, fields \\ ["status", "voice_start_time"]),
     do: ShardManager.send_to_guild_shard(guild_id, Payload.request_channel_info(guild_id, fields))
 
+  @doc """
+  Waits until every shard on this node has connected once, for things to do
+  once the bot is up:
+
+      def handle_continue(:start, state) do
+        :ok = Lingo.Gateway.await_ready()
+        ...
+      end
+
+  Returns `:ok` right away when they already have, or when the bot runs
+  without a gateway, and `{:error, :timeout}` if `timeout` (ms) runs out.
+  It doesn't wait again for reconnects or a reshard. Each shard's own
+  sessions are `:ready` and `:resumed` events.
+
+  Call it from `handle_continue`, as above, not from `init`: a supervisor
+  starts its children one by one, so waiting in `init` holds up the rest of
+  your application until every shard connects, minutes for a large bot. It
+  covers this node's shards only, and exits if the bot's shard manager
+  restarts while it waits.
+  """
+  @spec await_ready(timeout()) :: :ok | {:error, :timeout}
+  def await_ready(timeout \\ :infinity) do
+    if Lingo.Instance.get(:gateway, false),
+      do: ShardManager.await_ready(timeout),
+      else: :ok
+  end
+
   @doc "The shard a guild's events arrive on."
   @spec shard_for_guild(String.t()) :: non_neg_integer()
   defdelegate shard_for_guild(guild_id), to: ShardManager
@@ -84,13 +112,33 @@ defmodule Lingo.Gateway do
   to it without downtime: the new shards connect next to the running ones,
   delivering nothing, and take over once all are ready (events at the very
   moment of the switch may arrive twice or not at all). The old shards then
-  close. `:ready` doesn't fire again.
+  close. The new shards' `:ready` events aren't delivered either, and
+  `await_ready/1` doesn't wait for them.
 
-  Does nothing when the count or the ids are fixed, while a reshard is under
-  way, or when the day's identifies wouldn't cover the new shards. A reshard
-  whose shards don't all get ready in time is abandoned.
+  Returns once the reshard has started, with `{:ok, %{from: old, to: new}}`;
+  the `[:lingo, :gateway, :reshard, :stop]` telemetry event says when the
+  new shards took over. A reshard whose shards don't all get ready in time
+  is abandoned. Otherwise it returns:
+
+    * `:noop` - Discord recommends the count already running
+    * `{:error, :fixed_count}` or `{:error, :fixed_ids}` - the `:sharding`
+      option fixes them; a bot split across nodes always does
+    * `{:error, :in_progress}` - a reshard is already under way
+    * `{:error, :not_started}` - the shards haven't started yet
+    * `{:error, :identify_limit}` - the day's identifies wouldn't cover the
+      new shards
+    * `{:error, %Lingo.Error{}}` - asking Discord failed
   """
-  @spec reshard() :: :ok
+  @spec reshard() ::
+          {:ok, %{from: pos_integer(), to: pos_integer()}}
+          | :noop
+          | {:error,
+             :fixed_count
+             | :fixed_ids
+             | :in_progress
+             | :not_started
+             | :identify_limit
+             | Lingo.Error.t()}
   defdelegate reshard, to: ShardManager
 
   @doc """

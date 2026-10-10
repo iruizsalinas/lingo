@@ -48,32 +48,35 @@ defmodule Lingo.Testing do
 
   @doc """
   Starts an isolated bot for the calling test, and makes it the current bot.
-  Options: `:cache` (as for the bot), and `:rest`, a function getting each
-  API call's method, path and decoded body and returning `{status, body}`.
+  It's the bot's real supervision tree, run without a gateway connection
+  and without registering commands. Options: `:cache` (as for the bot), and
+  `:rest`, a function getting each API call's method, path and decoded body
+  and returning `{status, body}`.
+
+  Returns the bot's name, which the other functions take as `:bot` when a
+  test starts several bots.
   """
   @spec start_bot(module(), keyword()) :: atom()
   def start_bot(bot, opts \\ []) do
     name = Module.concat(bot, "Test#{System.unique_integer([:positive])}")
 
-    config = [
-      name: name,
-      bot: bot,
-      token: "test-token",
-      http_request: Stub.new(self(), opts[:rest])
-    ]
+    config =
+      [
+        name: name,
+        bot: bot,
+        token: "test-token",
+        gateway: false,
+        register_commands: false,
+        cache: Keyword.get(opts, :cache, [])
+      ]
+      |> Lingo.Config.validate!()
+      |> Keyword.put(:http_request, Stub.new(self(), opts[:rest]))
 
-    children = [
-      {Instance, config},
-      {Task.Supervisor, name: Instance.process_name(name, Lingo.TaskSupervisor)},
-      {Lingo.Cache.Tables, bot: name, config: opts[:cache]},
-      {Lingo.Rest.RateLimiter, bot: name},
-      {Registry, keys: :duplicate, name: Instance.process_name(name, Lingo.Collector.Registry)},
-      {Lingo.Bot.Cooldowns, bot: name},
-      {Lingo.Endpoint.Pending, bot: name}
-    ]
-
-    for child <- children,
-        do: start_supervised!(Supervisor.child_spec(child, id: {name, child}))
+    start_supervised!(%{
+      id: {__MODULE__, name},
+      start: {Lingo.Supervisor, :start_link, [config]},
+      type: :supervisor
+    })
 
     Instance.put(name, :application_id, "100")
     Lingo.put_bot(name)
@@ -84,18 +87,22 @@ defmodule Lingo.Testing do
   Runs a command. Options: `:options` (keyword, by the declared option
   names; subcommands nest: `[add: [item: "x"]]`), `:user_id` (default
   `"1"`), `:guild_id` (default `"2"`, `nil` for a DM), `:channel_id`,
-  `:permissions` and `:app_permissions` (bitfields), `:locale`, and
-  `:target_id` with `:type` (`:user` or `:message`) for context menu commands.
+  `:permissions` and `:app_permissions` (bitfields), `:locale`,
+  `:target_id` with `:type` (`:user` or `:message`) for context menu
+  commands, and `:bot` (the name `start_bot/2` returned) when the test runs
+  several bots.
   """
   @spec run_command(String.t(), keyword()) :: :ok
-  def run_command(name, opts \\ []), do: interaction(2, Payload.command(name, opts), opts)
+  def run_command(name, opts \\ []),
+    do: interaction(2, fn -> Payload.command(name, opts) end, opts)
 
   @doc """
   Runs autocomplete for a command, with the option being typed named by
   `:focused`. Takes the options of `run_command/2`.
   """
   @spec run_autocomplete(String.t(), keyword()) :: :ok
-  def run_autocomplete(name, opts), do: interaction(4, Payload.autocomplete(name, opts), opts)
+  def run_autocomplete(name, opts),
+    do: interaction(4, fn -> Payload.autocomplete(name, opts) end, opts)
 
   @doc """
   Clicks a button, or picks `:values` in a select menu. Options: `:values`,
@@ -104,27 +111,45 @@ defmodule Lingo.Testing do
   @spec run_component(String.t(), keyword()) :: :ok
   def run_component(custom_id, opts \\ []) do
     {data, message} = Payload.component(custom_id, opts)
-    interaction(3, data, Keyword.put(opts, :message, message))
+    interaction(3, fn -> data end, Keyword.put(opts, :message, message))
   end
 
   @doc "Submits a modal with text inputs keyed by custom id. Takes the options of `run_command/2`."
   @spec submit_modal(String.t(), %{String.t() => String.t()}, keyword()) :: :ok
   def submit_modal(custom_id, values, opts \\ []),
-    do: interaction(5, Payload.modal(custom_id, values), opts)
+    do: interaction(5, fn -> Payload.modal(custom_id, values) end, opts)
 
-  @doc "Delivers an event to the bot's `c:Lingo.Bot.handle_event/2`, as is."
-  @spec send_event(atom(), term()) :: :ok
-  def send_event(event, payload), do: Lingo.Bot.Runner.event(event, payload)
+  @doc """
+  Delivers an event to the bot's `c:Lingo.Bot.handle_event/2`, as is. The
+  payload is what `Lingo.Event` lists for the event:
+
+      send_event(:message_delete, %Lingo.Event.MessageDelete{id: "1", channel_id: "2"})
+
+  Options: `:bot`.
+  """
+  @spec send_event(Lingo.Event.name(), Lingo.Event.payload(), keyword()) :: :ok
+  def send_event(event, payload, opts \\ []),
+    do: as_bot(opts, fn -> Lingo.Bot.Runner.event(event, payload) end)
 
   @doc """
   Delivers a raw gateway dispatch, as Discord would send it: the cache is
   updated and the bot gets the parsed event. `type` is Discord's name,
-  such as `"MESSAGE_CREATE"`.
+  such as `"MESSAGE_CREATE"`; a name Lingo doesn't know raises, unless
+  `allow_unknown: true` (the bot then gets it as `:unknown`). Options:
+  `:bot`, `:allow_unknown`.
   """
-  @spec dispatch(String.t(), map()) :: :ok
-  def dispatch(type, data) do
+  @spec dispatch(String.t(), map(), keyword()) :: :ok
+  def dispatch(type, data, opts \\ []) do
+    event = Lingo.Event.Catalog.gateway_name(type)
+
+    if match?({:unknown, _}, event) and not Keyword.get(opts, :allow_unknown, false) do
+      raise ArgumentError,
+            "Lingo doesn't know the gateway event #{inspect(type)}; " <>
+              "pass allow_unknown: true to send it as :unknown"
+    end
+
     data = data |> JSON.encode!() |> JSON.decode!()
-    Lingo.Gateway.Dispatcher.dispatch(Lingo.Gateway.Events.name(type), data)
+    as_bot(opts, fn -> Lingo.Gateway.Dispatcher.dispatch(event, data) end)
   end
 
   @doc """
@@ -158,10 +183,12 @@ defmodule Lingo.Testing do
     end
   end
 
-  defp interaction(type, data, opts),
-    do:
-      Lingo.Gateway.Dispatcher.dispatch(
-        :interaction_create,
-        Payload.interaction(type, data, opts)
-      )
+  defp interaction(type, data_fun, opts) do
+    as_bot(opts, fn ->
+      payload = Payload.interaction(type, data_fun.(), opts)
+      Lingo.Gateway.Dispatcher.dispatch(:interaction_create, payload)
+    end)
+  end
+
+  defp as_bot(opts, fun), do: Instance.with_current(opts[:bot], fun)
 end

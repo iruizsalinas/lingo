@@ -2,9 +2,9 @@ defmodule Lingo.Bot.Checks do
   @moduledoc false
 
   # Runs a command's :checks and :cooldown before its handler. A check is a
-  # built-in atom or tuple, or a function of the context returning true,
-  # false or {:error, message}. The cooldown is counted last, so failed
-  # checks don't use it up.
+  # built-in atom or tuple, or a function of the context returning true or
+  # :ok to pass, false or {:error, message} to fail. The cooldown is counted
+  # last, so failed checks don't use it up.
 
   alias Lingo.{CheckError, Context, Instance, Permissions}
   alias Lingo.Bot.Cooldowns
@@ -22,28 +22,14 @@ defmodule Lingo.Bot.Checks do
 
   def validate!(other), do: raise(ArgumentError, ":checks must be a list, got: #{inspect(other)}")
 
-  @doc "Validates a cooldown at compile time: {uses, per_ms} or {uses, per_ms, scope}."
-  def validate_cooldown!(nil), do: nil
-  def validate_cooldown!({uses, per}), do: validate_cooldown!({uses, per, :user})
-
-  def validate_cooldown!({uses, per, scope} = cooldown)
-      when is_integer(uses) and uses > 0 and is_integer(per) and per > 0 and
-             scope in [:user, :member, :guild, :channel, :global],
-      do: cooldown
-
-  def validate_cooldown!(other),
-    do: raise(ArgumentError, "invalid :cooldown #{inspect(other)}, use {uses, per_ms, scope}")
-
   defp valid?(check) when check in [:guild_only, :dm_only, :nsfw, :owner_only], do: true
   defp valid?({kind, perms}) when kind in [:permissions, :bot_permissions], do: is_list(perms)
-  defp valid?(fun) when is_function(fun, 1), do: Function.info(fun, :type) == {:type, :external}
-  defp valid?(_check), do: false
+  defp valid?(fun), do: Cooldowns.external_fun?(fun)
 
-  @spec run(%{checks: list(), cooldown: tuple() | nil}, Context.t()) ::
-          :ok | {:error, CheckError.t()}
+  @spec run(map(), Context.t()) :: :ok | {:error, CheckError.t()}
   def run(rules, ctx) do
     with :ok <- Enum.reduce_while(rules.checks, :ok, &check(&1, ctx, &2)) do
-      cooldown(rules.cooldown, ctx)
+      cooldown(rules.cooldown, Map.get(rules, :type, :chat_input), ctx)
     end
   end
 
@@ -62,6 +48,9 @@ defmodule Lingo.Bot.Checks do
 
   defp passes(:owner_only, ctx), do: ok_if(ctx.user_id in owner_ids(ctx.bot), :owner_only)
 
+  # outside a guild there are no permissions to have: the command is guild-only
+  defp passes({_kind, _perms}, %Context{guild_id: nil}), do: ok_if(false, :guild_only)
+
   defp passes({:permissions, perms}, ctx) do
     member_perms = (ctx.member && ctx.member.permissions) || "0"
     missing(member_perms, perms, :missing_permissions)
@@ -72,9 +61,19 @@ defmodule Lingo.Bot.Checks do
 
   defp passes(fun, ctx) when is_function(fun, 1) do
     case fun.(ctx) do
-      true -> :ok
-      {:error, message} -> {:error, CheckError.new({:check, fun}, message)}
-      _false -> {:error, CheckError.new({:check, fun})}
+      pass when pass in [true, :ok] ->
+        :ok
+
+      false ->
+        {:error, CheckError.new({:check, fun})}
+
+      {:error, message} when is_binary(message) ->
+        {:error, CheckError.new({:check, fun}, message)}
+
+      other ->
+        raise ArgumentError,
+              "check #{inspect(fun)} returned #{inspect(other)}; " <>
+                "return true or :ok to pass, false or {:error, message} to fail"
     end
   end
 
@@ -93,14 +92,18 @@ defmodule Lingo.Bot.Checks do
     end
   end
 
-  defp cooldown(nil, _ctx), do: :ok
+  defp cooldown(spec, type, ctx) do
+    case Cooldowns.resolve(spec, ctx) do
+      nil ->
+        :ok
 
-  defp cooldown({_uses, _per, scope} = cooldown, ctx) do
-    key = {ctx.command_name, scope, scope_key(scope, ctx)}
+      {_uses, _per, scope} = cooldown ->
+        key = {type, ctx.command_name, scope, scope_key(scope, ctx)}
 
-    case Cooldowns.hit(ctx.bot, key, cooldown) do
-      :ok -> :ok
-      {:wait, ms} -> {:error, CheckError.new({:cooldown, ms})}
+        case Cooldowns.hit(ctx.bot, key, cooldown) do
+          :ok -> :ok
+          {:wait, ms} -> {:error, CheckError.new({:cooldown, ms})}
+        end
     end
   end
 
@@ -110,7 +113,8 @@ defmodule Lingo.Bot.Checks do
   defp scope_key(:channel, ctx), do: ctx.channel_id
   defp scope_key(:global, _ctx), do: :global
 
-  # the app's owner, or its team's members, fetched once
+  # the app's owner, or its team's owner, admins and developers, fetched
+  # once; a failed fetch is tried again next time
   defp owner_ids(bot) do
     case Instance.get(bot, :owner_ids, nil) do
       nil ->
@@ -123,11 +127,19 @@ defmodule Lingo.Bot.Checks do
     end
   end
 
+  @owner_roles ["admin", "developer"]
+
   defp fetch_owner_ids(bot) do
     Instance.with_current(bot, fn ->
       case Lingo.Api.Application.get_current() do
-        {:ok, %{"team" => %{"members" => members}}} when is_list(members) ->
-          Enum.map(members, &get_in(&1, ["user", "id"]))
+        {:ok, %{"team" => %{"members" => members} = team}} when is_list(members) ->
+          # members from before team roles have none; they were all owners then
+          maintainers =
+            for member <- members,
+                Map.get(member, "role", "admin") in @owner_roles,
+                do: get_in(member, ["user", "id"])
+
+          Enum.uniq(Enum.reject([team["owner_user_id"] | maintainers], &is_nil/1))
 
         {:ok, %{"owner" => %{"id" => id}}} ->
           [id]

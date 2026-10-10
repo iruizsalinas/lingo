@@ -2,6 +2,7 @@ defmodule Lingo.Gateway.ShardManagerTest do
   use ExUnit.Case, async: true
 
   alias Lingo.Gateway.{Groups, Shard, ShardManager}
+  alias Lingo.Event.{Ready, Resumed, TypingStart}
   alias Lingo.Gateway.ShardManager.Pool
   alias Lingo.Test.FakeGateway
 
@@ -37,10 +38,16 @@ defmodule Lingo.Gateway.ShardManagerTest do
 
   # stands in for Discord's REST API
   defp http(gateway, plan) do
-    fn :get, url, _headers, _body ->
+    test_pid = self()
+
+    fn method, url, _headers, _body ->
       body =
-        case URI.parse(url).path do
-          "/api/v10/gateway/bot" ->
+        case {method, URI.parse(url).path} do
+          {:put, path} ->
+            send(test_pid, {:request, :put, path})
+            []
+
+          {:get, "/api/v10/gateway/bot"} ->
             %{shards: shards, remaining: remaining} = Agent.get(plan, & &1)
 
             %{
@@ -54,7 +61,7 @@ defmodule Lingo.Gateway.ShardManagerTest do
               }
             }
 
-          "/api/v10/users/@me" ->
+          {:get, "/api/v10/users/@me"} ->
             %{"id" => "100", "username" => "lingo"}
         end
 
@@ -72,14 +79,51 @@ defmodule Lingo.Gateway.ShardManagerTest do
   defp in_bot(ctx, fun), do: Lingo.with_bot(ctx.name, fun)
 
   describe "starting" do
-    test "starts every shard and fires :ready once all are up", ctx do
+    test "starts every shard, each delivering its :ready", ctx do
       Agent.update(ctx.plan, &%{&1 | shards: 2})
       start_bot(ctx)
 
       assert_receive {:identified, _, 0, 2}, 5_000
       assert_receive {:identified, _, 1, 2}, 5_000
-      assert_receive {:event, :ready, %{shard_count: 2}}, 5_000
+
+      assert_receive {:event, :ready, %Ready{shard_id: 0, shard_count: 2, user: %{id: "100"}}},
+                     5_000
+
+      assert_receive {:event, :ready, %Ready{shard_id: 1, shard_count: 2}}, 5_000
       assert in_bot(ctx, &Lingo.Gateway.shard_count/0) == 2
+    end
+
+    test "await_ready/1 returns once every shard is up", ctx do
+      FakeGateway.auto_ready(ctx.gateway, false)
+      Agent.update(ctx.plan, &%{&1 | shards: 2})
+      start_bot(ctx)
+
+      assert_receive {:identified, conn0, 0, 2}, 5_000
+      assert_receive {:identified, conn1, 1, 2}, 5_000
+      assert in_bot(ctx, fn -> Lingo.Gateway.await_ready(50) end) == {:error, :timeout}
+
+      waiter = Task.async(fn -> in_bot(ctx, &Lingo.Gateway.await_ready/0) end)
+      FakeGateway.ready(conn0)
+      assert_receive {:event, :ready, %Ready{shard_id: 0}}, 5_000
+      refute Task.yield(waiter, 100)
+
+      FakeGateway.ready(conn1)
+      assert Task.await(waiter, 5_000) == :ok
+      assert in_bot(ctx, fn -> Lingo.Gateway.await_ready(0) end) == :ok
+    end
+
+    test "registers commands once every shard is up, if asked to", ctx do
+      FakeGateway.auto_ready(ctx.gateway, false)
+      Agent.update(ctx.plan, &%{&1 | shards: 2})
+      start_bot(ctx, register_commands: :global)
+
+      assert_receive {:identified, conn0, 0, 2}, 5_000
+      assert_receive {:identified, conn1, 1, 2}, 5_000
+      FakeGateway.ready(conn0)
+      refute_receive {:request, :put, _}, 200
+
+      FakeGateway.ready(conn1)
+      assert_receive {:request, :put, "/api/v10/applications/200/commands"}, 5_000
     end
 
     for encoding <- [:json, :etf], compression <- [:zlib, :zstd, :none] do
@@ -92,7 +136,7 @@ defmodule Lingo.Gateway.ShardManagerTest do
         typing(conn, "123456789012345678")
 
         assert_receive {:event, :typing_start,
-                        %{"channel_id" => "123456789012345678", "user_id" => "2"}},
+                        %TypingStart{channel_id: "123456789012345678", user_id: "2"}},
                        5_000
       end
     end
@@ -106,7 +150,7 @@ defmodule Lingo.Gateway.ShardManagerTest do
 
       typing(conn, "1")
       typing(conn, "2")
-      assert_receive {:event, :typing_start, %{"channel_id" => "2"}}, 5_000
+      assert_receive {:event, :typing_start, %TypingStart{channel_id: "2"}}, 5_000
 
       %{current: %{shards: %{0 => shard}}} = manager_state(ctx.name)
       Process.exit(Shard.connection(shard), :kill)
@@ -130,7 +174,7 @@ defmodule Lingo.Gateway.ShardManagerTest do
     @tag :tmp_dir
     test "a session store carries sessions over a full restart", %{tmp_dir: dir} = ctx do
       store = {Lingo.Gateway.SessionStore.File, path: Path.join(dir, "sessions")}
-      start_bot(ctx, sharding: [session_store: store])
+      start_bot(ctx, gateway: [session_store: store])
       assert_receive {:identified, conn, 0, 1}, 5_000
       assert_receive {:event, :ready, _}, 5_000
       typing(conn, "1")
@@ -141,9 +185,10 @@ defmodule Lingo.Gateway.ShardManagerTest do
       assert [%{shard_id: 0, shard_count: 1, seq: 2, session_id: session}] =
                Lingo.Gateway.SessionStore.File.load(ctx.name, path: Path.join(dir, "sessions"))
 
-      start_bot(ctx, sharding: [session_store: store])
+      start_bot(ctx, gateway: [session_store: store])
       assert_receive {:resumed, _conn, ^session, 2}, 5_000
-      assert_receive {:event, :ready, %{shard_count: 1}}, 5_000
+      assert_receive {:event, :resumed, %Resumed{shard_id: 0, shard_count: 1}}, 5_000
+      assert in_bot(ctx, fn -> Lingo.Gateway.await_ready(5_000) end) == :ok
     end
   end
 
@@ -157,7 +202,8 @@ defmodule Lingo.Gateway.ShardManagerTest do
 
       FakeGateway.auto_ready(ctx.gateway, false)
       Agent.update(ctx.plan, &%{&1 | shards: 2})
-      in_bot(ctx, &Lingo.Gateway.reshard/0)
+      assert in_bot(ctx, &Lingo.Gateway.reshard/0) == {:ok, %{from: 1, to: 2}}
+      assert in_bot(ctx, &Lingo.Gateway.reshard/0) == {:error, :in_progress}
 
       # shares bucket 0 with the old shard 0, so waits its 5 seconds
       assert_receive {:identified, new0, 0, 2}, 10_000
@@ -167,8 +213,8 @@ defmodule Lingo.Gateway.ShardManagerTest do
       # the old shard still delivers, the ready new one doesn't yet
       typing(new0, "new")
       typing(old, "old")
-      assert_receive {:event, :typing_start, %{"channel_id" => "old"}}, 5_000
-      refute_receive {:event, :typing_start, %{"channel_id" => "new"}}, 200
+      assert_receive {:event, :typing_start, %TypingStart{channel_id: "old"}}, 5_000
+      refute_receive {:event, :typing_start, %TypingStart{channel_id: "new"}}, 200
       assert in_bot(ctx, &Lingo.Gateway.shard_count/0) == 1
 
       FakeGateway.ready(new1)
@@ -176,8 +222,8 @@ defmodule Lingo.Gateway.ShardManagerTest do
       assert in_bot(ctx, &Lingo.Gateway.shard_count/0) == 2
 
       typing(new0, "new")
-      assert_receive {:event, :typing_start, %{"channel_id" => "new"}}, 5_000
-      # :ready fires once, at startup
+      assert_receive {:event, :typing_start, %TypingStart{channel_id: "new"}}, 5_000
+      # the new shards connected before they took over, so their READY wasn't delivered
       refute_received {:event, :ready, _}
     end
 
@@ -186,9 +232,30 @@ defmodule Lingo.Gateway.ShardManagerTest do
       assert_receive {:identified, _conn, 0, 1}, 5_000
       assert_receive {:event, :ready, _}, 5_000
 
-      in_bot(ctx, &Lingo.Gateway.reshard/0)
+      assert in_bot(ctx, &Lingo.Gateway.reshard/0) == :noop
       assert %{next: nil, current: %Pool{count: 1}} = manager_state(ctx.name)
       refute_receive {:identified, _, _, _}, 200
+    end
+
+    test "says why it can't: identifies left, a fixed count, fixed ids", ctx do
+      start_bot(ctx)
+      assert_receive {:event, :ready, _}, 5_000
+
+      Agent.update(ctx.plan, &%{&1 | shards: 4, remaining: 3})
+      assert in_bot(ctx, &Lingo.Gateway.reshard/0) == {:error, :identify_limit}
+      assert %{next: nil} = manager_state(ctx.name)
+
+      for {key, value, reason} <- [{:count, 1, :fixed_count}, {:ids, [0], :fixed_ids}] do
+        state = %{manager_state(ctx.name) | next: nil}
+
+        state =
+          if key == :count,
+            do: %{state | configured_count: value},
+            else: %{state | configured_ids: value}
+
+        assert {{:error, ^reason}, _} =
+                 ShardManager.Reshard.request(state, %{recommended: 4, remaining: 1_000})
+      end
     end
   end
 

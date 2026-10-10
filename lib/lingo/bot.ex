@@ -70,20 +70,23 @@ defmodule Lingo.Bot do
       cached by default. See `Lingo.Cache`.
     * `:sharding` - `:count` (default `:auto`); `:ids`, the shards this
       node runs (needs `:count`); `:auto_reshard`, `true` (checks hourly) or
-      an interval in ms, to reshard when Discord recommends more shards;
-      `:session_store`, a `Lingo.Gateway.SessionStore` module or
-      `{module, opts}`. See `Lingo.Gateway`.
+      an interval in ms, to reshard when Discord recommends more shards.
+      See `Lingo.Gateway`.
     * `:endpoint` - receives interactions and webhook events over HTTP; see
       `Lingo.Endpoint`
     * `:gateway` - `false` to run without a gateway connection (see
-      `Lingo.Endpoint`), or `:encoding` (`:json`, the default, or `:etf`) and
+      `Lingo.Endpoint`), or `:encoding` (`:json`, the default, or `:etf`),
       `:compression` (`:zlib`, the default, `:zstd` on OTP 28+, or `:none`)
+      and `:session_store`, a `Lingo.Gateway.SessionStore` module or
+      `{module, opts}` to resume sessions after a restart
     * `:presence` - the initial `:status`, `:text` and `:activity`
     * `:rate_limit` - `:max_wait`, the longest an API call waits on rate
       limits in ms (default `:infinity`, see `Lingo.with_max_wait/2`)
     * `:rest` - `:base_url`, to send API calls through a REST proxy that
       handles rate limits for every node and process, such as
-      `"http://proxy.internal/api/v10"` (default Discord's API)
+      `"http://proxy.internal/api/v10"` (default Discord's API). Each node
+      still follows the limits the proxy's answers carry, but stops sharing
+      them with the other nodes, which the proxy does.
   """
 
   alias Lingo.Context
@@ -109,14 +112,17 @@ defmodule Lingo.Bot do
   @callback handle_autocomplete(command_name :: String.t(), ctx :: Context.t()) :: term()
 
   @doc """
-  Handles a gateway event, such as `:message_create` or `:guild_member_add`.
+  Handles an event Discord sends, such as `:message_create` or
+  `:guild_member_add`, named as Discord names it, lowercased.
 
-  Event names are Discord's, lowercased. Create events carry the new struct,
-  update and delete events a map with `:old` (from the cache, or `nil`) and
-  `:new`. Lingo adds `:ready` (all shards connected), `:shard_ready`,
-  `:shard_resumed` and `:rate_limit`.
+  Creates carry the resource, such as a `Lingo.Type.Message`; updates
+  `%{old: old, new: new}`, where `old` comes from the cache and is `nil` when
+  it wasn't cached; other events a struct of their own, such as
+  `Lingo.Event.MessageDelete`. `Lingo.Event` lists every event and its
+  payload.
   """
-  @callback handle_event(event :: atom(), payload :: term()) :: term()
+  @callback handle_event(event :: Lingo.Event.name(), payload :: Lingo.Event.payload()) ::
+              term()
 
   @doc """
   Handles a failure in one of the bot's callbacks: a crash, or a command that
@@ -124,8 +130,10 @@ defmodule Lingo.Bot do
 
   `source` is the `Lingo.Context` for interactions, and `{event, payload}`
   for events. `error` is the exception (exits and throws arrive as
-  `ErlangError`), or a `Lingo.CheckError`. Crashes are logged either way;
-  for a failed check nothing is answered unless you do:
+  `ErlangError`), a `Lingo.CheckError` for a failed check, or a
+  `Lingo.EventError` for an event Lingo couldn't parse, which never reaches
+  `c:handle_event/2` (its `payload` is then Discord's raw data). Crashes are
+  logged either way; for a failed check nothing is answered unless you do:
 
       def handle_error(%Lingo.CheckError{message: message}, ctx), do: ephemeral(ctx, message)
       def handle_error(_error, %Lingo.Context{} = ctx), do: ephemeral(ctx, "Something went wrong.")
@@ -133,8 +141,10 @@ defmodule Lingo.Bot do
 
   Without it, a failed check gets the error's message as an ephemeral reply.
   """
-  @callback handle_error(error :: Exception.t(), source :: Context.t() | {atom(), term()}) ::
-              term()
+  @callback handle_error(
+              error :: Exception.t(),
+              source :: Context.t() | {Lingo.Event.name(), term()}
+            ) :: term()
 
   @optional_callbacks handle_command: 2,
                       handle_error: 2,

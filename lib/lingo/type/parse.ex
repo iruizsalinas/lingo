@@ -33,6 +33,11 @@ defmodule Lingo.Type.Parse do
 
   def timestamp(value), do: value
 
+  @doc "Unix timestamps in seconds, as some gateway events send them, as DateTimes."
+  @spec unix(term()) :: DateTime.t() | term()
+  def unix(seconds) when is_integer(seconds), do: DateTime.from_unix!(seconds)
+  def unix(value), do: value
+
   @doc "Maps `fun` over a list that may be missing."
   @spec list([term()] | nil, (term() -> term())) :: [term()]
   def list(nil, _fun), do: []

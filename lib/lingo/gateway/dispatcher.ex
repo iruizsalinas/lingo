@@ -1,28 +1,27 @@
 defmodule Lingo.Gateway.Dispatcher do
   @moduledoc false
 
-  require Logger
+  # Where every event goes once it's off the wire: voice gets its share, the
+  # cache is updated, the payload is built (see Lingo.Event), and collectors
+  # or the bot get it. An event that fails to parse reaches the bot's
+  # handle_error/2 instead of handle_event/2.
 
+  alias Lingo.Bot.Runner
+  alias Lingo.Event.Catalog
   alias Lingo.Type.Interaction
 
-  @spec dispatch(atom() | {:unknown_event, String.t()}, map()) :: :ok
+  @spec dispatch(atom() | {:unknown, String.t()}, map()) :: :ok
   def dispatch(event, data) do
     Lingo.Voice.Manager.dispatch(event, data)
 
-    parsed =
+    unless Catalog.payload(event) == :internal do
       try do
-        update_and_parse(event, data)
+        payload(event, data)
       rescue
-        e ->
-          Logger.error("Dispatcher crash on #{inspect(event)}: #{Exception.message(e)}")
-          data
+        e -> Runner.parse_failed(event, data, e, __STACKTRACE__)
+      else
+        payload -> deliver(name(event), payload)
       end
-
-    if event == :ready, do: Lingo.Bot.Sync.register_on_ready()
-
-    case Lingo.Collector.Match.try_match(event, parsed) do
-      :collected -> :ok
-      :miss -> dispatch_to_bot(event, parsed)
     end
 
     :ok
@@ -36,22 +35,36 @@ defmodule Lingo.Gateway.Dispatcher do
     __MODULE__.Other
   ]
 
-  # updates the cache and builds the event payload in one pass; events no
-  # parser knows reach the bot as raw maps
-  defp update_and_parse(event, data) do
-    Enum.reduce_while(@parsers, data, fn parser, data ->
+  @doc """
+  Updates the cache and builds the payload in one pass. Events that touch no
+  cache are built from the catalog alone.
+  """
+  @spec payload(atom() | {:unknown, String.t()}, map()) :: term()
+  def payload(event, data) do
+    Enum.find_value(@parsers, fn parser ->
       case parser.parse(event, data) do
-        :skip -> {:cont, data}
-        parsed -> {:halt, parsed}
+        :skip -> nil
+        payload -> {:ok, payload}
       end
     end)
+    |> case do
+      {:ok, payload} -> payload
+      nil -> Catalog.parse(event, data)
+    end
   end
 
-  # forward to user's bot module
+  defp name({:unknown, _type}), do: :unknown
+  defp name(event), do: event
 
-  defp dispatch_to_bot(:interaction_create, %Interaction{} = interaction) do
-    Lingo.Bot.Runner.interaction(interaction)
+  defp deliver(event, payload) do
+    case Lingo.Collector.Match.try_match(event, payload) do
+      :collected -> :ok
+      :miss -> to_bot(event, payload)
+    end
   end
 
-  defp dispatch_to_bot(event, data), do: Lingo.Bot.Runner.event(event, data)
+  defp to_bot(:interaction_create, %Interaction{} = interaction),
+    do: Runner.interaction(interaction)
+
+  defp to_bot(event, payload), do: Runner.event(event, payload)
 end

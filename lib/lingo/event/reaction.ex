@@ -1,7 +1,11 @@
-defmodule Lingo.Type.ReactionEvent do
-  @moduledoc "The payload of reaction gateway events, such as `:message_reaction_add`."
+defmodule Lingo.Event.Reaction do
+  @moduledoc """
+  The payload of `:message_reaction_add`, `:message_reaction_remove` and
+  `:message_reaction_remove_emoji` (which has no `user_id` or `member`).
+  `burst` marks super reactions.
+  """
 
-  alias Lingo.Type.{Emoji, Member}
+  alias Lingo.Type.{Emoji, Member, Parse}
 
   @type t :: %__MODULE__{
           user_id: String.t(),
@@ -39,7 +43,7 @@ defmodule Lingo.Type.ReactionEvent do
       message_id: data["message_id"],
       guild_id: data["guild_id"],
       emoji: Emoji.new(data["emoji"]),
-      member: Member.new(data["member"]),
+      member: data["member"] && Member.new(Parse.put_guild_id(data["member"], data["guild_id"])),
       message_author_id: data["message_author_id"],
       burst: data["burst"] || false,
       burst_colors: data["burst_colors"] || [],

@@ -45,9 +45,13 @@ defmodule Lingo.Gateway.Connection.Transport do
   end
 
   def reconnect(state, delay \\ nil) do
-    Lingo.Gateway.Dispatcher.dispatch(:shard_reconnecting, %{shard_id: state.shard_id})
     state = close(state)
     delay = delay || 1_000 + :rand.uniform(4_000)
+
+    Lingo.Telemetry.execute([:shard, :reconnecting], %{delay: delay}, %{
+      shard_id: state.shard_id,
+      shard_count: state.shard_count
+    })
 
     if state.connect_timer, do: Process.cancel_timer(state.connect_timer)
     timer = Process.send_after(self(), :connect, delay)

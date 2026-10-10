@@ -104,6 +104,41 @@ defmodule Lingo.TestingTest do
     end
   end
 
+  test "unknown gateway events raise, unless allowed" do
+    assert_raise ArgumentError, ~r/doesn't know the gateway event "NOPE"/, fn ->
+      dispatch("NOPE", %{})
+    end
+
+    assert dispatch("NOPE", %{}, allow_unknown: true) == :ok
+  end
+
+  defmodule OtherBot do
+    use Lingo.Bot
+
+    command("ping", "Pong")
+
+    @impl true
+    def handle_command("ping", ctx), do: reply!(ctx, "Other pong")
+  end
+
+  test "several bots in one test, picked with :bot" do
+    sample = Lingo.Instance.current()
+    other = start_bot(OtherBot)
+
+    run_command("ping", bot: sample)
+    assert %{data: %{"content" => "Pong!"}} = await_response()
+
+    run_command("ping", bot: other)
+    assert %{data: %{"content" => "Other pong"}} = await_response()
+  end
+
+  test "the bot runs its real supervision tree, without a gateway" do
+    bot = Lingo.Instance.current()
+    assert Process.whereis(Lingo.Instance.process_name(bot, Lingo.Supervisor))
+    assert Process.whereis(Lingo.Instance.process_name(bot, Lingo.Gateway.ShardManager)) == nil
+    assert Lingo.Gateway.await_ready(0) == :ok
+  end
+
   test "a bot that doesn't answer fails the wait" do
     assert_raise ExUnit.AssertionError, fn -> await_response(50) end
   end

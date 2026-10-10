@@ -36,34 +36,48 @@ defmodule Lingo.ClusterTest do
   @remote_guild Integer.to_string(Bitwise.bsl(1, 22))
 
   describe "cache" do
-    test "a miss is answered by the node running the guild's shard", %{name: name, node: node} do
+    test "with cluster: true, a miss is answered by the node running the guild's shard",
+         %{name: name, node: node} do
       :erpc.call(node, Peer, :member, [name, {:shard, 2, 1}, self()])
       :erpc.call(node, Peer, :put_guild, [name, @remote_guild, "Over there"])
 
-      assert %Lingo.Type.Guild{name: "Over there"} = Lingo.Cache.Guild.get(@remote_guild)
-      assert Lingo.Cache.Guild.get("999") == nil
+      assert %Lingo.Type.Guild{name: "Over there"} =
+               Lingo.Cache.Guild.get(@remote_guild, cluster: true)
+
+      assert Lingo.Cache.Guild.get("999", cluster: true) == nil
     end
 
-    test "lists gather every node's entries", %{name: name, node: node} do
+    test "reads stay on this node by default", %{name: name, node: node} do
+      :erpc.call(node, Peer, :member, [name, {:shard, 2, 1}, self()])
+      :erpc.call(node, Peer, :put_guild, [name, @remote_guild, "Over there"])
+      # a guild on shard 0, this node's
+      Peer.put_guild(name, "1", "Here")
+
+      assert Lingo.Cache.Guild.get(@remote_guild) == nil
+      assert ["Here"] = Lingo.Cache.Guild.list() |> Enum.map(& &1.name)
+    end
+
+    test "lists gather every node's entries with cluster: true", %{name: name, node: node} do
       Peer.put_guild(name, "4194304", "Here")
       :erpc.call(node, Peer, :put_guild, [name, @remote_guild, "Over there"])
 
       assert ["Here", "Over there"] =
-               Lingo.Cache.Guild.list() |> Enum.map(& &1.name) |> Enum.sort()
+               Lingo.Cache.Guild.list(cluster: true) |> Enum.map(& &1.name) |> Enum.sort()
     end
 
-    test "gateway connections only read their own node's cache", %{name: name, node: node} do
-      :erpc.call(node, Peer, :member, [name, {:shard, 2, 1}, self()])
+    test "reads without a guild ask every other node with cluster: true",
+         %{name: name, node: node} do
       :erpc.call(node, Peer, :put_guild, [name, @remote_guild, "Over there"])
 
-      task =
-        Task.async(fn ->
-          Lingo.Instance.put_current(name)
-          Lingo.Cache.Cluster.local_only()
-          Lingo.Cache.Guild.get(@remote_guild)
-        end)
+      # the guild has no shard owner registered, so only the any-node path finds it
+      assert Lingo.Cache.Cluster.any([], Lingo.Cache.Tables, :get, [:guilds, @remote_guild]) ==
+               nil
 
-      assert Task.await(task) == nil
+      assert %Lingo.Type.Guild{name: "Over there"} =
+               Lingo.Cache.Cluster.any([cluster: true], Lingo.Cache.Tables, :get, [
+                 :guilds,
+                 @remote_guild
+               ])
     end
   end
 

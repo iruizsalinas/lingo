@@ -1,13 +1,13 @@
 defmodule Lingo.Gateway.Dispatcher.Guild do
   @moduledoc false
 
-  # GUILD_* events: guilds, their emojis, stickers and bans. Each parse/2 updates the cache and
-  # returns what the bot's handle_event/2 receives.
+  # GUILD_* events that touch the cache: guilds, their emojis and stickers.
+  # Each parse/2 updates the cache and returns the event's payload.
 
   alias Lingo.Cache
   alias Lingo.Cache.Store
-
-  alias Lingo.Type.{Channel, Guild, User}
+  alias Lingo.Event.{GuildDelete, GuildEmojisUpdate, GuildStickersUpdate}
+  alias Lingo.Type.{Channel, Guild}
 
   def parse(:guild_create, data) do
     guild = Guild.new(data)
@@ -51,52 +51,32 @@ defmodule Lingo.Gateway.Dispatcher.Guild do
     %{old: old, new: guild}
   end
 
-  def parse(:guild_delete, %{"unavailable" => true, "id" => id}) do
-    if guild = Cache.Guild.get(id) do
-      Store.put_guild(%{guild | unavailable: true})
+  # an unavailable guild is in an outage and comes back; otherwise the bot left
+  def parse(:guild_delete, data) do
+    event = GuildDelete.new(data)
+    old = Cache.Guild.get(event.id)
+
+    cond do
+      not event.unavailable -> Store.delete_guild(event.id)
+      old -> Store.put_guild(%{old | unavailable: true})
+      true -> :ok
     end
 
-    %{id: id, unavailable: true}
-  end
-
-  def parse(:guild_delete, %{"id" => id}) do
-    old = Cache.Guild.get(id)
-    Store.delete_guild(id)
-    %{old: old, new: %{id: id, unavailable: false}}
+    %{event | old: old}
   end
 
   def parse(:guild_emojis_update, data) do
-    emojis = Enum.map(data["emojis"] || [], &Lingo.Type.Emoji.new/1)
-    guild = Cache.Guild.get(data["guild_id"])
-    old_emojis = if guild, do: guild.emojis || [], else: []
-
-    if guild, do: Store.put_guild(%{guild | emojis: emojis})
-
-    %{
-      old: %{guild_id: data["guild_id"], emojis: old_emojis},
-      new: %{guild_id: data["guild_id"], emojis: emojis}
-    }
+    event = GuildEmojisUpdate.new(data)
+    guild = Cache.Guild.get(event.guild_id)
+    if guild, do: Store.put_guild(%{guild | emojis: event.emojis})
+    %{event | old: guild && (guild.emojis || [])}
   end
 
   def parse(:guild_stickers_update, data) do
-    stickers = Enum.map(data["stickers"] || [], &Lingo.Type.Sticker.new/1)
-    guild = Cache.Guild.get(data["guild_id"])
-    old_stickers = if guild, do: guild.stickers || [], else: []
-
-    if guild, do: Store.put_guild(%{guild | stickers: stickers})
-
-    %{
-      old: %{guild_id: data["guild_id"], stickers: old_stickers},
-      new: %{guild_id: data["guild_id"], stickers: stickers}
-    }
-  end
-
-  def parse(:guild_ban_add, data) do
-    %{guild_id: data["guild_id"], user: User.new(data["user"])}
-  end
-
-  def parse(:guild_ban_remove, data) do
-    %{guild_id: data["guild_id"], user: User.new(data["user"])}
+    event = GuildStickersUpdate.new(data)
+    guild = Cache.Guild.get(event.guild_id)
+    if guild, do: Store.put_guild(%{guild | stickers: event.stickers})
+    %{event | old: guild && (guild.stickers || [])}
   end
 
   def parse(_event, _data), do: :skip

@@ -5,7 +5,8 @@ defmodule Lingo.Rest.Shared do
   # node's exhausted bucket or global 429 holds the others back too instead
   # of each finding out with its own 429. Only exhaustion is shared (an
   # update per request would cost more than the 429s it saves), and each
-  # node applies it against its own clock.
+  # node applies it against its own clock. Behind a REST proxy, which already
+  # shares limits between every node, there's nothing to share.
 
   alias Lingo.Gateway.Groups
   alias Lingo.Instance
@@ -14,7 +15,7 @@ defmodule Lingo.Rest.Shared do
   @doc "Shares a response's bucket state when it has no requests left."
   @spec bucket(String.t(), list() | map()) :: :ok
   def bucket(route_key, headers) do
-    if exhausted?(headers),
+    if not proxied?() and exhausted?(headers),
       do: Groups.cast_others(Instance.current(), Buckets, :update, [route_key, headers])
 
     :ok
@@ -22,7 +23,12 @@ defmodule Lingo.Rest.Shared do
 
   @doc "Shares a global pause."
   @spec pause(non_neg_integer()) :: :ok
-  def pause(ms), do: Groups.cast_others(Instance.current(), GlobalLimit, :pause, [ms])
+  def pause(ms) do
+    unless proxied?(), do: Groups.cast_others(Instance.current(), GlobalLimit, :pause, [ms])
+    :ok
+  end
+
+  defp proxied?, do: Instance.get(:rest_base_url, nil) != nil
 
   defp exhausted?(headers) do
     Enum.any?(headers, fn {name, value} ->

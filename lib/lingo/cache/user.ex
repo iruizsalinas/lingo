@@ -3,9 +3,9 @@ defmodule Lingo.Cache.User do
 
   alias Lingo.Cache.{Cluster, Tables}
 
-  @doc "A user, or `nil`."
-  @spec get(Lingo.Api.id()) :: Lingo.Type.User.t() | nil
-  def get(id), do: Cluster.any(Tables, :get, [:users, id])
+  @doc "A user, or `nil`. `cluster: true` asks the other nodes on a miss."
+  @spec get(Lingo.Api.id(), keyword()) :: Lingo.Type.User.t() | nil
+  def get(id, opts \\ []), do: Cluster.any(opts, Tables, :get, [:users, id])
 
   @doc "The bot's own user, once the first shard is ready. Kept even with the user cache off."
   @spec get_current() :: Lingo.Type.User.t() | nil

@@ -9,6 +9,14 @@ defmodule Lingo.CollectorTest do
 
   defp registry, do: Lingo.Instance.process_name(Lingo.Collector.Registry)
 
+  # awaiters register from their own process; wait until `count` have
+  defp wait_for_registrations(count, tries \\ 200) do
+    if Registry.count(registry()) != count and tries > 0 do
+      Process.sleep(5)
+      wait_for_registrations(count, tries - 1)
+    end
+  end
+
   describe "await_component" do
     test "returns {:ok, interaction} when a matching event arrives" do
       task =
@@ -17,7 +25,7 @@ defmodule Lingo.CollectorTest do
         end)
 
       # small delay for the registration to happen
-      Process.sleep(20)
+      wait_for_registrations(1)
 
       # simulate the dispatcher calling try_match
       interaction = %{
@@ -46,7 +54,7 @@ defmodule Lingo.CollectorTest do
           )
         end)
 
-      Process.sleep(20)
+      wait_for_registrations(1)
 
       # send a non-matching event
       no_match = %{
@@ -74,7 +82,7 @@ defmodule Lingo.CollectorTest do
           Collector.await_component("msg789", timeout: 2_000)
         end)
 
-      Process.sleep(20)
+      wait_for_registrations(1)
 
       interaction = %{type: :message_component, message: %{id: "msg789"}, data: %{}}
       assert Lingo.Collector.Match.try_match(:interaction_create, interaction) == :collected
@@ -83,7 +91,7 @@ defmodule Lingo.CollectorTest do
 
     test "a second matching click is not swallowed once the awaiter is satisfied" do
       task = Task.async(fn -> Collector.await_component("msg_dbl", timeout: 2_000) end)
-      Process.sleep(20)
+      wait_for_registrations(1)
 
       first = %{type: :message_component, message: %{id: "msg_dbl"}, data: %{"n" => 1}}
       second = %{type: :message_component, message: %{id: "msg_dbl"}, data: %{"n" => 2}}
@@ -107,7 +115,7 @@ defmodule Lingo.CollectorTest do
           Collector.await_reaction("ch1", "msg_react", timeout: 5_000)
         end)
 
-      Process.sleep(20)
+      wait_for_registrations(1)
 
       reaction = %{message_id: "msg_react", channel_id: "ch1", emoji: %{name: "👍"}}
       Lingo.Collector.Match.try_match(:message_reaction_add, reaction)
@@ -121,7 +129,7 @@ defmodule Lingo.CollectorTest do
           Collector.await_reaction("ch_correct", "msg_react2", timeout: 500)
         end)
 
-      Process.sleep(20)
+      wait_for_registrations(1)
 
       # wrong channel
       wrong = %{message_id: "msg_react2", channel_id: "ch_wrong", emoji: %{name: "👍"}}
@@ -143,7 +151,7 @@ defmodule Lingo.CollectorTest do
           Collector.collect_reactions("ch1", "msg_poll", timeout: 500)
         end)
 
-      Process.sleep(20)
+      wait_for_registrations(1)
 
       r1 = %{message_id: "msg_poll", channel_id: "ch1", emoji: %{name: "👍"}, user_id: "u1"}
       r2 = %{message_id: "msg_poll", channel_id: "ch1", emoji: %{name: "👎"}, user_id: "u2"}
@@ -173,7 +181,7 @@ defmodule Lingo.CollectorTest do
           )
         end)
 
-      Process.sleep(20)
+      wait_for_registrations(1)
 
       yes = %{message_id: "msg_filter", channel_id: "ch1", emoji: %{name: "👍"}, user_id: "u1"}
       no = %{message_id: "msg_filter", channel_id: "ch1", emoji: %{name: "👎"}, user_id: "u2"}
@@ -195,7 +203,7 @@ defmodule Lingo.CollectorTest do
           Collector.await_component("msg_cleanup", timeout: 60_000)
         end)
 
-      Process.sleep(20)
+      wait_for_registrations(1)
 
       # verify registration exists
       assert Registry.lookup(registry(), {:component, "msg_cleanup"}) != []
@@ -204,7 +212,7 @@ defmodule Lingo.CollectorTest do
       Process.exit(pid, :kill)
       receive do: ({:DOWN, ^ref, _, _, _} -> :ok)
 
-      Process.sleep(20)
+      wait_for_registrations(0)
 
       # registry should be clean
       assert Registry.lookup(registry(), {:component, "msg_cleanup"}) == []
@@ -212,7 +220,7 @@ defmodule Lingo.CollectorTest do
 
     test "registry is cleaned up after timeout" do
       Collector.await_component("msg_timeout_cleanup", timeout: 50)
-      Process.sleep(20)
+      wait_for_registrations(0)
 
       assert Registry.lookup(registry(), {:component, "msg_timeout_cleanup"}) == []
     end
@@ -230,7 +238,7 @@ defmodule Lingo.CollectorTest do
           Collector.await_component("msg_b", timeout: 2_000)
         end)
 
-      Process.sleep(20)
+      wait_for_registrations(2)
 
       ia = %{type: :message_component, message: %{id: "msg_a"}, data: %{}}
       ib = %{type: :message_component, message: %{id: "msg_b"}, data: %{}}

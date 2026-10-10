@@ -31,6 +31,9 @@ defmodule Lingo.MixProject do
 
   defp deps do
     [
+      # used when the application has it (Phoenix and most metrics libraries
+      # bring it); Lingo.Telemetry does nothing without it
+      {:telemetry, "~> 1.0", optional: true},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false}
     ]
   end
@@ -60,11 +63,13 @@ defmodule Lingo.MixProject do
           Lingo.Collector,
           Lingo.Error,
           Lingo.CheckError,
+          Lingo.EventError,
           Lingo.Testing
         ],
         "HTTP and OAuth2": [Lingo.Endpoint, Lingo.OAuth2],
         "REST API": [Lingo.Api, ~r/^Lingo\.Api\./],
         Cache: [Lingo.Cache, ~r/^Lingo\.Cache\./],
+        Events: [Lingo.Event, ~r/^Lingo\.Event\./],
         Gateway: [Lingo.Gateway, Lingo.Gateway.SessionStore, Lingo.Gateway.SessionStore.File],
         Voice: [~r/^Lingo\.Voice/],
         "Message content": [

@@ -8,7 +8,7 @@ defmodule Lingo.Bot.Runner do
 
   require Logger
 
-  alias Lingo.{CheckError, Context, Instance}
+  alias Lingo.{CheckError, Context, EventError, Instance, Telemetry}
   alias Lingo.Bot.Checks
 
   @callbacks %{
@@ -20,12 +20,37 @@ defmodule Lingo.Bot.Runner do
 
   @command_types %{1 => :chat_input, 2 => :user, 3 => :message, 4 => :primary_entry_point}
 
-  @spec event(atom(), term()) :: :ok
+  @spec event(Lingo.Event.name(), Lingo.Event.payload()) :: :ok
   def event(event, data) do
     bot = Instance.get(:bot)
 
     if bot && function_exported?(bot, :handle_event, 2) do
-      run(bot, {event, data}, fn -> bot.handle_event(event, data) end)
+      run(bot, {event, data}, fn ->
+        Telemetry.span([:event], %{event: event}, fn -> {bot.handle_event(event, data), %{}} end)
+      end)
+    end
+
+    :ok
+  end
+
+  @doc """
+  An event Lingo couldn't parse: it never reaches handle_event/2, whose
+  clauses expect the parsed payload, but goes to handle_error/2 as a
+  Lingo.EventError with Discord's raw data.
+  """
+  @spec parse_failed(atom(), term(), Exception.t(), list()) :: :ok
+  def parse_failed(event, data, exception, stacktrace) do
+    Logger.error(
+      "Lingo could not parse event #{inspect(event)}, dropping it\n" <>
+        Exception.format(:error, exception, stacktrace)
+    )
+
+    Telemetry.execute([:event, :parse_failed], %{}, %{event: event})
+    bot = Instance.get(:bot)
+
+    if bot && function_exported?(bot, :handle_error, 2) do
+      error = EventError.new(event, data, exception)
+      run(bot, {event, data}, fn -> handle_error(bot, error, {event, data}) end)
     end
 
     :ok
@@ -47,24 +72,42 @@ defmodule Lingo.Bot.Runner do
   end
 
   defp call(bot, :handle_command, ctx) do
-    case Checks.run(rules(bot, ctx), ctx) do
-      :ok -> bot.handle_command(ctx.command_name, ctx)
-      {:error, %CheckError{} = error} -> check_failed(bot, error, ctx)
-    end
+    type = Map.get(@command_types, ctx.interaction.data["type"], :chat_input)
+
+    meta = %{
+      command_name: ctx.command_name,
+      type: type,
+      guild_id: ctx.guild_id,
+      user_id: ctx.user_id
+    }
+
+    Telemetry.span([:command], meta, fn ->
+      result =
+        case Checks.run(rules(bot, type, ctx), ctx) do
+          :ok -> bot.handle_command(ctx.command_name, ctx)
+          {:error, %CheckError{} = error} -> check_failed(bot, error, ctx)
+        end
+
+      {result, %{}}
+    end)
   end
 
   defp call(bot, callback, ctx), do: apply(bot, callback, [route(ctx), ctx])
 
-  defp rules(bot, ctx) do
-    type = Map.get(@command_types, ctx.interaction.data["type"], :chat_input)
+  @no_rules %{checks: [], cooldown: nil}
 
+  defp rules(bot, type, ctx) do
     if function_exported?(bot, :__command_rules__, 0),
-      do:
-        Map.get(bot.__command_rules__(), {type, ctx.command_name}, %{checks: [], cooldown: nil}),
-      else: %{checks: [], cooldown: nil}
+      do: Map.get(bot.__command_rules__(), {type, ctx.command_name}, @no_rules),
+      else: @no_rules
   end
 
   defp check_failed(bot, error, ctx) do
+    Telemetry.execute([:command, :check_failed], %{}, %{
+      command_name: ctx.command_name,
+      reason: error.reason
+    })
+
     if function_exported?(bot, :handle_error, 2),
       do: bot.handle_error(error, ctx),
       else: Context.ephemeral(ctx, error.message)
@@ -102,16 +145,18 @@ defmodule Lingo.Bot.Runner do
           do: Exception.normalize(:error, reason, stacktrace),
           else: %ErlangError{original: {kind, reason}}
 
-      try do
-        bot.handle_error(error, source)
-      catch
-        kind, reason ->
-          Logger.error(
-            "#{inspect(bot)}.handle_error/2 failed\n" <>
-              Exception.format(kind, reason, __STACKTRACE__)
-          )
-      end
+      handle_error(bot, error, source)
     end
+  end
+
+  defp handle_error(bot, error, source) do
+    bot.handle_error(error, source)
+  catch
+    kind, reason ->
+      Logger.error(
+        "#{inspect(bot)}.handle_error/2 failed\n" <>
+          Exception.format(kind, reason, __STACKTRACE__)
+      )
   end
 
   defp describe(%Context{type: :application_command, command_name: name}),

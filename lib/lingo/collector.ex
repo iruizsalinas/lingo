@@ -24,7 +24,7 @@ defmodule Lingo.Collector do
     await({:component, message_id}, filter, timeout)
   end
 
-  @doc "Waits for a reaction on a message. Takes the same options as `await_component/2`. Returns `{:ok, reaction_event}` or `:timeout`."
+  @doc "Waits for a reaction on a message. Takes the same options as `await_component/2`. Returns `{:ok, %Lingo.Event.Reaction{}}` or `:timeout`."
   def await_reaction(channel_id, message_id, opts \\ []) do
     filter = Keyword.get(opts, :filter, fn _ -> true end)
     timeout = Keyword.get(opts, :timeout, 60_000)
@@ -62,7 +62,7 @@ defmodule Lingo.Collector do
     result
   end
 
-  @doc "Collects every reaction on a message until `:timeout` (ms, required) runs out. Takes a `:filter` too. Returns `{:ok, reaction_events}`."
+  @doc "Collects every reaction on a message until `:timeout` (ms, required) runs out. Takes a `:filter` too. Returns `{:ok, [%Lingo.Event.Reaction{}]}`."
   def collect_reactions(channel_id, message_id, opts \\ []) do
     filter = Keyword.get(opts, :filter, fn _ -> true end)
     timeout = Keyword.fetch!(opts, :timeout)

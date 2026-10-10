@@ -64,21 +64,25 @@ defmodule Lingo.Type.AutoModerationRule do
       name: data["name"],
       creator_id: data["creator_id"],
       event_type: Map.get(@event_types, data["event_type"], data["event_type"]),
-      trigger_type: Map.get(@trigger_types, data["trigger_type"], data["trigger_type"]),
+      trigger_type: trigger_type(data["trigger_type"]),
       trigger_metadata: data["trigger_metadata"] || %{},
-      actions: (data["actions"] || []) |> Enum.map(&parse_action/1),
+      actions: (data["actions"] || []) |> Enum.map(&action/1),
       enabled: data["enabled"] || false,
       exempt_roles: data["exempt_roles"] || [],
       exempt_channels: data["exempt_channels"] || []
     }
   end
 
-  defp parse_action(%{"type" => type} = action) do
+  @doc false
+  def trigger_type(code), do: Map.get(@trigger_types, code, code)
+
+  @doc false
+  def action(%{"type" => type} = action) do
     %{
       type: Map.get(@action_types, type, type),
       metadata: action["metadata"]
     }
   end
 
-  defp parse_action(action), do: action
+  def action(action), do: action
 end

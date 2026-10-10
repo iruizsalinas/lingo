@@ -34,6 +34,7 @@ defmodule Lingo.Supervisor do
       rest_base_url: get_in(opts, [:rest, :base_url]),
       register_commands: opts[:register_commands],
       endpoint: opts[:endpoint],
+      gateway: opts[:gateway] != false,
       # tests stand in for Discord here
       http_request: opts[:http_request]
     ]
@@ -59,14 +60,18 @@ defmodule Lingo.Supervisor do
     Supervisor.init(children, strategy: :rest_for_one)
   end
 
-  # without a gateway nothing fires :ready, so commands register at start
+  # without a gateway no shard gets ready, so commands register at start
   defp gateway(name, config, opts) do
     if opts[:gateway] == false do
       [Supervisor.child_spec({Task, fn -> register_commands(name) end}, restart: :temporary)]
     else
       [
         # sessions start before the shard manager so they're saved after it stops
-        {Lingo.Gateway.Sessions, bot: name, store: get_in(opts, [:sharding, :session_store])},
+        {Lingo.Gateway.Sessions,
+         bot: name,
+         store: opts[:gateway][:session_store],
+         ids: get_in(opts, [:sharding, :ids]) || :all,
+         cache?: Lingo.Cache.Policy.normalize(opts[:cache]) != %{}},
         {Lingo.Gateway.Identify, bot: name},
         {Lingo.Gateway.ShardManager,
          bot: name,

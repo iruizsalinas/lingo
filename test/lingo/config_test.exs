@@ -36,13 +36,17 @@ defmodule Lingo.ConfigTest do
   test "a session store is a module or {module, opts}" do
     store = Lingo.Gateway.SessionStore.File
 
-    assert validate(sharding: [session_store: store])[:sharding][:session_store] == {store, []}
+    assert validate(gateway: [session_store: store])[:gateway][:session_store] == {store, []}
 
-    assert validate(sharding: [session_store: {store, path: "s"}])[:sharding][:session_store] ==
+    assert validate(gateway: [session_store: {store, path: "s"}])[:gateway][:session_store] ==
              {store, path: "s"}
 
     assert_raise ArgumentError, ~r/SessionStore/, fn ->
-      validate(sharding: [session_store: String])
+      validate(gateway: [session_store: String])
+    end
+
+    assert_raise ArgumentError, ~r/moved from :sharding to :gateway/, fn ->
+      validate(sharding: [session_store: store])
     end
   end
 

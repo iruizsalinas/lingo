@@ -2,6 +2,7 @@ defmodule Lingo.OAuth2Test do
   use ExUnit.Case, async: true
 
   alias Lingo.OAuth2
+  alias Lingo.Type.{AccessToken, Connection, Guild}
 
   @client [client_id: "123", client_secret: "shh"]
 
@@ -67,10 +68,28 @@ defmodule Lingo.OAuth2Test do
 
   describe "tokens" do
     test "exchanging a code posts a form with HTTP Basic client auth" do
-      respond(200, %{"access_token" => "at", "refresh_token" => "rt", "expires_in" => 604_800})
+      respond(200, %{
+        "access_token" => "at",
+        "token_type" => "Bearer",
+        "refresh_token" => "rt",
+        "expires_in" => 604_800,
+        "scope" => "identify guilds"
+      })
 
-      assert {:ok, %{"access_token" => "at"}} =
-               OAuth2.exchange_code("the-code", "https://example.com/cb", @client)
+      before = DateTime.utc_now()
+
+      assert {:ok,
+              %AccessToken{
+                access_token: "at",
+                token_type: "Bearer",
+                refresh_token: "rt",
+                scopes: ["identify", "guilds"],
+                expires_at: expires_at
+              } = token} = OAuth2.exchange_code("the-code", "https://example.com/cb", @client)
+
+      assert DateTime.diff(expires_at, before) in 604_799..604_801
+      refute AccessToken.expired?(token)
+      assert AccessToken.expired?(token, :timer.hours(24 * 8))
 
       assert_received {:request, :post, "https://discord.com/api/v10/oauth2/token", headers,
                        {"application/x-www-form-urlencoded", form}}
@@ -110,6 +129,26 @@ defmodule Lingo.OAuth2Test do
       assert URI.decode_query(form) == %{"token" => "at", "token_type_hint" => "access_token"}
     end
 
+    test "take the token struct where a token string goes" do
+      respond(200, %{"access_token" => "at2"})
+      token = %AccessToken{access_token: "at", refresh_token: "rt"}
+
+      assert {:ok, %AccessToken{access_token: "at2"}} = OAuth2.refresh(token, @client)
+      assert_received {:request, :post, _, _, {_, form}}
+      assert URI.decode_query(form)["refresh_token"] == "rt"
+
+      # the hint comes from the struct
+      assert :ok = OAuth2.revoke(token, @client)
+      assert_received {:request, :post, _, _, {_, form}}
+      assert URI.decode_query(form) == %{"token" => "at", "token_type_hint" => "access_token"}
+    end
+
+    test "a token without expires_in never expires" do
+      token = AccessToken.new(%{"access_token" => "at"})
+      assert token.expires_at == nil
+      refute AccessToken.expired?(token)
+    end
+
     test "errors and rate limits come back as Lingo.Error" do
       respond(400, %{"error" => "invalid_grant"})
 
@@ -130,12 +169,41 @@ defmodule Lingo.OAuth2Test do
       assert {:ok, %Lingo.Type.User{id: "42"}} = OAuth2.get_current_user("user-token")
       assert_received {:request, :get, "https://discord.com/api/v10/users/@me", headers, nil}
       assert headers["authorization"] == "Bearer user-token"
+
+      assert {:ok, _user} = OAuth2.get_current_user(%AccessToken{access_token: "from-struct"})
+      assert_received {:request, :get, _, headers, nil}
+      assert headers["authorization"] == "Bearer from-struct"
+    end
+
+    test "guilds, connections and the authorization come back parsed" do
+      respond(200, [%{"id" => "9", "name" => "G", "permissions" => "8"}])
+      assert {:ok, [%Guild{id: "9", permissions: "8"}]} = OAuth2.list_guilds("t")
+
+      respond(200, [%{"id" => "1", "name" => "me", "type" => "github", "visibility" => 1}])
+
+      assert {:ok, [%Connection{type: "github", name: "me", visibility: :everyone}]} =
+               OAuth2.list_connections("t")
+
+      respond(200, %{
+        "application" => %{"id" => "200"},
+        "scopes" => ["identify"],
+        "expires" => "2026-10-17T00:00:00+00:00",
+        "user" => %{"id" => "42"}
+      })
+
+      assert {:ok,
+              %{
+                application: %{"id" => "200"},
+                scopes: ["identify"],
+                expires: %DateTime{},
+                user: %Lingo.Type.User{id: "42"}
+              }} = OAuth2.get_authorization("t")
     end
 
     test "linked role data" do
       respond(200, %{"platform_name" => "Game"})
 
-      assert {:ok, %{"platform_name" => "Game"}} =
+      assert {:ok, %{platform_name: "Game", platform_username: nil, metadata: %{}}} =
                OAuth2.update_role_connection("user-token", "200",
                  platform_name: "Game",
                  metadata: %{"level" => 10}

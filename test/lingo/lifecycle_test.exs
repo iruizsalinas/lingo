@@ -202,11 +202,10 @@ defmodule Lingo.LifecycleTest do
       assert_receive {:request, :put, "/api/v10/applications/app1/guilds/g2/commands", _, _}
     end
 
-    test "runs when the bot is ready, if asked to" do
-      start_bot(AlphaBot, "token-a", register_commands: :global)
-
-      Lingo.with_bot(AlphaBot, fn -> Lingo.Gateway.Dispatcher.dispatch(:ready, %{}) end)
+    test "runs at start without a gateway, if asked to" do
+      start_bot(AlphaBot, "token-a", register_commands: :global, gateway: false)
       assert_receive {:request, :put, "/api/v10/applications/app1/commands", _auth, _body}
+      assert Lingo.with_bot(AlphaBot, fn -> Lingo.Gateway.await_ready(0) end) == :ok
     end
   end
 end

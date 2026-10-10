@@ -3,7 +3,7 @@ defmodule Lingo.Cache.Channel do
 
   alias Lingo.Cache.{Cluster, Tables}
 
-  @doc "A channel or thread, or `nil`."
-  @spec get(Lingo.Api.id()) :: Lingo.Type.Channel.t() | nil
-  def get(id), do: Cluster.any(Tables, :get, [:channels, id])
+  @doc "A channel or thread, or `nil`. `cluster: true` asks the other nodes on a miss."
+  @spec get(Lingo.Api.id(), keyword()) :: Lingo.Type.Channel.t() | nil
+  def get(id, opts \\ []), do: Cluster.any(opts, Tables, :get, [:channels, id])
 end

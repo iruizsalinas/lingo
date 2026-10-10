@@ -8,7 +8,7 @@ defmodule Lingo.Api.User do
 
   alias Lingo.Api
   alias Lingo.Rest.Client
-  alias Lingo.Type.{Channel, User}
+  alias Lingo.Type.{Channel, Guild, User}
 
   @doc "Fetches the bot's user."
   @spec get_current() :: Api.result(User.t())
@@ -32,13 +32,13 @@ defmodule Lingo.Api.User do
   Lists the guilds the bot is in, 200 at a time. Options: `:before`,
   `:after`, `:limit`, `:with_counts`, and `:shard`, which bots on large bot
   sharding must give (one call per shard from `0` to `max_concurrency - 1`).
+  The guilds are partial: id, name, icon, features, the bot's `permissions`,
+  and with `with_counts: true` the approximate counts.
   """
-  @spec list_guilds(keyword()) :: Api.result([map()])
+  @spec list_guilds(keyword()) :: Api.result([Guild.t()])
   def list_guilds(opts \\ []) do
-    params =
-      Client.params(opts)
-
-    Client.request(:get, "/users/@me/guilds", params: params)
+    Client.request(:get, "/users/@me/guilds", params: Client.params(opts))
+    |> Client.into(&Guild.new/1)
   end
 
   @doc "Makes the bot leave a guild."

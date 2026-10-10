@@ -45,6 +45,27 @@ defmodule Lingo.Api.LobbyTest do
     end
   end
 
+  test "lobbies and members come back as structs, invites as their code" do
+    respond = fn body ->
+      Lingo.Instance.put(Lingo.Instance.current(), :http_request, fn _, _, _, _ ->
+        {:ok, %{status: 200, headers: [{"content-type", "application/json"}], body: body}}
+      end)
+    end
+
+    respond.(~s({"id":"1","members":[{"id":"30","flags":1}]}))
+
+    assert {:ok, %Lingo.Type.Lobby{id: "1", members: [%Lingo.Type.LobbyMember{id: "30"}]}} =
+             Lobby.get("1")
+
+    respond.(~s([{"id":"30"},{"id":"31"}]))
+
+    assert {:ok, [%Lingo.Type.LobbyMember{}, %Lingo.Type.LobbyMember{}]} =
+             Lobby.update_members("1", [])
+
+    respond.(~s({"code":"abc"}))
+    assert {:ok, "abc"} = Lobby.create_invite("1", "30")
+  end
+
   test "attachments know whether they're spoilers" do
     assert Lingo.Type.Attachment.spoiler?(Lingo.Type.Attachment.new(%{"id" => "1", "flags" => 8}))
 

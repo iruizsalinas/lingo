@@ -3,14 +3,15 @@ defmodule Lingo.Cache.Member do
 
   alias Lingo.Cache.{Cluster, Tables}
 
-  @doc "A guild member, with their user, or `nil`."
-  @spec get(Lingo.Api.id(), Lingo.Api.id()) :: Lingo.Type.Member.t() | nil
-  def get(guild_id, user_id),
-    do: Cluster.guild(guild_id, __MODULE__, :local_get, [guild_id, user_id])
+  @doc "A guild member, with their user, or `nil`. `cluster: true` asks the node running the guild's shard on a miss."
+  @spec get(Lingo.Api.id(), Lingo.Api.id(), keyword()) :: Lingo.Type.Member.t() | nil
+  def get(guild_id, user_id, opts \\ []),
+    do: Cluster.guild(guild_id, opts, __MODULE__, :local_get, [guild_id, user_id])
 
-  @doc "A guild's cached members, with their users."
-  @spec list(Lingo.Api.id()) :: [Lingo.Type.Member.t()]
-  def list(guild_id), do: Cluster.guild(guild_id, __MODULE__, :local_list, [guild_id])
+  @doc "A guild's cached members, with their users. Takes `cluster: true` as `get/3` does."
+  @spec list(Lingo.Api.id(), keyword()) :: [Lingo.Type.Member.t()]
+  def list(guild_id, opts \\ []),
+    do: Cluster.guild(guild_id, opts, __MODULE__, :local_list, [guild_id])
 
   @doc false
   def local_get(guild_id, user_id) do

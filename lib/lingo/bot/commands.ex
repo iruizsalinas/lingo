@@ -30,14 +30,21 @@ defmodule Lingo.Bot.Commands do
     * `:name_localizations`, `:description_localizations` - maps of locale to text
     * `:checks` - what must hold for the command to run, checked before
       `c:Lingo.Bot.handle_command/2`: `:guild_only`, `:dm_only`, `:nsfw`,
-      `:owner_only` (the app's owner or team), `{:permissions, perms}` (the
-      member's, in the channel), `{:bot_permissions, perms}`, or a function
-      like `&MyBot.allowed?/1` getting the context and returning `true`,
-      `false` or `{:error, message}`. See `Lingo.CheckError` for what
-      happens when one fails.
-    * `:cooldown` - `{uses, per_ms}` or `{uses, per_ms, scope}`: at most
-      `uses` per `per_ms` for each `:user` (the default), `:member`,
-      `:guild`, `:channel`, or `:global`ly
+      `:owner_only` (the app's owner, or its team's owner, admins and
+      developers), `{:permissions, perms}` (the member's, in the channel),
+      `{:bot_permissions, perms}`, or a function like `&MyBot.allowed?/1`
+      getting the context and returning `true` or `:ok` to pass, `false` or
+      `{:error, message}` to fail. Permission checks fail as `:guild_only`
+      outside a guild. See `Lingo.CheckError` for what happens when one
+      fails. They don't replace `:default_member_permissions`, which also
+      hides the command from members without them.
+    * `:cooldown` - `{uses, per_ms}`, `{uses, per_ms, scope}` or
+      `[uses: n, per: ms, scope: s]`: at most `uses` per `per_ms` for each
+      `:user` (the default), `:member`, `:guild`, `:channel`, or `:global`ly.
+      The window starts at the first use. A function like
+      `&MyBot.cooldown/1` decides for each use: it gets the context and
+      returns a cooldown, or `nil` for none (for owners, premium users...).
+      Cooldowns count per node.
 
   For example:
 
@@ -129,10 +136,10 @@ defmodule Lingo.Bot.Commands do
   @doc false
   def __rules__(type, name, opts) do
     checks = Lingo.Bot.Checks.validate!(Keyword.get(opts, :checks, []))
-    cooldown = Lingo.Bot.Checks.validate_cooldown!(opts[:cooldown])
+    cooldown = Lingo.Bot.Cooldowns.validate!(opts[:cooldown])
 
     if checks != [] or cooldown,
-      do: {{type, to_string(name)}, %{checks: checks, cooldown: cooldown}}
+      do: {{type, to_string(name)}, %{type: type, checks: checks, cooldown: cooldown}}
   end
 
   @doc false

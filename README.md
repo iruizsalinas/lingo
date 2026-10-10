@@ -17,7 +17,8 @@ Currently covers:
 - Permission and role hierarchy helpers
 - Embed builder, CDN helpers, and component builders
 
-No runtime dependencies: just OTP and Elixir 1.18+.
+No required dependencies: just OTP and Elixir 1.18+. Metrics go through
+[`:telemetry`](https://hex.pm/packages/telemetry) when your app has it.
 
 Check out the [docs](https://hexdocs.pm/lingo/) for the API reference.
 
@@ -138,14 +139,23 @@ end
 
 ## Events
 
+Every event Discord sends reaches `handle_event/2`, named as Discord names it,
+lowercased. Creates carry the resource, updates `%{old: old, new: new}`, and
+everything else a struct of its own (`Lingo.Event` lists them all):
+
 ```elixir
 @impl true
 def handle_event(:guild_member_add, member) do
   Lingo.Api.Message.create(welcome_channel_id, "Welcome #{Lingo.Format.mention_user(member.user.id)}!")
 end
 
-def handle_event(:message_update, %{old: %{content: old}, new: msg}) do
-  IO.puts("#{msg.author.username} changed #{inspect(old)} to #{inspect(msg.content)}")
+def handle_event(:message_delete, %Lingo.Event.MessageDelete{channel_id: channel_id, old: old}) do
+  if old, do: Lingo.Api.Message.create(channel_id, "Deleted: #{old.content}")
+end
+
+# old comes from the cache: nil unless messages are cached (see Lingo.Cache)
+def handle_event(:message_update, %{old: %{content: before}, new: msg}) do
+  IO.puts("#{msg.author.username} changed #{inspect(before)} to #{inspect(msg.content)}")
 end
 ```
 

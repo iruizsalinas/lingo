@@ -1,13 +1,13 @@
 defmodule Lingo.Gateway.Dispatcher.Member do
   @moduledoc false
 
-  # Member and role events. Each parse/2 updates the cache and
-  # returns what the bot's handle_event/2 receives.
+  # Member and role events. Each parse/2 updates the cache and returns the
+  # event's payload.
 
   alias Lingo.Cache
   alias Lingo.Cache.Store
-
-  alias Lingo.Type.{Member, Presence, User}
+  alias Lingo.Event.{GuildMemberRemove, GuildMembersChunk, GuildRoleDelete}
+  alias Lingo.Type.Member
 
   def parse(:guild_member_add, data) do
     m = Member.new(data)
@@ -24,38 +24,25 @@ defmodule Lingo.Gateway.Dispatcher.Member do
   end
 
   def parse(:guild_member_remove, data) do
-    user_id = get_in(data, ["user", "id"])
-    old = Cache.Member.get(data["guild_id"], user_id)
-    Store.delete_member(data["guild_id"], user_id)
-    adjust_member_count(data["guild_id"], -1)
-    %{old: old, new: %{guild_id: data["guild_id"], user: User.new(data["user"])}}
+    event = GuildMemberRemove.new(data)
+    user_id = event.user && event.user.id
+    old = Cache.Member.get(event.guild_id, user_id)
+    Store.delete_member(event.guild_id, user_id)
+    adjust_member_count(event.guild_id, -1)
+    %{event | old: old}
   end
 
   def parse(:guild_members_chunk, data) do
-    guild_id = data["guild_id"]
+    chunk = GuildMembersChunk.new(data)
+    guild_id = chunk.guild_id
 
-    members =
-      Enum.map(data["members"] || [], fn member ->
-        Member.new(Map.put(member, "guild_id", guild_id))
-      end)
+    Store.put_all([:members, :users], chunk.members, fn m -> Store.put_member(guild_id, m) end)
 
-    presences =
-      Enum.map(data["presences"] || [], fn presence ->
-        Presence.new(Map.put(presence, "guild_id", guild_id))
-      end)
+    Store.put_all([:presences, :users], chunk.presences, fn p ->
+      Store.put_presence(guild_id, p)
+    end)
 
-    Store.put_all([:members, :users], members, fn m -> Store.put_member(guild_id, m) end)
-    Store.put_all([:presences, :users], presences, fn p -> Store.put_presence(guild_id, p) end)
-
-    %{
-      guild_id: guild_id,
-      members: members,
-      presences: presences,
-      chunk_index: data["chunk_index"],
-      chunk_count: data["chunk_count"],
-      not_found: data["not_found"],
-      nonce: data["nonce"]
-    }
+    chunk
   end
 
   def parse(:guild_role_create, data) do
@@ -72,9 +59,10 @@ defmodule Lingo.Gateway.Dispatcher.Member do
   end
 
   def parse(:guild_role_delete, data) do
-    old = Cache.Role.get(data["guild_id"], data["role_id"])
-    Store.delete_role(data["guild_id"], data["role_id"])
-    %{old: old, new: %{guild_id: data["guild_id"], role_id: data["role_id"]}}
+    event = GuildRoleDelete.new(data)
+    old = Cache.Role.get(event.guild_id, event.role_id)
+    Store.delete_role(event.guild_id, event.role_id)
+    %{event | old: old}
   end
 
   def parse(_event, _data), do: :skip

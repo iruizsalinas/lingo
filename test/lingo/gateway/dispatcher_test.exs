@@ -1,6 +1,7 @@
 defmodule Lingo.Gateway.DispatcherTest do
   use ExUnit.Case, async: true
 
+  alias Lingo.Event
   alias Lingo.Gateway.Dispatcher
   alias Lingo.Type.{AuditLogEntry, Channel, Guild, Invite, Member, Presence}
 
@@ -9,6 +10,10 @@ defmodule Lingo.Gateway.DispatcherTest do
 
     @impl true
     def handle_event(event, data), do: send(Lingo.Instance.get(:test_pid), {event, data})
+
+    @impl true
+    def handle_error(error, source),
+      do: send(Lingo.Instance.get(:test_pid), {:error, error, source})
   end
 
   setup do
@@ -175,10 +180,82 @@ defmodule Lingo.Gateway.DispatcherTest do
     end
 
     test "USER_UPDATE refreshes the current user" do
-      Dispatcher.dispatch(:shard_ready, %{"user" => %{"id" => "me", "username" => "old"}})
+      Dispatcher.dispatch(:ready, %{"user" => %{"id" => "me", "username" => "old"}})
       Dispatcher.dispatch(:user_update, %{"id" => "me", "username" => "new"})
 
       assert Lingo.Cache.User.get_current().username == "new"
+    end
+  end
+
+  describe "deletes" do
+    test "carry the cached resource as old" do
+      Dispatcher.dispatch(:message_create, %{
+        "id" => "m1",
+        "channel_id" => "c1",
+        "content" => "hi"
+      })
+
+      Dispatcher.dispatch(:message_delete, %{"id" => "m1", "channel_id" => "c1"})
+
+      assert_receive {:message_delete,
+                      %Event.MessageDelete{id: "m1", old: %Lingo.Type.Message{content: "hi"}}}
+
+      assert Lingo.Cache.Message.get("c1", "m1") == nil
+
+      Dispatcher.dispatch(:message_create, %{"id" => "m2", "channel_id" => "c1", "content" => "a"})
+
+      Dispatcher.dispatch(:message_delete_bulk, %{"ids" => ["m2", "m3"], "channel_id" => "c1"})
+
+      assert_receive {:message_delete_bulk,
+                      %Event.MessageDeleteBulk{ids: ["m2", "m3"], old: [%{id: "m2"}]}}
+    end
+
+    test "carry nil as old when the resource wasn't cached" do
+      Dispatcher.dispatch(:guild_role_delete, %{"guild_id" => "g", "role_id" => "r"})
+      assert_receive {:guild_role_delete, %Event.GuildRoleDelete{role_id: "r", old: nil}}
+
+      Dispatcher.dispatch(:guild_emojis_update, %{"guild_id" => "nowhere", "emojis" => []})
+      assert_receive {:guild_emojis_update, %Event.GuildEmojisUpdate{emojis: [], old: nil}}
+    end
+
+    test "a guild outage keeps the guild, leaving it removes it" do
+      Dispatcher.dispatch(:guild_create, %{"id" => "g_out", "name" => "G"})
+
+      Dispatcher.dispatch(:guild_delete, %{"id" => "g_out", "unavailable" => true})
+      assert_receive {:guild_delete, %Event.GuildDelete{unavailable: true, old: %Guild{}}}
+      assert %Guild{unavailable: true} = Lingo.Cache.Guild.get("g_out")
+
+      Dispatcher.dispatch(:guild_delete, %{"id" => "g_out"})
+      assert_receive {:guild_delete, %Event.GuildDelete{unavailable: false, old: %Guild{}}}
+      assert Lingo.Cache.Guild.get("g_out") == nil
+    end
+
+    test "channel deletes carry the channel Discord sends" do
+      Dispatcher.dispatch(:channel_delete, %{"id" => "c_del", "guild_id" => "g", "type" => 0})
+      assert_receive {:channel_delete, %Channel{id: "c_del", type: :guild_text}}
+    end
+  end
+
+  describe "delivery" do
+    test "unknown events arrive as :unknown, with Discord's name and data" do
+      Dispatcher.dispatch({:unknown, "SOMETHING_NEW"}, %{"a" => 1})
+      assert_receive {:unknown, %Event.Unknown{type: "SOMETHING_NEW", data: %{"a" => 1}}}
+    end
+
+    test "events Lingo keeps to itself don't reach the bot" do
+      Dispatcher.dispatch(:voice_server_update, %{"guild_id" => "g", "token" => "t"})
+      refute_receive {:voice_server_update, _}, 100
+    end
+
+    @tag :capture_log
+    test "an event that fails to parse goes to handle_error/2 with the raw data" do
+      Dispatcher.dispatch(:guild_role_create, %{"guild_id" => "g", "role" => "not a role"})
+
+      assert_receive {:error,
+                      %Lingo.EventError{event: :guild_role_create, exception: %BadMapError{}},
+                      {:guild_role_create, %{"guild_id" => "g", "role" => "not a role"}}}
+
+      refute_receive {:guild_role_create, _}, 100
     end
   end
 end

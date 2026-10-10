@@ -8,7 +8,17 @@ defmodule Lingo.Api.Thread do
 
   alias Lingo.Api
   alias Lingo.Rest.{Body, Client}
-  alias Lingo.Type.Channel
+  alias Lingo.Type.{Channel, ThreadMember}
+
+  @typedoc "A page of archived threads, with the bot's membership in those it has joined."
+  @type archived :: %{
+          threads: [Channel.t()],
+          members: [ThreadMember.t()],
+          has_more: boolean()
+        }
+
+  @typedoc "A guild's active threads, with the bot's membership in those it has joined."
+  @type active :: %{threads: [Channel.t()], members: [ThreadMember.t()]}
 
   @doc "Starts a thread from a message."
   @spec start_from_message(Api.id(), Api.id(), Api.params(), keyword()) :: Api.result(Channel.t())
@@ -53,60 +63,70 @@ defmodule Lingo.Api.Thread do
     Client.request(:delete, "/channels/#{channel_id}/thread-members/#{user_id}")
   end
 
-  @doc "Fetches a thread member."
-  @spec get_member(Api.id(), Api.id(), keyword()) :: Api.result(map())
+  @doc "Fetches a thread member. `with_member: true` includes the guild member."
+  @spec get_member(Api.id(), Api.id(), keyword()) :: Api.result(ThreadMember.t())
   def get_member(channel_id, user_id, opts \\ []) do
     params = Client.params(opts)
+
     Client.request(:get, "/channels/#{channel_id}/thread-members/#{user_id}", params: params)
+    |> Client.into(&ThreadMember.new/1)
   end
 
-  @doc "Lists a thread's members."
-  @spec list_members(Api.id(), keyword()) :: Api.result([map()])
+  @doc """
+  Lists a thread's members. Options: `:with_member` (include the guild
+  members), `:after` and `:limit`.
+  """
+  @spec list_members(Api.id(), keyword()) :: Api.result([ThreadMember.t()])
   def list_members(channel_id, opts \\ []) do
-    params =
-      Client.params(opts)
-
-    Client.request(:get, "/channels/#{channel_id}/thread-members", params: params)
+    Client.request(:get, "/channels/#{channel_id}/thread-members", params: Client.params(opts))
+    |> Client.into(&ThreadMember.new/1)
   end
 
-  @doc "Lists a channel's archived public threads."
-  @spec list_public_archived(Api.id(), keyword()) :: Api.result(map())
+  @doc "Lists a channel's archived public threads. Options: `:before` and `:limit`."
+  @spec list_public_archived(Api.id(), keyword()) :: Api.result(archived())
   def list_public_archived(channel_id, opts \\ []) do
-    params =
-      Client.params(opts)
-
-    Client.request(:get, "/channels/#{channel_id}/threads/archived/public", params: params)
-  end
-
-  @doc "Lists a channel's archived private threads."
-  @spec list_private_archived(Api.id(), keyword()) :: Api.result(map())
-  def list_private_archived(channel_id, opts \\ []) do
-    params =
-      Client.params(opts)
-
-    Client.request(:get, "/channels/#{channel_id}/threads/archived/private", params: params)
-  end
-
-  @doc "Lists archived private threads the bot has joined."
-  @spec list_joined_private_archived(Api.id(), keyword()) :: Api.result(map())
-  def list_joined_private_archived(channel_id, opts \\ []) do
-    params =
-      Client.params(opts)
-
-    Client.request(:get, "/channels/#{channel_id}/users/@me/threads/archived/private",
-      params: params
+    Client.request(:get, "/channels/#{channel_id}/threads/archived/public",
+      params: Client.params(opts)
     )
+    |> threads()
   end
 
-  @doc "Lists a guild's active threads."
-  @spec list_active(Api.id()) :: Api.result(%{threads: [Channel.t()], members: [map()]})
-  def list_active(guild_id) do
-    with {:ok, data} <- Client.request(:get, "/guilds/#{guild_id}/threads/active") do
-      {:ok,
-       %{
-         threads: Enum.map(data["threads"] || [], &Channel.new/1),
-         members: data["members"] || []
-       }}
-    end
+  @doc "Lists a channel's archived private threads. Options: `:before` and `:limit`."
+  @spec list_private_archived(Api.id(), keyword()) :: Api.result(archived())
+  def list_private_archived(channel_id, opts \\ []) do
+    Client.request(:get, "/channels/#{channel_id}/threads/archived/private",
+      params: Client.params(opts)
+    )
+    |> threads()
   end
+
+  @doc "Lists archived private threads the bot has joined. Options: `:before` and `:limit`."
+  @spec list_joined_private_archived(Api.id(), keyword()) :: Api.result(archived())
+  def list_joined_private_archived(channel_id, opts \\ []) do
+    Client.request(:get, "/channels/#{channel_id}/users/@me/threads/archived/private",
+      params: Client.params(opts)
+    )
+    |> threads()
+  end
+
+  @doc """
+  Lists a guild's active threads, with the bot's membership in those it
+  has joined.
+  """
+  @spec list_active(Api.id()) :: Api.result(active())
+  def list_active(guild_id) do
+    with {:ok, list} <- threads(Client.request(:get, "/guilds/#{guild_id}/threads/active")),
+         do: {:ok, Map.delete(list, :has_more)}
+  end
+
+  defp threads({:ok, data}) do
+    {:ok,
+     %{
+       threads: Enum.map(data["threads"] || [], &Channel.new/1),
+       members: Enum.map(data["members"] || [], &ThreadMember.new/1),
+       has_more: data["has_more"] || false
+     }}
+  end
+
+  defp threads(error), do: error
 end

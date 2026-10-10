@@ -105,10 +105,11 @@ defmodule Lingo.Gateway.ConnectionTest do
       assert {:noreply, %Connection{seq: 12}} = deliver_json(%{state | seq: 11}, server, payload)
 
       assert_receive {:rate_limited,
-                      %{
-                        "opcode" => 8,
-                        "retry_after" => 60.0,
-                        "meta" => %{"guild_id" => "guild1", "nonce" => "nonce1"}
+                      %Lingo.Event.RateLimited{
+                        opcode: :request_guild_members,
+                        retry_after: 60_000,
+                        guild_id: "guild1",
+                        nonce: "nonce1"
                       }}
     end
 
@@ -223,7 +224,9 @@ defmodule Lingo.Gateway.ConnectionTest do
 
       assert state.seq == 3
       guild_id = Integer.to_string(1 <<< 40)
-      assert_receive {:rate_limited, %{"opcode" => 8, "meta" => %{"guild_id" => ^guild_id}}}
+
+      assert_receive {:rate_limited,
+                      %Lingo.Event.RateLimited{retry_after: 1500, guild_id: ^guild_id}}
     end
   end
 

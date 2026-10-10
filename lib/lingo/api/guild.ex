@@ -8,7 +8,7 @@ defmodule Lingo.Api.Guild do
 
   alias Lingo.Api
   alias Lingo.Rest.Client
-  alias Lingo.Type.Guild
+  alias Lingo.Type.{Guild, Integration}
 
   @doc "Fetches a guild. Pass `with_counts: true` for approximate member and presence counts."
   @spec get(Api.id(), keyword()) :: Api.result(Guild.t())
@@ -38,9 +38,10 @@ defmodule Lingo.Api.Guild do
   end
 
   @doc "Lists a guild's integrations."
-  @spec list_integrations(Api.id()) :: Api.result([map()])
+  @spec list_integrations(Api.id()) :: Api.result([Integration.t()])
   def list_integrations(guild_id) do
     Client.request(:get, "/guilds/#{guild_id}/integrations")
+    |> Client.into(&Integration.new(Map.put(&1, "guild_id", guild_id)))
   end
 
   @doc "Removes an integration from a guild."

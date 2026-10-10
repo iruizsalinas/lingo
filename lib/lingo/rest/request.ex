@@ -21,10 +21,18 @@ defmodule Lingo.Rest.Request do
   end
 
   # a REST proxy may stand in for Discord, shared by every node and process
-  defp base_url, do: Lingo.Instance.get(:rest_base_url) || @base_url
+  defp base_url, do: bot_config(:rest_base_url) || @base_url
 
   # swappable so tests can stand in for Discord
-  defp http_request, do: Lingo.Instance.get(:http_request) || (&Lingo.Rest.HTTP.request/4)
+  defp http_request, do: bot_config(:http_request) || (&Lingo.Rest.HTTP.request/4)
+
+  # OAuth2 calls work without a bot (or with several and none picked): they
+  # then go to Discord directly
+  defp bot_config(key) do
+    Lingo.Instance.get(key)
+  rescue
+    ArgumentError -> nil
+  end
 
   defp query_string(params) when params in [nil, [], %{}], do: ""
   defp query_string(params), do: "?" <> URI.encode_query(params)

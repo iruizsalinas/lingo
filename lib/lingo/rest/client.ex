@@ -3,6 +3,8 @@ defmodule Lingo.Rest.Client do
 
   import Bitwise
 
+  require Logger
+
   alias Lingo.Rest.{Deadline, Request, Route}
 
   @max_retries 3
@@ -116,6 +118,7 @@ defmodule Lingo.Rest.Client do
     notify_rate_limit(method, path, retry_after, global)
 
     if global do
+      Logger.warning("Lingo hit Discord's global rate limit, pausing API calls #{retry_after} ms")
       Lingo.Rest.GlobalLimit.pause(retry_after)
       Lingo.Rest.Shared.pause(retry_after)
     end
@@ -143,17 +146,11 @@ defmodule Lingo.Rest.Client do
   defp rate_limited(ms), do: {:error, %Lingo.Error{reason: :rate_limited, retry_after: ms}}
 
   defp timed_send(method, path, opts) do
-    start = System.monotonic_time()
-    result = Request.send(method, path, opts)
-    status = if match?({:ok, _, _, _}, result), do: elem(result, 1)
-
-    Lingo.Telemetry.execute(
-      [:rest, :request],
-      %{duration: System.monotonic_time() - start},
-      %{method: method, path: path, status: status}
-    )
-
-    result
+    Lingo.Telemetry.span([:rest, :request], %{method: method, path: path}, fn ->
+      result = Request.send(method, path, opts)
+      status = if match?({:ok, _, _, _}, result), do: elem(result, 1)
+      {result, %{status: status}}
+    end)
   end
 
   defp notify_rate_limit(method, path, retry_after, global) do
@@ -162,13 +159,6 @@ defmodule Lingo.Rest.Client do
       %{retry_after: retry_after},
       %{method: method, path: path, global: global}
     )
-
-    Lingo.Bot.Runner.event(:rate_limit, %{
-      method: method,
-      path: path,
-      retry_after: retry_after,
-      global: global
-    })
   end
 
   @doc "Parses a successful response with `fun`, each element of a list one."

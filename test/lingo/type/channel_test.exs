@@ -79,7 +79,7 @@ defmodule Lingo.Type.ChannelTest do
 
       assert channel.application_id == "app1"
       assert channel.managed == true
-      assert channel.member["user_id"] == "u1"
+      assert %Lingo.Type.ThreadMember{user_id: "u1", join_timestamp: %DateTime{}} = channel.member
       assert channel.default_auto_archive_duration == 1440
       assert channel.permissions == "1024"
       assert channel.app_permissions == "3072"
