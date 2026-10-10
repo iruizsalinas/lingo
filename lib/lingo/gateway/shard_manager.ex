@@ -40,9 +40,6 @@ defmodule Lingo.Gateway.ShardManager do
 
   def broadcast(payload), do: GenServer.cast(server(), {:broadcast, payload})
 
-  def send_to_shard(shard_id, payload),
-    do: GenServer.cast(server(), {:send_to_shard, shard_id, payload})
-
   def send_to_guild_shard(guild_id, payload),
     do: GenServer.cast(server(), {:send_to_guild_shard, guild_id, payload})
 
