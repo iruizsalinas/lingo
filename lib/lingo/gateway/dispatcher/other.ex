@@ -11,7 +11,7 @@ defmodule Lingo.Gateway.Dispatcher.Other do
 
   def parse(:voice_state_update, data) do
     vs = Lingo.Type.VoiceState.new(data)
-    old = Cache.get_voice_state(data["guild_id"], vs.user_id)
+    old = Cache.VoiceState.get(data["guild_id"], vs.user_id)
     Store.put_voice_state(data["guild_id"], vs)
     %{old: old, new: vs}
   end
@@ -19,9 +19,9 @@ defmodule Lingo.Gateway.Dispatcher.Other do
   def parse(:presence_update, data) do
     p = Presence.new(data)
     user_id = get_in(data, ["user", "id"])
-    old = Cache.get_presence(data["guild_id"], user_id)
+    old = Cache.Presence.get(data["guild_id"], user_id)
     Store.put_presence(data["guild_id"], p)
-    new = Cache.get_presence(data["guild_id"], user_id) || p
+    new = Cache.Presence.get(data["guild_id"], user_id) || p
     %{old: old, new: new}
   end
 
@@ -29,7 +29,7 @@ defmodule Lingo.Gateway.Dispatcher.Other do
 
   def parse(:user_update, data) do
     u = User.new(data)
-    old = Cache.get_current_user() || Cache.get_user(u.id)
+    old = Cache.User.get_current() || Cache.User.get(u.id)
     Store.put_user(u)
     Store.put_current_user(u)
     %{old: old, new: u}

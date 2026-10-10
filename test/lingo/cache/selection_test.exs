@@ -13,7 +13,7 @@ defmodule Lingo.Cache.SelectionTest do
 
       Store.put_role("g", %Role{id: "r", guild_id: "g"})
       assert Tables.select(:roles, [{{{"g", :_}, %{managed: false}}, [], [true]}]) == [true]
-      assert [%Role{managed: false, position: 0}] = Cache.list_roles("g")
+      assert [%Role{managed: false, position: 0}] = Cache.Role.list("g")
 
       assert [%Role{managed: false}] =
                Tables.select(:roles, [
@@ -34,10 +34,10 @@ defmodule Lingo.Cache.SelectionTest do
 
       for id <- 1..300, do: Store.put_guild(%Guild{id: "#{id}"})
       Store.put_guild(%Guild{id: "kept"})
-      assert length(Cache.list_guilds()) == 301
+      assert length(Cache.Guild.list()) == 301
       assert :ets.info(Tables.table(:guilds), :safe_fixed) == false
       assert Tables.select_delete(:guilds, [{{:_, %{unavailable: false}}, [], [true]}]) == 301
-      assert Cache.list_guilds() == []
+      assert Cache.Guild.list() == []
       assert Cache.stats().guilds.kept == 0
     end
   end
@@ -52,9 +52,9 @@ defmodule Lingo.Cache.SelectionTest do
       Store.put_channel(%Channel{id: "c"})
       spec = [{{"c", :_}, [], [false]}, {{:_, :_}, [], [true]}]
       assert Tables.select_delete(:channels, spec) == 0
-      assert Cache.get_channel("c").id == "c"
+      assert Cache.Channel.get("c").id == "c"
       assert Tables.select_delete(:channels, [{{:_, %{guild_id: nil}}, [], [true]}]) == 1
-      assert Cache.get_channel("c") == nil
+      assert Cache.Channel.get("c") == nil
     end
   end
 
@@ -69,8 +69,8 @@ defmodule Lingo.Cache.SelectionTest do
         do: Store.put_role(guild, %Role{id: "#{id}", guild_id: guild})
 
     Store.delete_guild("g")
-    assert Cache.list_roles("g") == []
-    assert length(Cache.list_roles("other")) == 200
+    assert Cache.Role.list("g") == []
+    assert length(Cache.Role.list("other")) == 200
     assert Cache.stats().roles.entries == 200
     Cache.clear(:roles)
     assert Cache.stats().roles.entries == 0

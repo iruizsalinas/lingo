@@ -9,7 +9,7 @@ defmodule Lingo.Integration.ReactionTest do
     {:ok, me} = Lingo.Api.User.get_current()
 
     {:ok, channel} =
-      Lingo.Api.Guild.create_channel(guild_id, %{
+      Lingo.Api.Channel.create(guild_id, %{
         name: "lingo-react-test-#{:rand.uniform(99999)}",
         type: 0
       })

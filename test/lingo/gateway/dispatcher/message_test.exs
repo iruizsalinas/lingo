@@ -55,7 +55,7 @@ defmodule Lingo.Gateway.Dispatcher.MessageTest do
              channel_type: :guild_text,
              member: %Member{guild_id: "guild1", user: %{id: "user1"}}
            } =
-             Lingo.Cache.get_message("channel1", "message1")
+             Lingo.Cache.Message.get("channel1", "message1")
   end
 
   test "dispatches message update with channel_type intact" do

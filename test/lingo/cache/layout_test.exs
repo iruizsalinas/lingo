@@ -12,11 +12,11 @@ defmodule Lingo.Cache.LayoutTest do
     Store.put_member("g", %Lingo.Type.Member{user: %User{id: "other"}})
     Store.put_message(%Message{id: "m", channel_id: "c"})
     Store.put_current_user(%User{id: "me"})
-    assert Cache.get_current_user().id == "me"
-    assert Cache.get_user("me") == nil
-    assert Cache.get_member("g", "me") == nil
-    assert Cache.get_user("other") == nil
-    assert Cache.get_member("g", "other") == nil
+    assert Cache.User.get_current().id == "me"
+    assert Cache.User.get("me") == nil
+    assert Cache.Member.get("g", "me") == nil
+    assert Cache.User.get("other") == nil
+    assert Cache.Member.get("g", "other") == nil
 
     for resource <- Lingo.Cache.Policy.resources() do
       assert Tables.resource(resource) == nil
@@ -45,7 +45,7 @@ defmodule Lingo.Cache.LayoutTest do
     assert channel === %Channel{id: "c"}
     assert [{_, message}] = :ets.lookup(Tables.table(:messages), {"c", "m"})
     refute Map.has_key?(message, :pinned)
-    assert Cache.get_message("c", "m") === %Message{id: "m", channel_id: "c"}
+    assert Cache.Message.get("c", "m") === %Message{id: "m", channel_id: "c"}
     assert Tables.resource(:presences) == nil
   end
 
@@ -73,8 +73,8 @@ defmodule Lingo.Cache.LayoutTest do
     state = Tables.resource(:messages)
     assert :ets.info(state.order, :size) == 1
     assert :sys.get_state(Lingo.Instance.process_name(Tables)).messages.counts == %{}
-    assert Cache.get_message("c", "a") == nil
-    assert Cache.get_message("d", "b").id == "b"
+    assert Cache.Message.get("c", "a") == nil
+    assert Cache.Message.get("d", "b").id == "b"
   end
 
   test "TTL-only and self-only policies allocate no eviction index" do
@@ -122,8 +122,8 @@ defmodule Lingo.Cache.LayoutTest do
 
     Store.put_channel(%Channel{id: "a"})
     Store.put_channel(%Channel{id: "b"})
-    assert Cache.get_channel("a") == nil
-    assert Cache.get_channel("b").guild_id == nil
+    assert Cache.Channel.get("a") == nil
+    assert Cache.Channel.get("b").guild_id == nil
     Store.delete_channel("b")
     assert Cache.stats().channels.entries == 0
   end

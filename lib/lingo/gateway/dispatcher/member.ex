@@ -18,14 +18,14 @@ defmodule Lingo.Gateway.Dispatcher.Member do
 
   def parse(:guild_member_update, data) do
     m = Member.new(data)
-    old = Cache.get_member(data["guild_id"], get_in(data, ["user", "id"]))
+    old = Cache.Member.get(data["guild_id"], get_in(data, ["user", "id"]))
     Store.put_member(data["guild_id"], m)
     %{old: old, new: m}
   end
 
   def parse(:guild_member_remove, data) do
     user_id = get_in(data, ["user", "id"])
-    old = Cache.get_member(data["guild_id"], user_id)
+    old = Cache.Member.get(data["guild_id"], user_id)
     Store.delete_member(data["guild_id"], user_id)
     adjust_member_count(data["guild_id"], -1)
     %{old: old, new: %{guild_id: data["guild_id"], user: User.new(data["user"])}}
@@ -66,13 +66,13 @@ defmodule Lingo.Gateway.Dispatcher.Member do
 
   def parse(:guild_role_update, data) do
     role = Lingo.Type.Role.new(Map.put(data["role"], "guild_id", data["guild_id"]))
-    old = Cache.get_role(data["guild_id"], role.id)
+    old = Cache.Role.get(data["guild_id"], role.id)
     Store.put_role(data["guild_id"], role)
     %{old: old, new: role}
   end
 
   def parse(:guild_role_delete, data) do
-    old = Cache.get_role(data["guild_id"], data["role_id"])
+    old = Cache.Role.get(data["guild_id"], data["role_id"])
     Store.delete_role(data["guild_id"], data["role_id"])
     %{old: old, new: %{guild_id: data["guild_id"], role_id: data["role_id"]}}
   end
@@ -80,7 +80,7 @@ defmodule Lingo.Gateway.Dispatcher.Member do
   def parse(_event, _data), do: :skip
 
   defp adjust_member_count(guild_id, delta) do
-    case Cache.get_guild(guild_id) do
+    case Cache.Guild.get(guild_id) do
       %{member_count: count} = guild when is_integer(count) ->
         Store.put_guild(%{guild | member_count: max(count + delta, 0)})
 

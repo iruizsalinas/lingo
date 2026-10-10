@@ -18,13 +18,13 @@ defmodule Lingo.Gateway.Dispatcher.Message do
   # message_update can be partial, merge instead of replace
 
   def parse(:message_update, data) do
-    old = Cache.get_message(data["channel_id"], data["id"])
+    old = Cache.Message.get(data["channel_id"], data["id"])
     new = Store.update_message(old, data)
     %{old: old, new: new}
   end
 
   def parse(:message_delete, data) do
-    old = Cache.get_message(data["channel_id"], data["id"])
+    old = Cache.Message.get(data["channel_id"], data["id"])
     Store.delete_message(data["channel_id"], data["id"])
 
     %{

@@ -97,4 +97,16 @@ defmodule Lingo.Api.Thread do
       params: params
     )
   end
+
+  @doc "Lists a guild's active threads."
+  @spec list_active(Api.id()) :: Api.result(%{threads: [Channel.t()], members: [map()]})
+  def list_active(guild_id) do
+    with {:ok, data} <- Client.request(:get, "/guilds/#{guild_id}/threads/active") do
+      {:ok,
+       %{
+         threads: Enum.map(data["threads"] || [], &Channel.new/1),
+         members: data["members"] || []
+       }}
+    end
+  end
 end

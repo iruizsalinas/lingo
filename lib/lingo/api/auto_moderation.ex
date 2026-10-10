@@ -11,22 +11,22 @@ defmodule Lingo.Api.AutoModeration do
   alias Lingo.Type.AutoModerationRule
 
   @doc "Lists a guild's auto moderation rules."
-  @spec list_rules(Api.id()) :: Api.result([AutoModerationRule.t()])
-  def list_rules(guild_id) do
+  @spec list(Api.id()) :: Api.result([AutoModerationRule.t()])
+  def list(guild_id) do
     Client.request(:get, "/guilds/#{guild_id}/auto-moderation/rules")
     |> Client.into(&AutoModerationRule.new/1)
   end
 
   @doc "Fetches an auto moderation rule."
-  @spec get_rule(Api.id(), Api.id()) :: Api.result(AutoModerationRule.t())
-  def get_rule(guild_id, rule_id) do
+  @spec get(Api.id(), Api.id()) :: Api.result(AutoModerationRule.t())
+  def get(guild_id, rule_id) do
     Client.request(:get, "/guilds/#{guild_id}/auto-moderation/rules/#{rule_id}")
     |> Client.into(&AutoModerationRule.new/1)
   end
 
   @doc "Creates an auto moderation rule."
-  @spec create_rule(Api.id(), Api.params(), keyword()) :: Api.result(AutoModerationRule.t())
-  def create_rule(guild_id, params, opts \\ []) do
+  @spec create(Api.id(), Api.params(), keyword()) :: Api.result(AutoModerationRule.t())
+  def create(guild_id, params, opts \\ []) do
     Client.request(:post, "/guilds/#{guild_id}/auto-moderation/rules",
       json: params,
       reason: opts[:reason]
@@ -35,9 +35,9 @@ defmodule Lingo.Api.AutoModeration do
   end
 
   @doc "Edits an auto moderation rule."
-  @spec update_rule(Api.id(), Api.id(), Api.params(), keyword()) ::
+  @spec update(Api.id(), Api.id(), Api.params(), keyword()) ::
           Api.result(AutoModerationRule.t())
-  def update_rule(guild_id, rule_id, params, opts \\ []) do
+  def update(guild_id, rule_id, params, opts \\ []) do
     Client.request(:patch, "/guilds/#{guild_id}/auto-moderation/rules/#{rule_id}",
       json: params,
       reason: opts[:reason]
@@ -46,8 +46,8 @@ defmodule Lingo.Api.AutoModeration do
   end
 
   @doc "Deletes an auto moderation rule."
-  @spec delete_rule(Api.id(), Api.id(), keyword()) :: Api.result()
-  def delete_rule(guild_id, rule_id, opts \\ []) do
+  @spec delete(Api.id(), Api.id(), keyword()) :: Api.result()
+  def delete(guild_id, rule_id, opts \\ []) do
     Client.request(:delete, "/guilds/#{guild_id}/auto-moderation/rules/#{rule_id}",
       reason: opts[:reason]
     )

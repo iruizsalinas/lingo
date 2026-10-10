@@ -11,11 +11,11 @@ defmodule Lingo.Cache.StoreTest do
       Store.put_member("g", %Member{guild_id: "g", user: user})
       Store.put_presence("g", %Presence{guild_id: "g", user: user})
       Store.put_user(%User{id: "other"})
-      assert Cache.get_user("u") == nil
-      assert Cache.get_member("g", "u").user.username == "alice"
-      assert Cache.get_presence("g", "u").user.username == "alice"
+      assert Cache.User.get("u") == nil
+      assert Cache.Member.get("g", "u").user.username == "alice"
+      assert Cache.Presence.get("g", "u").user.username == "alice"
       Store.put_presence("g", %Presence{guild_id: "g", user: %User{id: "u"}, status: :idle})
-      assert Cache.get_presence("g", "u").user.bot == true
+      assert Cache.Presence.get("g", "u").user.bot == true
     end
   end
 
@@ -29,12 +29,12 @@ defmodule Lingo.Cache.StoreTest do
     Store.put_role("g", %Role{id: "r"})
     Store.put_message(%Message{id: "m", channel_id: "c", guild_id: "g"})
     Store.delete_guild("g")
-    assert Cache.get_member("g", "u") == nil
-    assert Cache.get_role("g", "r") == nil
-    assert Cache.get_message("c", "m") == nil
+    assert Cache.Member.get("g", "u") == nil
+    assert Cache.Role.get("g", "r") == nil
+    assert Cache.Message.get("c", "m") == nil
     Store.put_message(%Message{id: "m", channel_id: "c", guild_id: "g"})
     Store.delete_channel("c")
-    assert Cache.get_message("c", "m") == nil
+    assert Cache.Message.get("c", "m") == nil
   end
 
   test "resource eviction and clearing do not cascade into other resources" do
@@ -42,10 +42,10 @@ defmodule Lingo.Cache.StoreTest do
     Store.put_channel(%Channel{id: "c", guild_id: "g"})
     Store.put_message(%Message{id: "m", channel_id: "c", guild_id: "g"})
     Store.put_channel(%Channel{id: "d", guild_id: "g"})
-    assert Cache.get_channel("c") == nil
-    assert Cache.get_message("c", "m").id == "m"
+    assert Cache.Channel.get("c") == nil
+    assert Cache.Message.get("c", "m").id == "m"
     Cache.clear(:guilds)
-    assert Cache.get_message("c", "m").id == "m"
+    assert Cache.Message.get("c", "m").id == "m"
   end
 
   test "guild deletion also removes messages without a guild ID in known channels" do
@@ -53,8 +53,8 @@ defmodule Lingo.Cache.StoreTest do
     Store.put_channel(%Channel{id: "c", guild_id: "g"})
     Store.put_message(%Message{id: "m", channel_id: "c"})
     Store.delete_guild("g")
-    assert Cache.get_channel("c") == nil
-    assert Cache.get_message("c", "m") == nil
+    assert Cache.Channel.get("c") == nil
+    assert Cache.Message.get("c", "m") == nil
   end
 
   test "disabled resources skip traversal and cache-only constructors" do
@@ -76,12 +76,12 @@ defmodule Lingo.Cache.StoreTest do
     Store.put_current_user(%User{id: "me", username: "bot"})
     Store.put_member("g", %Member{user: %User{id: "me"}})
     Store.put_member("g", %Member{user: %User{id: "other"}})
-    assert Cache.get_member("g", "me").user.id == "me"
-    assert Cache.get_member("g", "other") == nil
+    assert Cache.Member.get("g", "me").user.id == "me"
+    assert Cache.Member.get("g", "other") == nil
     Cache.clear()
-    assert Cache.get_current_user().username == "bot"
-    assert Cache.get_user("me") == nil
-    assert Cache.get_member("g", "me") == nil
+    assert Cache.User.get_current().username == "bot"
+    assert Cache.User.get("me") == nil
+    assert Cache.Member.get("g", "me") == nil
   end
 
   test "separate bots have independent policy, identity and counters" do
@@ -93,8 +93,8 @@ defmodule Lingo.Cache.StoreTest do
       Store.put_current_user(%User{id: "a"})
     end)
 
-    assert Cache.get_guild("g") == nil
-    assert Cache.get_current_user() == nil
+    assert Cache.Guild.get("g") == nil
+    assert Cache.User.get_current() == nil
     assert Lingo.with_bot(a, fn -> Cache.stats().guilds.entries end) == 1
     assert Lingo.with_bot(b, fn -> Cache.stats().guilds.entries end) == 0
   end

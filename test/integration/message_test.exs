@@ -7,7 +7,7 @@ defmodule Lingo.Integration.MessageTest do
     if is_nil(guild_id) or guild_id == "", do: raise("GUILD_ID not set")
 
     {:ok, channel} =
-      Lingo.Api.Guild.create_channel(guild_id, %{
+      Lingo.Api.Channel.create(guild_id, %{
         name: "lingo-msg-test-#{:rand.uniform(99999)}",
         type: 0
       })

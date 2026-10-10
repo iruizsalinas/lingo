@@ -121,15 +121,15 @@ defmodule Lingo.Helper.ChannelTest do
     :ok
   end
 
-  describe "permissions_for" do
+  describe "permissions" do
     test "computes effective permissions in a channel" do
-      perms = Lingo.Helper.Channel.permissions_for("ch1", "user1")
+      perms = Lingo.Helper.Channel.permissions("ch1", "user1")
       # user1 has role_mid which is allowed view_channel (1024) in ch1
       assert Lingo.Permissions.has?(perms, :view_channel)
     end
 
     test "returns 0 for unknown channel" do
-      assert Lingo.Helper.Channel.permissions_for("nonexistent", "user1") == 0
+      assert Lingo.Helper.Channel.permissions("nonexistent", "user1") == 0
     end
   end
 

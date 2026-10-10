@@ -71,7 +71,7 @@ can also call `Lingo.register_commands/1` yourself.
 | `Lingo.Bot` | The behaviour your bot module implements |
 | `Lingo.Context` | The interaction a callback handles: reading it and replying |
 | `Lingo.Api.*` | The REST API, one module per resource (`Lingo.Api.Message`, `Lingo.Api.Guild`...) |
-| `Lingo.Cache` | What the gateway has told the bot |
+| `Lingo.Cache.*` | What the gateway and REST API have told the bot, one module per resource (`Lingo.Cache.Role.list/1`...); opt-in, configured in `Lingo.Cache` |
 | `Lingo.Gateway` | Presence, shards and gateway requests |
 | `Lingo.Voice` | Joining voice channels, playing and receiving audio |
 | `Lingo.Component`, `Lingo.Embed` | Building message content |

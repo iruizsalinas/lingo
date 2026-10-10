@@ -29,9 +29,9 @@ defmodule Lingo.Cache.RestTest do
     Store.put_role("g", %Role{id: "gone"})
     Store.put_role("other", %Role{id: "gone"})
     assert {:ok, [%Role{name: "new"}]} = Lingo.Api.Role.list("g")
-    assert Cache.get_role("g", "r").name == "new"
-    assert Cache.get_role("g", "gone") == nil
-    assert Cache.get_role("other", "gone") != nil
+    assert Cache.Role.get("g", "r").name == "new"
+    assert Cache.Role.get("g", "gone") == nil
+    assert Cache.Role.get("other", "gone") != nil
     assert Cache.stats().roles.entries == 2
   end
 
@@ -39,7 +39,7 @@ defmodule Lingo.Cache.RestTest do
     start([roles: [max_entries: 1, ttl: 10_000, keep: :all]], fn _, _, _ -> {200, []} end)
     Store.put_role("g", %Role{id: "r"})
     assert {:ok, []} = Lingo.Api.Role.list("g")
-    assert Cache.list_roles("g") == []
+    assert Cache.Role.list("g") == []
     assert Cache.stats().roles.kept == 0
     assert :ets.info(Tables.resource(:roles).meta, :size) == 0
   end
@@ -52,8 +52,8 @@ defmodule Lingo.Cache.RestTest do
     end)
 
     assert {:ok, [%Role{name: "rest"}]} = Lingo.Api.Role.list("g")
-    assert Cache.get_role("g", "r").name == "gateway"
-    assert Cache.get_role("g", "new") != nil
+    assert Cache.Role.get("g", "r").name == "gateway"
+    assert Cache.Role.get("g", "new") != nil
   end
 
   test "deleting an absent entry or clearing while a request runs prevents resurrection" do
@@ -64,7 +64,7 @@ defmodule Lingo.Cache.RestTest do
       end)
 
       assert {:ok, %Role{}} = Lingo.Api.Role.get("g", "r")
-      assert Cache.get_role("g", "r") == nil
+      assert Cache.Role.get("g", "r") == nil
     end
   end
 
@@ -74,14 +74,14 @@ defmodule Lingo.Cache.RestTest do
     newer = Rest.begin(:get, "/guilds/g/roles/r", [])
     assert {:ok, _} = Rest.finish(newer, {:ok, %{"id" => "r", "name" => "new"}})
     assert {:ok, _} = Rest.finish(older, {:ok, %{"id" => "r", "name" => "old"}})
-    assert Cache.get_role("g", "r").name == "new"
+    assert Cache.Role.get("g", "r").name == "new"
   end
 
   test "failed requests leave existing cache data intact" do
     start([roles: true], fn _, _, _ -> {403, %{"message" => "denied", "code" => 50013}} end)
     Store.put_role("g", %Role{id: "r", name: "old"})
     assert {:error, _} = Lingo.Api.Role.delete("g", "r")
-    assert Cache.get_role("g", "r").name == "old"
+    assert Cache.Role.get("g", "r").name == "old"
   end
 
   test "REST writes honor filters, keep, limits, compression and TTL" do
@@ -107,13 +107,13 @@ defmodule Lingo.Cache.RestTest do
 
     assert {:ok, roles} = Lingo.Api.Role.list("g")
     assert length(roles) == 3
-    assert Cache.get_role("g", "kept") != nil
-    assert Cache.get_role("g", "reject") == nil
-    assert Cache.get_role("g", "ordinary") == nil
+    assert Cache.Role.get("g", "kept") != nil
+    assert Cache.Role.get("g", "reject") == nil
+    assert Cache.Role.get("g", "ordinary") == nil
     assert Cache.stats().roles.kept == 1
     assert :ets.info(Tables.table(:roles), :compressed)
     Process.sleep(15)
-    assert Cache.get_role("g", "kept") != nil
+    assert Cache.Role.get("g", "kept") != nil
   end
 
   test "members and embedded users are independent, pages never prune" do
@@ -123,9 +123,9 @@ defmodule Lingo.Cache.RestTest do
 
     Store.put_member("g", %Member{user: %User{id: "other"}})
     assert {:ok, [_]} = Lingo.Api.Member.list("g")
-    assert Cache.get_member("g", "u").user.username == "alice"
-    assert Cache.get_member("g", "other") != nil
-    assert Cache.get_user("u") == nil
+    assert Cache.Member.get("g", "u").user.username == "alice"
+    assert Cache.Member.get("g", "other") != nil
+    assert Cache.User.get("u") == nil
   end
 
   test "partial guild and member responses preserve gateway-only and omitted fields" do
@@ -144,12 +144,12 @@ defmodule Lingo.Cache.RestTest do
     })
 
     assert {:ok, _} = Lingo.Api.Guild.get("g")
-    assert Cache.get_guild("g").member_count == 7
-    assert Cache.get_guild("g").joined_at == ~U[2026-10-10 12:00:00Z]
+    assert Cache.Guild.get("g").member_count == 7
+    assert Cache.Guild.get("g").joined_at == ~U[2026-10-10 12:00:00Z]
     assert {:ok, _} = Lingo.Api.Member.update("g", "u", %{nick: nil})
-    assert Cache.get_member("g", "u").nick == nil
-    assert Cache.get_member("g", "u").roles == []
-    assert Cache.get_member("g", "u").user.username == "alice"
+    assert Cache.Member.get("g", "u").nick == nil
+    assert Cache.Member.get("g", "u").roles == []
+    assert Cache.Member.get("g", "u").user.username == "alice"
   end
 
   test "message and channel deletion invalidate descendants" do
@@ -157,8 +157,8 @@ defmodule Lingo.Cache.RestTest do
     Store.put_channel(%Channel{id: "c"})
     Store.put_message(%Message{id: "m", channel_id: "c"})
     assert {:ok, _} = Lingo.Api.Channel.delete("c")
-    assert Cache.get_channel("c") == nil
-    assert Cache.get_message("c", "m") == nil
+    assert Cache.Channel.get("c") == nil
+    assert Cache.Message.get("c", "m") == nil
   end
 
   test "bulk deletions, role changes and voice state responses update only relevant caches" do
@@ -172,12 +172,12 @@ defmodule Lingo.Cache.RestTest do
     Store.put_message(%Message{id: "b", channel_id: "c"})
     Store.put_member("g", %Member{user: %User{id: "u"}, roles: []})
     assert :ok = Lingo.Api.Message.bulk_delete("c", ["a", "b"])
-    assert Cache.get_message("c", "a") == nil
-    assert Cache.get_message("c", "b") == nil
+    assert Cache.Message.get("c", "a") == nil
+    assert Cache.Message.get("c", "b") == nil
     assert :ok = Lingo.Api.Member.add_role("g", "u", "r")
-    assert Cache.get_member("g", "u") == nil
-    assert {:ok, _} = Lingo.Api.Voice.get_user_voice_state("g", "u")
-    assert %VoiceState{channel_id: "v"} = Cache.get_voice_state("g", "u")
+    assert Cache.Member.get("g", "u") == nil
+    assert {:ok, _} = Lingo.Api.Voice.get_state("g", "u")
+    assert %VoiceState{channel_id: "v"} = Cache.VoiceState.get("g", "u")
   end
 
   test "disabled caches skip route classification and response traversal" do
@@ -210,13 +210,13 @@ defmodule Lingo.Cache.RestTest do
     end)
 
     assert {:ok, _} = Lingo.Api.Role.create("g", %{name: "updated"})
-    assert Cache.get_role("g", "r").name == "updated"
+    assert Cache.Role.get("g", "r").name == "updated"
     assert {:ok, _} = Lingo.Api.Role.update("g", "r", %{name: "updated"})
     assert {:ok, _} = Lingo.Api.Role.update_positions("g", [%{id: "r", position: 4}])
-    assert Cache.get_role("g", "r").position == 4
-    assert Cache.get_role("g", "r").name == "updated"
+    assert Cache.Role.get("g", "r").position == 4
+    assert Cache.Role.get("g", "r").name == "updated"
     assert :ok = Lingo.Api.Role.delete("g", "r")
-    assert Cache.get_role("g", "r") == nil
+    assert Cache.Role.get("g", "r") == nil
   end
 
   test "pins, threads and channel pages refresh entries without pruning unrelated data" do
@@ -236,15 +236,15 @@ defmodule Lingo.Cache.RestTest do
     Store.put_channel(%Channel{id: "other", guild_id: "g"})
     Store.put_message(%Message{id: "other", channel_id: "c"})
     assert {:ok, _} = Lingo.Api.Channel.list_pins("c")
-    assert Cache.get_message("c", "m").content == "pin"
-    assert Cache.get_message("c", "pins") == nil
-    assert Cache.get_message("c", "other") != nil
-    assert {:ok, _} = Lingo.Api.Guild.list_active_threads("g")
-    assert Cache.get_channel("t").guild_id == "g"
-    assert {:ok, _} = Lingo.Api.Guild.list_channels("g")
-    assert Cache.get_channel("c").name == "new"
-    assert Cache.get_channel("t") != nil
-    assert Cache.get_channel("other") != nil
+    assert Cache.Message.get("c", "m").content == "pin"
+    assert Cache.Message.get("c", "pins") == nil
+    assert Cache.Message.get("c", "other") != nil
+    assert {:ok, _} = Lingo.Api.Thread.list_active("g")
+    assert Cache.Channel.get("t").guild_id == "g"
+    assert {:ok, _} = Lingo.Api.Channel.list("g")
+    assert Cache.Channel.get("c").name == "new"
+    assert Cache.Channel.get("t") != nil
+    assert Cache.Channel.get("other") != nil
   end
 
   test "embedded users refresh even when their parent resource is disabled" do
@@ -257,8 +257,8 @@ defmodule Lingo.Cache.RestTest do
     end)
 
     assert {:ok, _} = Lingo.Api.Message.list("c")
-    assert Cache.get_user("me").username == "bot"
-    assert Cache.get_user("other") == nil
+    assert Cache.User.get("me").username == "bot"
+    assert Cache.User.get("other") == nil
     assert Tables.resource(:messages) == nil
   end
 
@@ -268,7 +268,7 @@ defmodule Lingo.Cache.RestTest do
     stop_supervised!({Tables, bot})
     start_supervised!({Tables, bot: bot, config: [roles: true]})
     assert {:ok, _} = Rest.finish(snapshot, {:ok, %{"id" => "r"}})
-    assert Cache.get_role("g", "r") == nil
+    assert Cache.Role.get("g", "r") == nil
   end
 
   test "an unrelated enabled cache does not make disabled-role requests call the owner" do
@@ -286,8 +286,8 @@ defmodule Lingo.Cache.RestTest do
   test "partial summaries and role member counts never create full resource records" do
     start([guilds: true, roles: true], fn _, _, _ -> {200, %{"r" => 4}} end)
     assert {:ok, _} = Client.request(:get, "/guilds/g/roles/member-counts")
-    assert Cache.list_roles("g") == []
+    assert Cache.Role.list("g") == []
     assert {:ok, _} = Client.request(:get, "/guilds/g/preview")
-    assert Cache.get_guild("g") == nil
+    assert Cache.Guild.get("g") == nil
   end
 end

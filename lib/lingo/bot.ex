@@ -12,7 +12,7 @@ defmodule Lingo.Bot do
         command "ping", "Responds with pong"
 
         command "ban", "Ban a user",
-          default_member_permissions: Lingo.Permissions.resolve([:ban_members]),
+          default_member_permissions: Lingo.Permissions.from_list([:ban_members]),
           options: [
             user(:target, "Who to ban", required: true),
             string(:reason, "Why")

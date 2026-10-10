@@ -126,7 +126,7 @@ defmodule Lingo.Integration.MiscApiTest do
   describe "polls" do
     setup %{guild_id: guild_id} do
       {:ok, channel} =
-        Lingo.Api.Guild.create_channel(guild_id, %{
+        Lingo.Api.Channel.create(guild_id, %{
           name: "lingo-poll-test-#{:rand.uniform(99999)}",
           type: 0
         })

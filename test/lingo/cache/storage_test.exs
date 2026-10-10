@@ -55,8 +55,8 @@ defmodule Lingo.Cache.StorageTest do
 
       input = message()
       Store.put_message(input)
-      assert Cache.get_message("c", "m") === input
-      assert Cache.get_user("u") === input.author
+      assert Cache.Message.get("c", "m") === input
+      assert Cache.User.get("u") === input.author
       assert :ets.info(Tables.table(:messages), :compressed) == compressed
 
       updated =
@@ -69,14 +69,14 @@ defmodule Lingo.Cache.StorageTest do
           "pinned" => false
         })
 
-      assert Cache.get_message("c", "m") === updated
+      assert Cache.Message.get("c", "m") === updated
       assert updated.embeds == []
       assert updated.attachments == []
       assert updated.author === input.author
       assert updated.timestamp === input.timestamp
       assert updated.referenced_message === input.referenced_message
       Store.delete_message("c", "m")
-      assert Cache.get_message("c", "m") == nil
+      assert Cache.Message.get("c", "m") == nil
     end
   end
 
@@ -85,8 +85,8 @@ defmodule Lingo.Cache.StorageTest do
     input = message()
     Store.put_member("g", input.member)
     Store.put_presence("g", %Presence{user: input.author, guild_id: "g", status: :idle})
-    assert Cache.get_member("g", "u") === input.member
-    assert Cache.get_presence("g", "u").user === input.author
+    assert Cache.Member.get("g", "u") === input.member
+    assert Cache.Presence.get("g", "u").user === input.author
   end
 
   test "filter and keep predicates observe complete structs before storage encoding" do
@@ -109,7 +109,7 @@ defmodule Lingo.Cache.StorageTest do
 
     Store.put_guild(%Guild{id: "g"})
     assert_receive %Guild{unavailable: false, roles: []}
-    assert %Guild{id: "g", unavailable: false} = Cache.get_guild("g")
+    assert %Guild{id: "g", unavailable: false} = Cache.Guild.get("g")
     assert Cache.stats().guilds.kept == 1
   end
 

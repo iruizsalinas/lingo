@@ -10,11 +10,11 @@ defmodule Lingo.Cache.EntriesTest do
   test "global and per-channel limits evict oldest writes independently" do
     start(only: [:messages], messages: [max_entries: 3, max_entries_per_channel: 2])
     for id <- ["1", "2", "3"], do: Store.put_message(message(id))
-    assert Cache.get_message("c", "1") == nil
+    assert Cache.Message.get("c", "1") == nil
     Store.put_message(message("4", "d"))
     Store.put_message(message("5", "d"))
-    assert Cache.get_message("c", "2") == nil
-    assert Cache.get_message("c", "3").id == "3"
+    assert Cache.Message.get("c", "2") == nil
+    assert Cache.Message.get("c", "3").id == "3"
     assert Cache.stats().messages.entries == 3
   end
 
@@ -24,8 +24,8 @@ defmodule Lingo.Cache.EntriesTest do
     Store.put_message(message("2"))
     Store.put_message(%{message("1") | content: "updated"})
     Store.put_message(message("3"))
-    assert Cache.get_message("c", "2") == nil
-    assert Cache.get_message("c", "1").content == "updated"
+    assert Cache.Message.get("c", "2") == nil
+    assert Cache.Message.get("c", "1").content == "updated"
     assert Cache.stats().messages.entries == 2
   end
 
@@ -39,9 +39,9 @@ defmodule Lingo.Cache.EntriesTest do
       Store.put_member(guild, %Member{guild_id: guild, user: %User{id: id}})
     end
 
-    assert Cache.get_member("a", "1") == nil
-    assert Cache.get_member("a", "2") == nil
-    assert Cache.get_member("a", "3").user.id == "3"
+    assert Cache.Member.get("a", "1") == nil
+    assert Cache.Member.get("a", "2") == nil
+    assert Cache.Member.get("a", "3").user.id == "3"
     assert Cache.stats().members.entries == 3
   end
 
@@ -50,11 +50,11 @@ defmodule Lingo.Cache.EntriesTest do
     Store.put_user(%User{id: "me"})
     Store.put_user(%User{id: "other"})
     Process.sleep(5)
-    assert Cache.get_user("me").id == "me"
-    assert Cache.get_user("other") == nil
+    assert Cache.User.get("me").id == "me"
+    assert Cache.User.get("other") == nil
     assert %{entries: 1, kept: 1, overflow: %{global: 1}} = Cache.stats().users
     Cache.clear(:users)
-    assert Cache.get_user("me") == nil
+    assert Cache.User.get("me") == nil
     assert Cache.stats().users.entries == 0
   end
 
@@ -71,13 +71,13 @@ defmodule Lingo.Cache.EntriesTest do
     Store.put_message(%{message("1") | content: "keep"})
     Store.put_message(%{message("2") | content: "keep"})
     Store.put_message(message("3"))
-    assert Cache.get_message("c", "3") == nil
+    assert Cache.Message.get("c", "3") == nil
     assert %{entries: 2, kept: 2, overflow: %{global: 1, scoped: 1}} = Cache.stats().messages
     Store.delete_message("c", "1")
     assert Cache.stats().messages.entries == 1
     Store.put_message(%{message("2") | content: "ordinary"})
     Store.put_message(message("4"))
-    assert Cache.get_message("c", "2") == nil
+    assert Cache.Message.get("c", "2") == nil
     assert Cache.stats().messages.kept == 0
   end
 
@@ -85,8 +85,8 @@ defmodule Lingo.Cache.EntriesTest do
     start(only: [:guilds], guilds: [ttl: 10])
     Store.put_guild(%Lingo.Type.Guild{id: "g"})
     Process.sleep(20)
-    assert Cache.get_guild("g") == nil
-    assert Cache.list_guilds() == []
+    assert Cache.Guild.get("g") == nil
+    assert Cache.Guild.list() == []
     send(Lingo.Instance.process_name(Lingo.Cache.Tables), :sweep)
     assert Cache.stats().guilds.entries == 0
   end
@@ -97,9 +97,9 @@ defmodule Lingo.Cache.EntriesTest do
     Process.sleep(60)
     Store.put_user(%User{id: "u", username: "second"})
     Process.sleep(60)
-    assert Cache.get_user("u").username == "second"
+    assert Cache.User.get("u").username == "second"
     Process.sleep(60)
-    assert Cache.get_user("u") == nil
+    assert Cache.User.get("u") == nil
   end
 
   test "concurrent writes enforce limits and deletion keeps indexes consistent" do
@@ -116,7 +116,7 @@ defmodule Lingo.Cache.EntriesTest do
     assert Cache.stats().messages.entries == 0
     Store.put_message(message("next"))
     assert Cache.stats().messages.entries == 1
-    assert Cache.get_message("c", "next").id == "next"
+    assert Cache.Message.get("c", "next").id == "next"
     assert :ets.info(Tables.resource(:messages).meta, :size) == 1
   end
 end

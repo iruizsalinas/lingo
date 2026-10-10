@@ -9,8 +9,8 @@ defmodule Lingo.Snowflake do
   @discord_epoch 1_420_070_400_000
 
   @doc "When the object with this id was created."
-  @spec timestamp(t()) :: DateTime.t()
-  def timestamp(snowflake) do
+  @spec to_datetime(t()) :: DateTime.t()
+  def to_datetime(snowflake) do
     ms =
       snowflake
       |> String.to_integer()
@@ -21,8 +21,8 @@ defmodule Lingo.Snowflake do
   end
 
   @doc "The smallest id created at `datetime`, for `before:`/`after:` pagination."
-  @spec from_timestamp(DateTime.t()) :: t()
-  def from_timestamp(%DateTime{} = dt) do
+  @spec from_datetime(DateTime.t()) :: t()
+  def from_datetime(%DateTime{} = dt) do
     ms = DateTime.to_unix(dt, :millisecond)
     Integer.to_string(Bitwise.bsl(ms - @discord_epoch, 22))
   end

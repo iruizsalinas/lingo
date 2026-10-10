@@ -108,7 +108,7 @@ defmodule Lingo.LifecycleTest do
 
       Lingo.put_bot(AlphaBot)
       Lingo.Cache.Store.put_guild(%Guild{id: "1", name: "A"})
-      assert [%Guild{name: "A"}] = Lingo.Cache.list_guilds()
+      assert [%Guild{name: "A"}] = Lingo.Cache.Guild.list()
       assert {:ok, _user} = Lingo.Api.User.get("1")
     end
   end
@@ -135,8 +135,8 @@ defmodule Lingo.LifecycleTest do
       assert Enum.sort(Lingo.bots()) == [AlphaBot, BetaBot]
 
       Lingo.with_bot(AlphaBot, fn -> Lingo.Cache.Store.put_guild(%Guild{id: "1", name: "A"}) end)
-      assert [%Guild{name: "A"}] = Lingo.with_bot(AlphaBot, &Lingo.Cache.list_guilds/0)
-      assert Lingo.with_bot(BetaBot, &Lingo.Cache.list_guilds/0) == []
+      assert [%Guild{name: "A"}] = Lingo.with_bot(AlphaBot, &Lingo.Cache.Guild.list/0)
+      assert Lingo.with_bot(BetaBot, &Lingo.Cache.Guild.list/0) == []
 
       assert {:ok, _user} = Lingo.with_bot(BetaBot, fn -> Lingo.Api.User.get("1") end)
       assert_receive {:request, :get, "/api/v10/users/1", "Bot token-b", _body}

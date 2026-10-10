@@ -23,8 +23,8 @@ defmodule Lingo.Component do
   @select_keys [:placeholder, :min_values, :max_values, :default_values, :required, :disabled]
 
   @doc "The message flag that enables components v2 (`Lingo.Component.Layout`). Put it in `:flags`."
-  @spec v2() :: integer()
-  def v2, do: 1 <<< 15
+  @spec v2_flag() :: integer()
+  def v2_flag, do: 1 <<< 15
 
   @doc "A row of up to 5 buttons, or 1 select menu."
   @spec action_row([map()]) :: map()

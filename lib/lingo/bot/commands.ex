@@ -21,7 +21,7 @@ defmodule Lingo.Bot.Commands do
 
     * `:options` - the command's options, built with `Lingo.Bot.Options`
     * `:default_member_permissions` - permissions a member needs by default,
-      as a bitfield (see `Lingo.Permissions.resolve/1`)
+      as a bitfield (see `Lingo.Permissions.from_list/1`)
     * `:nsfw` - only usable in age-restricted channels
     * `:integration_types` - where it can be installed: `0` guild, `1` user
     * `:contexts` - where it can be used: `0` guild, `1` bot DM, `2` private channel

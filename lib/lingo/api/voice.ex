@@ -16,26 +16,26 @@ defmodule Lingo.Api.Voice do
   end
 
   @doc "Fetches the bot's voice state in a guild."
-  @spec get_current_user_voice_state(Api.id()) :: Api.result(map())
-  def get_current_user_voice_state(guild_id) do
+  @spec get_current_state(Api.id()) :: Api.result(map())
+  def get_current_state(guild_id) do
     Client.request(:get, "/guilds/#{guild_id}/voice-states/@me")
   end
 
   @doc "Fetches a user's voice state in a guild."
-  @spec get_user_voice_state(Api.id(), Api.id()) :: Api.result(map())
-  def get_user_voice_state(guild_id, user_id) do
+  @spec get_state(Api.id(), Api.id()) :: Api.result(map())
+  def get_state(guild_id, user_id) do
     Client.request(:get, "/guilds/#{guild_id}/voice-states/#{user_id}")
   end
 
   @doc "Edits the bot's voice state, e.g. to request to speak on a stage."
-  @spec update_current_user_voice_state(Api.id(), Api.params()) :: Api.result()
-  def update_current_user_voice_state(guild_id, params) do
+  @spec update_current_state(Api.id(), Api.params()) :: Api.result()
+  def update_current_state(guild_id, params) do
     Client.request(:patch, "/guilds/#{guild_id}/voice-states/@me", json: params)
   end
 
   @doc "Edits a user's voice state on a stage."
-  @spec update_user_voice_state(Api.id(), Api.id(), Api.params()) :: Api.result()
-  def update_user_voice_state(guild_id, user_id, params) do
+  @spec update_state(Api.id(), Api.id(), Api.params()) :: Api.result()
+  def update_state(guild_id, user_id, params) do
     Client.request(:patch, "/guilds/#{guild_id}/voice-states/#{user_id}", json: params)
   end
 end

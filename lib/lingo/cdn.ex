@@ -1,5 +1,5 @@
 defmodule Lingo.CDN do
-  @moduledoc "URLs for images on Discord's CDN. Animated images get `.gif` URLs, the rest `.png`."
+  @moduledoc "URLs for images on Discord's CDN. Animated images get `.gif` URLs, the rest `.webp` (`.png` for emojis and stickers)."
 
   import Bitwise
 
@@ -53,7 +53,7 @@ defmodule Lingo.CDN do
   end
 
   @doc "A custom emoji's image URL."
-  def emoji_url(emoji_id, animated? \\ false) do
+  def emoji(emoji_id, animated? \\ false) do
     ext = if animated?, do: "gif", else: "png"
     "#{@base}/emojis/#{emoji_id}.#{ext}"
   end
@@ -62,18 +62,21 @@ defmodule Lingo.CDN do
   def user_banner(%{banner: nil}), do: nil
   def user_banner(%{id: id, banner: hash}), do: "#{@base}/banners/#{id}/#{hash}.#{ext(hash)}"
 
-  @doc "A role icon's URL."
-  def role_icon(role_id, hash), do: "#{@base}/role-icons/#{role_id}/#{hash}.#{ext(hash)}"
+  @doc "A role's icon URL, or `nil`."
+  def role_icon(%{icon: nil}), do: nil
+  def role_icon(%{id: id, icon: hash}), do: "#{@base}/role-icons/#{id}/#{hash}.#{ext(hash)}"
 
   @doc "An application icon's URL."
   def application_icon(app_id, hash), do: "#{@base}/app-icons/#{app_id}/#{hash}.#{ext(hash)}"
 
-  @doc "A scheduled event's cover image URL."
-  def scheduled_event_cover(event_id, hash),
-    do: "#{@base}/guild-events/#{event_id}/#{hash}.#{ext(hash)}"
+  @doc "A scheduled event's cover image URL, or `nil`."
+  def scheduled_event_cover(%{image: nil}), do: nil
+
+  def scheduled_event_cover(%{id: id, image: hash}),
+    do: "#{@base}/guild-events/#{id}/#{hash}.#{ext(hash)}"
 
   @doc "A sticker's image URL, by its format type."
-  def sticker_url(sticker_id, format_type) do
+  def sticker(sticker_id, format_type) do
     case format_type do
       :gif -> "https://media.discordapp.net/stickers/#{sticker_id}.gif"
       :lottie -> "#{@base}/stickers/#{sticker_id}.json"

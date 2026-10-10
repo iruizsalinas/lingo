@@ -61,7 +61,8 @@ defmodule Lingo.MixProject do
           Lingo.Error
         ],
         "REST API": [Lingo.Api, ~r/^Lingo\.Api\./],
-        Gateway: [Lingo.Gateway, Lingo.Cache],
+        Cache: [Lingo.Cache, ~r/^Lingo\.Cache\./],
+        Gateway: [Lingo.Gateway],
         Voice: [~r/^Lingo\.Voice/],
         "Message content": [
           Lingo.Component,

@@ -44,7 +44,7 @@ defmodule Lingo.Gateway.Dispatcher.Guild do
   end
 
   def parse(:guild_update, data) do
-    old = Cache.get_guild(data["id"])
+    old = Cache.Guild.get(data["id"])
     guild = data |> Guild.new() |> keep_guild_create_fields(old)
     Store.put_all(:roles, guild.roles, fn r -> Store.put_role(guild.id, r) end)
     Store.put_guild(guild)
@@ -52,7 +52,7 @@ defmodule Lingo.Gateway.Dispatcher.Guild do
   end
 
   def parse(:guild_delete, %{"unavailable" => true, "id" => id}) do
-    if guild = Cache.get_guild(id) do
+    if guild = Cache.Guild.get(id) do
       Store.put_guild(%{guild | unavailable: true})
     end
 
@@ -60,14 +60,14 @@ defmodule Lingo.Gateway.Dispatcher.Guild do
   end
 
   def parse(:guild_delete, %{"id" => id}) do
-    old = Cache.get_guild(id)
+    old = Cache.Guild.get(id)
     Store.delete_guild(id)
     %{old: old, new: %{id: id, unavailable: false}}
   end
 
   def parse(:guild_emojis_update, data) do
     emojis = Enum.map(data["emojis"] || [], &Lingo.Type.Emoji.new/1)
-    guild = Cache.get_guild(data["guild_id"])
+    guild = Cache.Guild.get(data["guild_id"])
     old_emojis = if guild, do: guild.emojis || [], else: []
 
     if guild, do: Store.put_guild(%{guild | emojis: emojis})
@@ -80,7 +80,7 @@ defmodule Lingo.Gateway.Dispatcher.Guild do
 
   def parse(:guild_stickers_update, data) do
     stickers = Enum.map(data["stickers"] || [], &Lingo.Type.Sticker.new/1)
-    guild = Cache.get_guild(data["guild_id"])
+    guild = Cache.Guild.get(data["guild_id"])
     old_stickers = if guild, do: guild.stickers || [], else: []
 
     if guild, do: Store.put_guild(%{guild | stickers: stickers})

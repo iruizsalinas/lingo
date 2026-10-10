@@ -16,6 +16,28 @@ defmodule Lingo.Api.Channel do
     Client.request(:get, "/channels/#{channel_id}") |> Client.into(&Channel.new/1)
   end
 
+  @doc "Lists a guild's channels, without threads."
+  @spec list(Api.id()) :: Api.result([Channel.t()])
+  def list(guild_id) do
+    Client.request(:get, "/guilds/#{guild_id}/channels") |> Client.into(&Channel.new/1)
+  end
+
+  @doc "Creates a channel in a guild."
+  @spec create(Api.id(), Api.params(), keyword()) :: Api.result(Channel.t())
+  def create(guild_id, params, opts \\ []) do
+    Client.request(:post, "/guilds/#{guild_id}/channels",
+      json: params,
+      reason: opts[:reason]
+    )
+    |> Client.into(&Channel.new/1)
+  end
+
+  @doc "Moves channels in a guild, from a list of `%{id:, position:}` maps."
+  @spec update_positions(Api.id(), [map()]) :: Api.result()
+  def update_positions(guild_id, positions) do
+    Client.request(:patch, "/guilds/#{guild_id}/channels", json: positions)
+  end
+
   @doc "Edits a channel or thread."
   @spec update(Api.id(), Api.params(), keyword()) :: Api.result(Channel.t())
   def update(channel_id, params, opts \\ []) do

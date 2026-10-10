@@ -6,7 +6,7 @@ defmodule Lingo.Permissions do
   check and build them using atoms like `:send_messages` and `:ban_members`.
 
       Lingo.Permissions.has?(member_permissions, :manage_messages)
-      Lingo.Permissions.resolve([:view_channel, :send_messages])
+      Lingo.Permissions.from_list([:view_channel, :send_messages])
       #=> 3072
   """
 
@@ -93,8 +93,8 @@ defmodule Lingo.Permissions do
   end
 
   @doc "Combines permission atoms (and raw bits) into a bitfield."
-  @spec resolve([permission()]) :: integer()
-  def resolve(permissions) when is_list(permissions) do
+  @spec from_list([permission()]) :: integer()
+  def from_list(permissions) when is_list(permissions) do
     Enum.reduce(permissions, 0, fn
       # raw bits allow permissions Lingo doesn't know about yet
       bits, acc when is_integer(bits) -> Bitwise.bor(acc, bits)
@@ -112,9 +112,9 @@ defmodule Lingo.Permissions do
     |> Enum.map(&elem(&1, 0))
   end
 
-  @spec all_permissions :: [permission()]
+  @spec all() :: [permission()]
   @doc "Every permission atom Lingo knows."
-  def all_permissions, do: Map.keys(@permissions)
+  def all, do: Map.keys(@permissions)
 
   @spec compute(
           base_permissions :: String.t() | integer(),
@@ -131,7 +131,7 @@ defmodule Lingo.Permissions do
   `@everyone`, their roles and them. Administrators get everything.
 
   `roles` are the guild's `Lingo.Type.Role` structs and `overwrites` the
-  channel's `Lingo.Type.Overwrite` structs. `Lingo.Helper.Channel.permissions_for/2`
+  channel's `Lingo.Type.Overwrite` structs. `Lingo.Helper.Channel.permissions/2`
   does this from the cache.
   """
   defdelegate compute(everyone_perms, member_role_ids, roles, overwrites \\ [], member_id \\ nil),

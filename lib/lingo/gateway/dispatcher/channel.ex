@@ -17,14 +17,14 @@ defmodule Lingo.Gateway.Dispatcher.Channel do
 
   def parse(:channel_update, data) do
     ch = Channel.new(data)
-    old = Cache.get_channel(ch.id)
+    old = Cache.Channel.get(ch.id)
     Store.put_channel(ch)
     %{old: old, new: ch}
   end
 
   def parse(:channel_delete, data) do
     ch = Channel.new(data)
-    old = Cache.get_channel(data["id"])
+    old = Cache.Channel.get(data["id"])
     Store.delete_channel(data["id"])
     %{old: old, new: ch}
   end
@@ -37,14 +37,14 @@ defmodule Lingo.Gateway.Dispatcher.Channel do
 
   def parse(:thread_update, data) do
     ch = Channel.new(data)
-    old = Cache.get_channel(ch.id)
+    old = Cache.Channel.get(ch.id)
     Store.put_channel(ch)
     %{old: old, new: ch}
   end
 
   def parse(:thread_delete, data) do
     ch = Channel.new(data)
-    old = Cache.get_channel(data["id"])
+    old = Cache.Channel.get(data["id"])
     Store.delete_channel(data["id"])
     %{old: old, new: ch}
   end

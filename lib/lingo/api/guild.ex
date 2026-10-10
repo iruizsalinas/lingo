@@ -8,7 +8,7 @@ defmodule Lingo.Api.Guild do
 
   alias Lingo.Api
   alias Lingo.Rest.Client
-  alias Lingo.Type.{Channel, Guild}
+  alias Lingo.Type.Guild
 
   @doc "Fetches a guild. Pass `with_counts: true` for approximate member and presence counts."
   @spec get(Api.id(), keyword()) :: Api.result(Guild.t())
@@ -29,40 +29,6 @@ defmodule Lingo.Api.Guild do
   @spec get_preview(Api.id()) :: Api.result(Guild.t())
   def get_preview(guild_id) do
     Client.request(:get, "/guilds/#{guild_id}/preview") |> Client.into(&Guild.new/1)
-  end
-
-  @doc "Lists a guild's channels, without threads."
-  @spec list_channels(Api.id()) :: Api.result([Channel.t()])
-  def list_channels(guild_id) do
-    Client.request(:get, "/guilds/#{guild_id}/channels") |> Client.into(&Channel.new/1)
-  end
-
-  @doc "Creates a channel in a guild."
-  @spec create_channel(Api.id(), Api.params(), keyword()) :: Api.result(Channel.t())
-  def create_channel(guild_id, params, opts \\ []) do
-    Client.request(:post, "/guilds/#{guild_id}/channels",
-      json: params,
-      reason: opts[:reason]
-    )
-    |> Client.into(&Channel.new/1)
-  end
-
-  @doc "Moves channels in a guild, from a list of `%{id:, position:}` maps."
-  @spec update_channel_positions(Api.id(), [map()]) :: Api.result()
-  def update_channel_positions(guild_id, positions) do
-    Client.request(:patch, "/guilds/#{guild_id}/channels", json: positions)
-  end
-
-  @doc "Lists a guild's active threads."
-  @spec list_active_threads(Api.id()) :: Api.result(%{threads: [Channel.t()], members: [map()]})
-  def list_active_threads(guild_id) do
-    with {:ok, data} <- Client.request(:get, "/guilds/#{guild_id}/threads/active") do
-      {:ok,
-       %{
-         threads: Enum.map(data["threads"] || [], &Channel.new/1),
-         members: data["members"] || []
-       }}
-    end
   end
 
   @doc "Lists the voice regions available to a guild."

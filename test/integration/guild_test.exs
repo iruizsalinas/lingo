@@ -34,9 +34,9 @@ defmodule Lingo.Integration.GuildTest do
     end
   end
 
-  describe "list_channels/1" do
+  describe "Channel.list/1" do
     test "returns list of channels, each with a :type", %{guild_id: guild_id} do
-      assert {:ok, channels} = Lingo.Api.Guild.list_channels(guild_id)
+      assert {:ok, channels} = Lingo.Api.Channel.list(guild_id)
       assert is_list(channels)
       assert length(channels) > 0
 
@@ -46,9 +46,9 @@ defmodule Lingo.Integration.GuildTest do
     end
   end
 
-  describe "list_active_threads/1" do
+  describe "Thread.list_active/1" do
     test "returns map with :threads key", %{guild_id: guild_id} do
-      assert {:ok, result} = Lingo.Api.Guild.list_active_threads(guild_id)
+      assert {:ok, result} = Lingo.Api.Thread.list_active(guild_id)
       assert is_map(result)
       assert is_list(result.threads)
     end

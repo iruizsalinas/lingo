@@ -72,7 +72,7 @@ defmodule Lingo.Cache.Store do
   def merge_message(channel_id, data) do
     if Tables.enabled?(:messages) do
       update_message(
-        Cache.get_message(channel_id, data["id"]),
+        Cache.Message.get(channel_id, data["id"]),
         Map.put_new(data, "channel_id", channel_id)
       )
     else
@@ -90,7 +90,7 @@ defmodule Lingo.Cache.Store do
 
   def put_presence(guild_id, %{user: %{id: user_id} = user} = presence) do
     if Tables.enabled?([:users, :presences]) do
-      existing = Cache.get_user(user_id) || presence_user(guild_id, user_id)
+      existing = Cache.User.get(user_id) || presence_user(guild_id, user_id)
       user = if existing, do: Merge.user(existing, user), else: user
       if Tables.wants?(:users, user_id) and is_binary(user.username), do: put_user(user)
       Tables.insert(:presences, {{guild_id, user_id}, %{presence | user: user}})
@@ -113,7 +113,7 @@ defmodule Lingo.Cache.Store do
       Tables.wants?(:users, id) ->
         user = Lingo.Type.User.new(data["user"])
 
-        if old = Cache.get_user(id),
+        if old = Cache.User.get(id),
           do: put_user(Merge.user(old, user)),
           else: if(is_binary(user.username), do: put_user(user))
 

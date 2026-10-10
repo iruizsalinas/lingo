@@ -104,10 +104,10 @@ defmodule Lingo.Gateway.Dispatcher.MemberTest do
     assert presence.status == :online
 
     assert %Member{user: %{id: "user1"}, guild_id: "guild1"} =
-             Lingo.Cache.get_member("guild1", "user1")
+             Lingo.Cache.Member.get("guild1", "user1")
 
     assert %Presence{user: %{id: "user1"}, guild_id: "guild1"} =
-             Lingo.Cache.get_presence("guild1", "user1")
+             Lingo.Cache.Presence.get("guild1", "user1")
   end
 
   test "dispatches presence update with cached user details when payload user is partial" do

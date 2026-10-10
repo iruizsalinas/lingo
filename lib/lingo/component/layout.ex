@@ -1,11 +1,11 @@
 defmodule Lingo.Component.Layout do
   @moduledoc """
   Builders for components v2: text, images, files and containers laid out
-  in the message itself. Messages using them need the `Lingo.Component.v2/0`
+  in the message itself. Messages using them need the `Lingo.Component.v2_flag/0`
   flag and can't have `:content` or `:embeds`.
 
       Lingo.Api.Message.create(channel_id, %{
-        flags: Lingo.Component.v2(),
+        flags: Lingo.Component.v2_flag(),
         components: [
           Layout.container([Layout.text_display("**Server status**"), Layout.separator()],
             accent_color: 0x57F287

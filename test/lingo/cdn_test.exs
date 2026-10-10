@@ -92,27 +92,42 @@ defmodule Lingo.CDNTest do
     end
   end
 
-  describe "emoji_url/2" do
+  describe "emoji/2" do
     test "static emoji" do
-      assert CDN.emoji_url("123") == "https://cdn.discordapp.com/emojis/123.png"
+      assert CDN.emoji("123") == "https://cdn.discordapp.com/emojis/123.png"
     end
 
     test "animated emoji" do
-      assert CDN.emoji_url("123", true) == "https://cdn.discordapp.com/emojis/123.gif"
+      assert CDN.emoji("123", true) == "https://cdn.discordapp.com/emojis/123.gif"
     end
   end
 
-  describe "sticker_url/2" do
+  describe "sticker/2" do
     test "png sticker" do
-      assert CDN.sticker_url("s1", :png) =~ "/stickers/s1.png"
+      assert CDN.sticker("s1", :png) =~ "/stickers/s1.png"
     end
 
     test "lottie sticker" do
-      assert CDN.sticker_url("s1", :lottie) =~ "/stickers/s1.json"
+      assert CDN.sticker("s1", :lottie) =~ "/stickers/s1.json"
     end
 
     test "gif sticker" do
-      assert CDN.sticker_url("s1", :gif) =~ "/stickers/s1.gif"
+      assert CDN.sticker("s1", :gif) =~ "/stickers/s1.gif"
+    end
+  end
+
+  describe "role_icon/1 and scheduled_event_cover/1" do
+    test "build URLs from the struct's id and hash" do
+      assert CDN.role_icon(%{id: "r1", icon: "h"}) ==
+               "https://cdn.discordapp.com/role-icons/r1/h.webp"
+
+      assert CDN.scheduled_event_cover(%{id: "e1", image: "a_h"}) ==
+               "https://cdn.discordapp.com/guild-events/e1/a_h.gif"
+    end
+
+    test "return nil without an image" do
+      assert CDN.role_icon(%{id: "r1", icon: nil}) == nil
+      assert CDN.scheduled_event_cover(%{id: "e1", image: nil}) == nil
     end
   end
 end

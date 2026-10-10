@@ -109,7 +109,7 @@ defmodule Lingo.Gateway.Dispatcher.CacheTest do
 
     Dispatcher.dispatch(:guild_create, payload)
     assert_receive {:guild_create, %Guild{}}
-    assert Cache.get_guild("g") == nil
+    assert Cache.Guild.get("g") == nil
   end
 
   test "user-only self caching skips full cache-only presence parsing" do
@@ -123,15 +123,15 @@ defmodule Lingo.Gateway.Dispatcher.CacheTest do
 
     Dispatcher.dispatch(:guild_create, payload)
     assert_receive {:guild_create, %Guild{}}
-    assert Cache.get_user("me").username == "updated"
-    assert Cache.get_user("other") == nil
+    assert Cache.User.get("me").username == "updated"
+    assert Cache.User.get("other") == nil
   end
 
   test "rejected updates still dispatch parsed values with an empty cache" do
     start(only: [:messages], messages: [filter: fn _, _ -> false end])
     Dispatcher.dispatch(:message_update, %{"id" => "m", "channel_id" => "c", "content" => "new"})
     assert_receive {:message_update, %{old: nil, new: %Message{content: "new"}}}
-    assert Cache.get_message("c", "m") == nil
+    assert Cache.Message.get("c", "m") == nil
   end
 
   test "a failing custom predicate cannot suppress typed callbacks" do
@@ -142,7 +142,7 @@ defmodule Lingo.Gateway.Dispatcher.CacheTest do
              assert_receive {:guild_create, %Guild{}}
            end) =~ "Cache policy failed"
 
-    assert Cache.get_guild("g") == nil
+    assert Cache.Guild.get("g") == nil
   end
 
   test "explicit permission caches retain self without caching other members" do
@@ -152,9 +152,9 @@ defmodule Lingo.Gateway.Dispatcher.CacheTest do
     Dispatcher.dispatch(:guild_create, guild())
     assert_receive {:guild_create, %Guild{}}
     assert Lingo.Helper.Channel.viewable?("c")
-    assert {:ok, 3072} = Lingo.Helper.Channel.fetch_permissions_for("c", "me")
+    assert {:ok, 3072} = Lingo.Helper.Channel.fetch_permissions("c", "me")
     Store.put_member("g", %Member{user: %User{id: "other"}, roles: ["r"]})
-    assert Cache.get_member("g", "other") == nil
+    assert Cache.Member.get("g", "other") == nil
 
     assert {:error, {:missing_cache, :member}} =
              Lingo.Helper.Member.fetch_permissions("g", "other")
@@ -162,8 +162,8 @@ defmodule Lingo.Gateway.Dispatcher.CacheTest do
     Store.delete_role("g", "r")
 
     assert {:error, {:missing_cache, :role}} =
-             Lingo.Helper.Channel.fetch_permissions_for("c", "me")
+             Lingo.Helper.Channel.fetch_permissions("c", "me")
 
-    assert Lingo.Helper.Channel.permissions_for("c", "me") == 0
+    assert Lingo.Helper.Channel.permissions("c", "me") == 0
   end
 end

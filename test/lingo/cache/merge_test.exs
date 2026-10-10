@@ -28,14 +28,14 @@ defmodule Lingo.Cache.MergeTest do
       msg = %Message{id: "m1", channel_id: "ch1", content: "hello"}
       Lingo.Cache.Store.put_message(msg)
 
-      result = Cache.get_message("ch1", "m1")
+      result = Cache.Message.get("ch1", "m1")
       assert result.content == "hello"
     end
 
     test "deletes a message" do
       Lingo.Cache.Store.put_message(%Message{id: "m2", channel_id: "ch1", content: "bye"})
       Lingo.Cache.Store.delete_message("ch1", "m2")
-      assert Cache.get_message("ch1", "m2") == nil
+      assert Cache.Message.get("ch1", "m2") == nil
     end
 
     test "merges message updates through message type parsing" do
@@ -63,7 +63,7 @@ defmodule Lingo.Cache.MergeTest do
         "guild_id" => "g1"
       })
 
-      result = Cache.get_message("ch1", "m3")
+      result = Cache.Message.get("ch1", "m3")
 
       assert result.content == "before"
       assert [%Embed{title: "Updated"}] = result.embeds
@@ -95,7 +95,7 @@ defmodule Lingo.Cache.MergeTest do
         ]
       })
 
-      result = Cache.get_message("ch1", "m4")
+      result = Cache.Message.get("ch1", "m4")
 
       assert %Member{guild_id: "g1", nick: "Updated", user: %User{id: "u1"}} = result.member
       assert [%User{id: "u3"}] = result.mentions
@@ -115,10 +115,10 @@ defmodule Lingo.Cache.MergeTest do
 
       Lingo.Cache.Store.put_presence("g1", presence)
 
-      result = Cache.get_presence("g1", "u1")
+      result = Cache.Presence.get("g1", "u1")
       assert result.status == :online
       assert result.user.username == "alice"
-      assert Cache.get_user("u1").username == "alice"
+      assert Cache.User.get("u1").username == "alice"
     end
 
     test "partial presence users do not overwrite cached user details" do
@@ -130,10 +130,10 @@ defmodule Lingo.Cache.MergeTest do
         guild_id: "g1"
       })
 
-      assert %User{username: "alice-renamed", bot: true} = Cache.get_user("u1")
+      assert %User{username: "alice-renamed", bot: true} = Cache.User.get("u1")
 
       assert %Presence{status: :idle, user: %User{id: "u1", username: "alice-renamed", bot: true}} =
-               Cache.get_presence("g1", "u1")
+               Cache.Presence.get("g1", "u1")
     end
 
     test "partial presence users remain addressable when no full user is cached" do
@@ -143,8 +143,8 @@ defmodule Lingo.Cache.MergeTest do
         guild_id: "g1"
       })
 
-      assert Cache.get_user("u2") == nil
-      assert %Presence{user: %User{id: "u2", username: nil}} = Cache.get_presence("g1", "u2")
+      assert Cache.User.get("u2") == nil
+      assert %Presence{user: %User{id: "u2", username: nil}} = Cache.Presence.get("g1", "u2")
     end
 
     test "ignores presences without a user" do

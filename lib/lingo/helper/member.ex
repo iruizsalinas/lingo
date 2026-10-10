@@ -2,19 +2,18 @@ defmodule Lingo.Helper.Member do
   @moduledoc """
   What the bot can do to a member, and how members are shown.
 
-  Answered from the cache, so the guilds, roles, members and channels
-  involved must be explicitly enabled in the cache configuration. Caching is
-  off by default. Anything missing gives `false` or
-  `nil`.
+  Answered from the cache, which needs guilds, channels, roles and the bot's
+  own user and member enabled (see `Lingo.Cache`). Anything missing gives
+  `false`, `0` or `nil`.
   """
 
-  alias Lingo.{Cache, Permissions}
-  alias Lingo.Helper.Role
+  alias Lingo.Cache
+  alias Lingo.Helper.PermissionData, as: Data
 
   @doc "Whether the bot outranks a member, so it can change their nickname or roles. Nobody outranks the owner."
   def manageable?(guild_id, user_id) do
-    guild = Cache.get_guild(guild_id)
-    me = Cache.get_current_user()
+    guild = Cache.Guild.get(guild_id)
+    me = Cache.User.get_current()
 
     cond do
       is_nil(guild) or is_nil(me) ->
@@ -30,12 +29,12 @@ defmodule Lingo.Helper.Member do
         true
 
       true ->
-        bot_member = bot_member(guild_id)
-        target = Cache.get_member(guild_id, user_id)
+        bot_member = Data.bot_member(guild_id)
+        target = Cache.Member.get(guild_id, user_id)
 
         if bot_member && target do
-          Role.highest_role_position(guild_id, bot_member) >
-            Role.highest_role_position(guild_id, target)
+          Data.highest_position(guild_id, bot_member) >
+            Data.highest_position(guild_id, target)
         else
           false
         end
@@ -44,12 +43,12 @@ defmodule Lingo.Helper.Member do
 
   @doc "Whether the bot can kick a member."
   def kickable?(guild_id, user_id) do
-    manageable?(guild_id, user_id) and bot_has_permission?(guild_id, :kick_members)
+    manageable?(guild_id, user_id) and Data.bot_has_permission?(guild_id, :kick_members)
   end
 
   @doc "Whether the bot can ban a member."
   def bannable?(guild_id, user_id) do
-    manageable?(guild_id, user_id) and bot_has_permission?(guild_id, :ban_members)
+    manageable?(guild_id, user_id) and Data.bot_has_permission?(guild_id, :ban_members)
   end
 
   @doc "A member's guild-wide permissions bitfield, or `0` when required data is missing."
@@ -60,14 +59,14 @@ defmodule Lingo.Helper.Member do
     end
   end
 
-  @doc "Guild permissions, or `{:error, {:missing_cache, resource}}` if required data is unavailable."
+  @doc "Like `permissions/2`, but `{:ok, bitfield}`, or `{:error, {:missing_cache, resource}}` naming what isn't cached."
   @spec fetch_permissions(String.t(), String.t()) ::
           {:ok, non_neg_integer()} | {:error, {:missing_cache, atom()}}
-  defdelegate fetch_permissions(guild_id, user_id), to: Lingo.Helper.PermissionData, as: :guild
+  defdelegate fetch_permissions(guild_id, user_id), to: Data, as: :guild
 
   @doc "The name a member is shown with: nickname, then global name, then username."
   def display_name(guild_id, user_id) do
-    member = Cache.get_member(guild_id, user_id)
+    member = Cache.Member.get(guild_id, user_id)
 
     cond do
       is_nil(member) -> nil
@@ -80,15 +79,15 @@ defmodule Lingo.Helper.Member do
 
   @doc "The color a member's name is shown in, from their highest colored role, or `0`."
   def display_color(guild_id, user_id) do
-    member = Cache.get_member(guild_id, user_id)
+    member = Cache.Member.get(guild_id, user_id)
 
     if member do
-      roles = Cache.list_roles(guild_id)
-      role_ids = Role.role_id_map(member.roles)
+      roles = Cache.Role.list(guild_id)
+      role_ids = MapSet.new(member.roles)
 
       roles
       |> Enum.reduce({-1, 0}, fn role, {best_position, best_color} ->
-        if role.color > 0 and Map.has_key?(role_ids, role.id) and role.position > best_position do
+        if role.color > 0 and role.id in role_ids and role.position > best_position do
           {role.position, role.color}
         else
           {best_position, best_color}
@@ -97,24 +96,6 @@ defmodule Lingo.Helper.Member do
       |> elem(1)
     else
       0
-    end
-  end
-
-  @doc false
-  def bot_member(guild_id) do
-    me = Cache.get_current_user()
-    if me, do: Cache.get_member(guild_id, me.id)
-  end
-
-  @doc false
-  def bot_has_permission?(guild_id, permission) do
-    me = Cache.get_current_user()
-
-    if me do
-      perms = permissions(guild_id, me.id)
-      Permissions.has?(perms, :administrator) or Permissions.has?(perms, permission)
-    else
-      false
     end
   end
 end

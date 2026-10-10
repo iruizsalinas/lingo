@@ -63,7 +63,7 @@ defmodule Lingo.Gateway.DispatcherTest do
       ]
     })
 
-    assert %Channel{} = hidden = Lingo.Cache.get_channel("channel1")
+    assert %Channel{} = hidden = Lingo.Cache.Channel.get("channel1")
     assert Channel.obfuscated?(hidden)
 
     Dispatcher.dispatch(:channel_update, %{
@@ -75,7 +75,7 @@ defmodule Lingo.Gateway.DispatcherTest do
       "permission_overwrites" => []
     })
 
-    assert %Channel{name: "private-room"} = visible = Lingo.Cache.get_channel("channel1")
+    assert %Channel{name: "private-room"} = visible = Lingo.Cache.Channel.get("channel1")
     refute Channel.obfuscated?(visible)
   end
 
@@ -127,10 +127,10 @@ defmodule Lingo.Gateway.DispatcherTest do
     assert member.user.id == "user1"
 
     assert %Member{user: %{id: "user1"}, guild_id: "guild1"} =
-             Lingo.Cache.get_member("guild1", "user1")
+             Lingo.Cache.Member.get("guild1", "user1")
 
     assert %Presence{user: %{id: "user1"}, guild_id: "guild1"} =
-             Lingo.Cache.get_presence("guild1", "user1")
+             Lingo.Cache.Presence.get("guild1", "user1")
   end
 
   describe "cache bookkeeping" do
@@ -142,7 +142,7 @@ defmodule Lingo.Gateway.DispatcherTest do
         "threads" => [%{"id" => "t_active", "type" => 11, "parent_id" => "c_parent"}]
       })
 
-      assert %Channel{id: "t_active", guild_id: "g_threads"} = Lingo.Cache.get_channel("t_active")
+      assert %Channel{id: "t_active", guild_id: "g_threads"} = Lingo.Cache.Channel.get("t_active")
     end
 
     test "GUILD_UPDATE keeps GUILD_CREATE-only fields" do
@@ -156,7 +156,7 @@ defmodule Lingo.Gateway.DispatcherTest do
 
       Dispatcher.dispatch(:guild_update, %{"id" => "g_upd", "name" => "New"})
 
-      guild = Lingo.Cache.get_guild("g_upd")
+      guild = Lingo.Cache.Guild.get("g_upd")
       assert guild.name == "New"
       assert guild.member_count == 10
       assert guild.large == true
@@ -168,17 +168,17 @@ defmodule Lingo.Gateway.DispatcherTest do
       user = %{"id" => "u_count", "username" => "c"}
 
       Dispatcher.dispatch(:guild_member_add, %{"guild_id" => "g_count", "user" => user})
-      assert Lingo.Cache.get_guild("g_count").member_count == 6
+      assert Lingo.Cache.Guild.get("g_count").member_count == 6
 
       Dispatcher.dispatch(:guild_member_remove, %{"guild_id" => "g_count", "user" => user})
-      assert Lingo.Cache.get_guild("g_count").member_count == 5
+      assert Lingo.Cache.Guild.get("g_count").member_count == 5
     end
 
     test "USER_UPDATE refreshes the current user" do
       Dispatcher.dispatch(:shard_ready, %{"user" => %{"id" => "me", "username" => "old"}})
       Dispatcher.dispatch(:user_update, %{"id" => "me", "username" => "new"})
 
-      assert Lingo.Cache.get_current_user().username == "new"
+      assert Lingo.Cache.User.get_current().username == "new"
     end
   end
 end

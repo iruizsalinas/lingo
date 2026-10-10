@@ -28,7 +28,7 @@ defmodule Lingo.Type.ParseTest do
     test "intents and permissions accept raw bits" do
       import Bitwise
       assert Lingo.Gateway.Intents.resolve([:guilds, 1 <<< 30]) == (1 ||| 1 <<< 30)
-      assert Lingo.Permissions.resolve([:kick_members, 1 <<< 60]) == (2 ||| 1 <<< 60)
+      assert Lingo.Permissions.from_list([:kick_members, 1 <<< 60]) == (2 ||| 1 <<< 60)
     end
   end
 

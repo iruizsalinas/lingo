@@ -29,7 +29,7 @@ defmodule Lingo.ComponentTest do
   end
 
   test "v2 returns correct value" do
-    assert Lingo.Component.v2() == 32768
+    assert Lingo.Component.v2_flag() == 32768
   end
 
   test "user_select builder" do

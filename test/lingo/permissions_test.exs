@@ -31,7 +31,12 @@ defmodule Lingo.PermissionsTest do
 
     test "large bitfield with many permissions" do
       bitfield =
-        Permissions.resolve([:send_messages, :embed_links, :attach_files, :read_message_history])
+        Permissions.from_list([
+          :send_messages,
+          :embed_links,
+          :attach_files,
+          :read_message_history
+        ])
 
       assert Permissions.has?(bitfield, :send_messages)
       assert Permissions.has?(bitfield, :read_message_history)
@@ -68,27 +73,27 @@ defmodule Lingo.PermissionsTest do
     end
   end
 
-  describe "resolve/1" do
+  describe "from_list/1" do
     test "combines multiple permissions" do
-      result = Permissions.resolve([:kick_members, :ban_members])
+      result = Permissions.from_list([:kick_members, :ban_members])
       assert result == bor(1 <<< 1, 1 <<< 2)
     end
 
     test "single permission" do
-      assert Permissions.resolve([:administrator]) == 1 <<< 3
+      assert Permissions.from_list([:administrator]) == 1 <<< 3
     end
 
     test "set voice channel status permission" do
-      assert Permissions.resolve([:set_voice_channel_status]) == 1 <<< 48
+      assert Permissions.from_list([:set_voice_channel_status]) == 1 <<< 48
     end
 
     test "empty list returns 0" do
-      assert Permissions.resolve([]) == 0
+      assert Permissions.from_list([]) == 0
     end
 
     test "raises on invalid permission" do
       assert_raise KeyError, fn ->
-        Permissions.resolve([:nonexistent_permission])
+        Permissions.from_list([:nonexistent_permission])
       end
     end
   end
@@ -114,15 +119,15 @@ defmodule Lingo.PermissionsTest do
 
     test "roundtrip: resolve then to_list" do
       original = [:send_messages, :manage_channels, :view_audit_log]
-      bitfield = Permissions.resolve(original)
+      bitfield = Permissions.from_list(original)
       result = Permissions.to_list(bitfield)
       assert Enum.sort(result) == Enum.sort(original)
     end
   end
 
-  describe "all_permissions/0" do
+  describe "all/0" do
     test "returns a non-empty list of atoms" do
-      perms = Permissions.all_permissions()
+      perms = Permissions.all()
       assert is_list(perms)
       assert length(perms) > 30
       assert Enum.all?(perms, &is_atom/1)

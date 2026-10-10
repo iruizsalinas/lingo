@@ -9,7 +9,7 @@ defmodule Lingo.Integration.RateLimitTest do
     if is_nil(guild_id) or guild_id == "", do: raise("GUILD_ID not set")
 
     {:ok, channel} =
-      Lingo.Api.Guild.create_channel(guild_id, %{
+      Lingo.Api.Channel.create(guild_id, %{
         name: "lingo-rl-test-#{:rand.uniform(99999)}",
         type: 0
       })
@@ -70,7 +70,7 @@ defmodule Lingo.Integration.RateLimitTest do
     } do
       # create a second channel
       {:ok, channel2} =
-        Lingo.Api.Guild.create_channel(guild_id, %{
+        Lingo.Api.Channel.create(guild_id, %{
           name: "lingo-rl-test2-#{:rand.uniform(99999)}",
           type: 0
         })
@@ -134,7 +134,7 @@ defmodule Lingo.Integration.RateLimitTest do
     test "parallel channel reads under load", %{guild_id: guild_id} do
       tasks =
         for _ <- 1..10 do
-          Task.async(fn -> Lingo.Api.Guild.list_channels(guild_id) end)
+          Task.async(fn -> Lingo.Api.Channel.list(guild_id) end)
         end
 
       results = Enum.map(tasks, &Task.await(&1, 30_000))
@@ -281,7 +281,7 @@ defmodule Lingo.Integration.RateLimitTest do
         # channels
         Task.async(fn ->
           {:ok, _} = Lingo.Api.Channel.get(channel_id)
-          {:ok, _} = Lingo.Api.Guild.list_channels(guild_id)
+          {:ok, _} = Lingo.Api.Channel.list(guild_id)
           :channels_ok
         end),
 

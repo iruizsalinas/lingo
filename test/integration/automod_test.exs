@@ -21,19 +21,19 @@ defmodule Lingo.Integration.AutomodTest do
     }
   end
 
-  describe "list_rules/1" do
+  describe "list/1" do
     test "returns a list", %{guild_id: guild_id} do
-      assert {:ok, rules} = AutoModeration.list_rules(guild_id)
+      assert {:ok, rules} = AutoModeration.list(guild_id)
       assert is_list(rules)
     end
   end
 
-  describe "create_rule/2" do
+  describe "create/2" do
     test "creates a keyword filter rule", %{guild_id: guild_id} do
       params = rule_params()
-      assert {:ok, rule} = AutoModeration.create_rule(guild_id, params)
+      assert {:ok, rule} = AutoModeration.create(guild_id, params)
 
-      on_exit(fn -> AutoModeration.delete_rule(guild_id, rule.id) end)
+      on_exit(fn -> AutoModeration.delete(guild_id, rule.id) end)
 
       assert is_binary(rule.id)
       assert rule.name == params.name
@@ -42,37 +42,37 @@ defmodule Lingo.Integration.AutomodTest do
     end
   end
 
-  describe "get_rule/2" do
+  describe "get/2" do
     test "retrieves the created rule by ID", %{guild_id: guild_id} do
-      {:ok, rule} = AutoModeration.create_rule(guild_id, rule_params())
+      {:ok, rule} = AutoModeration.create(guild_id, rule_params())
 
-      on_exit(fn -> AutoModeration.delete_rule(guild_id, rule.id) end)
+      on_exit(fn -> AutoModeration.delete(guild_id, rule.id) end)
 
-      assert {:ok, fetched} = AutoModeration.get_rule(guild_id, rule.id)
+      assert {:ok, fetched} = AutoModeration.get(guild_id, rule.id)
       assert fetched.id == rule.id
       assert fetched.name == rule.name
     end
   end
 
-  describe "update_rule/3" do
+  describe "update/3" do
     test "renames the rule", %{guild_id: guild_id} do
-      {:ok, rule} = AutoModeration.create_rule(guild_id, rule_params())
+      {:ok, rule} = AutoModeration.create(guild_id, rule_params())
 
-      on_exit(fn -> AutoModeration.delete_rule(guild_id, rule.id) end)
+      on_exit(fn -> AutoModeration.delete(guild_id, rule.id) end)
 
-      assert {:ok, updated} = AutoModeration.update_rule(guild_id, rule.id, %{name: "renamed"})
+      assert {:ok, updated} = AutoModeration.update(guild_id, rule.id, %{name: "renamed"})
       assert updated.id == rule.id
       assert updated.name == "renamed"
     end
   end
 
-  describe "delete_rule/2" do
+  describe "delete/2" do
     test "deletes the rule", %{guild_id: guild_id} do
-      {:ok, rule} = AutoModeration.create_rule(guild_id, rule_params())
+      {:ok, rule} = AutoModeration.create(guild_id, rule_params())
 
-      assert :ok = AutoModeration.delete_rule(guild_id, rule.id)
+      assert :ok = AutoModeration.delete(guild_id, rule.id)
 
-      assert {:error, %Lingo.Error{status: 404}} = AutoModeration.get_rule(guild_id, rule.id)
+      assert {:error, %Lingo.Error{status: 404}} = AutoModeration.get(guild_id, rule.id)
     end
   end
 end

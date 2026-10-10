@@ -86,7 +86,7 @@ defmodule Lingo.Integration.RestTest do
       end
 
       # get the first text channel
-      {:ok, channels} = Lingo.Api.Guild.list_channels(guild_id)
+      {:ok, channels} = Lingo.Api.Channel.list(guild_id)
       channel = Enum.find(channels, fn c -> c.type == :guild_text end)
 
       # create a temporary invite

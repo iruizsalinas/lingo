@@ -7,7 +7,7 @@ defmodule Lingo.Integration.ChannelTest do
     if is_nil(guild_id) or guild_id == "", do: raise("GUILD_ID not set")
 
     {:ok, channel} =
-      Lingo.Api.Guild.create_channel(guild_id, %{
+      Lingo.Api.Channel.create(guild_id, %{
         name: "lingo-test-#{:rand.uniform(99999)}",
         type: 0
       })
@@ -106,7 +106,7 @@ defmodule Lingo.Integration.ChannelTest do
   describe "voice channel status" do
     test "sets and clears status on a voice channel", %{guild_id: guild_id} do
       {:ok, voice_channel} =
-        Lingo.Api.Guild.create_channel(guild_id, %{
+        Lingo.Api.Channel.create(guild_id, %{
           name: "lingo-voice-status-#{:rand.uniform(99999)}",
           type: 2
         })
@@ -158,7 +158,7 @@ defmodule Lingo.Integration.ChannelTest do
   describe "delete channel" do
     test "deletes a separate temporary channel", %{guild_id: guild_id} do
       {:ok, temp} =
-        Lingo.Api.Guild.create_channel(guild_id, %{
+        Lingo.Api.Channel.create(guild_id, %{
           name: "lingo-delete-test-#{:rand.uniform(99999)}",
           type: 0
         })

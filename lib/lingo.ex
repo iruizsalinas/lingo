@@ -18,7 +18,8 @@ defmodule Lingo do
 
     * `Lingo.Api.*` - the REST API, one module per resource, such as
       `Lingo.Api.Message.create/2` (errors are `Lingo.Error`)
-    * `Lingo.Cache` - what the gateway has told the bot
+    * `Lingo.Cache.*` - what the gateway and REST API have told the bot, such as
+      `Lingo.Cache.Role.list/1` (opt-in, see `Lingo.Cache`)
     * `Lingo.Gateway` - presence, shards and gateway requests
     * `Lingo.Voice` - joining voice channels, playing and receiving audio
     * `Lingo.Component` and `Lingo.Embed` - building message content
