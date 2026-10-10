@@ -8,6 +8,11 @@ defmodule Lingo.Api do
   They return `{:ok, result}`, `:ok` when Discord sends no body, or
   `{:error, %Lingo.Error{}}`, and go to the current bot (see `Lingo.with_bot/2`).
 
+  Calls always contact Discord. Successful responses for cacheable resources
+  refresh enabled caches under their policies; delayed responses are skipped
+  when the cache changed during the request. Complete role lists also remove
+  missing cached roles. See `Lingo.Cache` for supported synchronization behavior.
+
   Request bodies are maps or keyword lists with Discord's field names, and
   options take `:reason` for the audit log where Discord supports one:
 

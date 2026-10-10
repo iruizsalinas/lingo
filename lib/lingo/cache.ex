@@ -1,7 +1,32 @@
 defmodule Lingo.Cache do
   @moduledoc """
-  What the gateway has told the bot about guilds, channels, users, members,
+  What the gateway and REST API have told the bot about guilds, channels, users, members,
   roles, presences, voice states and recent messages.
+
+  Successful REST responses also refresh enabled caches for guilds, channels
+  (including threads and DMs), roles, members, users, messages and voice states.
+  Embedded member users and message authors refresh the independent user cache
+  only when enabled. Policies apply to REST writes exactly as to gateway writes.
+  REST calls never read from the cache instead of making their HTTP request.
+
+  A complete role list reconciles that guild's cached roles, removing entries
+  missing from the response, including kept entries. Paginated lists, searches,
+  pins and thread lists only refresh returned entries. Guild previews and user
+  guild summaries do not overwrite full guild records. Partial responses preserve
+  fields they omit; explicit nulls and empty collections still update those fields.
+  Successful role, message, channel and guild deletions invalidate cached data;
+  member kicks also remove cached presence and voice state. Mutations without a
+  full response, such as member role changes and channel permission overwrites,
+  invalidate affected entries rather than inventing a new resource state.
+
+  REST refreshes use a conservative per-resource revision check. If any write,
+  deletion, clear, or expiration cleanup changes that resource after a request
+  starts, its response is returned normally but its cache update is skipped.
+  This can skip a refresh after an unrelated entry changes; it prevents delayed
+  responses from overwriting newer observed data or resurrecting deleted entries.
+  Cache restarts invalidate outstanding refreshes too. Disabled resources skip
+  tracking and cache-only response parsing, predicates and traversal. Cache
+  refreshes do not dispatch gateway events.
 
   Reads are ETS lookups, so they're cheap and never touch Discord. Anything
   not cached returns `nil` (or `[]`). Configure policies with the `:cache`
@@ -91,8 +116,8 @@ defmodule Lingo.Cache do
   data, or suppress gateway events. Callback payloads are still parsed; `old`
   may be nil when its resource is disabled, filtered, expired or evicted.
   Disabled resources skip cache-only parsing/traversal and allocate no resource
-  tables or indexes. Unlimited policies use direct ETS writes; managed policies
-  serialize writes per bot for consistent limits across shards. Reads use ETS.
+  tables or indexes. Enabled caches serialize writes per bot so REST revision
+  checks and mutations are atomic across shards and callers. Reads use ETS.
   TTL maintenance exists only when configured.
 
   Eviction indexes exist only for configured global or scoped limits, and an

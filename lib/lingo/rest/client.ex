@@ -11,12 +11,22 @@ defmodule Lingo.Rest.Client do
   @spec request(atom(), String.t(), keyword()) :: :ok | {:ok, any()} | {:error, any()}
   def request(method, path, opts \\ []) do
     opts = keyword_body(opts)
+    snapshot = Lingo.Cache.Rest.begin(method, path, opts)
 
-    if Request.interaction_callback?(path) do
-      Request.once(method, path, opts)
-    else
-      do_api_request(method, path, opts, %{errors: 0, rate_limits: 0, last: nil}, Deadline.new())
-    end
+    result =
+      if Request.interaction_callback?(path) do
+        Request.once(method, path, opts)
+      else
+        do_api_request(
+          method,
+          path,
+          opts,
+          %{errors: 0, rate_limits: 0, last: nil},
+          Deadline.new()
+        )
+      end
+
+    Lingo.Cache.Rest.finish(snapshot, result)
   end
 
   # bodies may be keyword lists; lists of maps (positions, bulk overwrites) stay lists

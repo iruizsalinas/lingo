@@ -28,21 +28,24 @@ defmodule Lingo.Cache.Access do
 
   def insert(name, {key, value}) do
     if state = resource(name) do
-      context =
-        if state.policy.filter == :all and state.policy.keep == :none,
-          do: nil,
-          else: Policy.context(name, key)
-
-      case decide(state.policy, value, context) do
-        {true, kept?} ->
-          stored = {key, Storage.encode(value, state.policy)}
-          mutate(state, {:put, name, stored, kept?}, fn -> :ets.insert(state.table, stored) end)
-
-        {false, _} ->
-          delete(name, key)
+      case prepare(state, name, {key, value}) do
+        {:put, stored, kept?} -> call({:put, name, stored, kept?})
+        {:delete, key} -> call({:delete, name, key})
       end
     else
       :ok
+    end
+  end
+
+  def prepare(state, name, {key, value}) do
+    context =
+      if state.policy.filter == :all and state.policy.keep == :none,
+        do: nil,
+        else: Policy.context(name, key)
+
+    case decide(state.policy, value, context) do
+      {true, kept?} -> {:put, {key, Storage.encode(value, state.policy)}, kept?}
+      {false, _} -> {:delete, key}
     end
   end
 
@@ -73,8 +76,8 @@ defmodule Lingo.Cache.Access do
   end
 
   def delete(name, key) do
-    if state = resource(name),
-      do: mutate(state, {:delete, name, key}, fn -> :ets.delete(state.table, key) end),
+    if resource(name),
+      do: call({:delete, name, key}),
       else: :ok
   end
 
@@ -83,16 +86,8 @@ defmodule Lingo.Cache.Access do
   end
 
   def select_delete(name, spec) do
-    if state = resource(name) do
-      mutate(state, {:select_delete, name, spec}, fn ->
-        if state.policy.compact do
-          {count, _} = Selection.delete(state, spec)
-
-          count
-        else
-          :ets.select_delete(state.table, spec)
-        end
-      end)
+    if resource(name) do
+      call({:select_delete, name, spec})
     else
       0
     end
@@ -104,15 +99,12 @@ defmodule Lingo.Cache.Access do
     unless Enum.all?(names, &(&1 in Policy.resources())),
       do: raise(ArgumentError, "unknown cache resource")
 
-    for name <- names, state = resource(name), state != nil do
-      mutate(state, {:clear, name}, fn -> :ets.delete_all_objects(state.table) end)
+    for name <- names, resource(name) != nil do
+      call({:clear, name})
     end
 
     :ok
   end
-
-  defp mutate(%{meta: _}, message, _fun), do: call(message)
-  defp mutate(_, _, fun), do: fun.()
 
   def call(message),
     do: GenServer.call(Lingo.Instance.process_name(Lingo.Cache.Tables), message, :infinity)
