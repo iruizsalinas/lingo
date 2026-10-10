@@ -1,5 +1,5 @@
 defmodule Lingo.Type.ReactionEvent do
-  @moduledoc false
+  @moduledoc "The payload of reaction gateway events, such as `:message_reaction_add`."
 
   alias Lingo.Type.{Emoji, Member}
 
@@ -29,6 +29,7 @@ defmodule Lingo.Type.ReactionEvent do
     type: 0
   ]
 
+  @doc false
   def new(nil), do: nil
 
   def new(data) when is_map(data) do

@@ -1,9 +1,14 @@
 defmodule Lingo.Type.Channel do
-  @moduledoc false
+  @moduledoc """
+  A guild channel, thread, DM or group DM.
+
+  `type` is an atom such as `:guild_text` or `:public_thread`, or Discord's
+  number for types Lingo doesn't know yet.
+  """
 
   import Bitwise
 
-  alias Lingo.Type.Message
+  alias Lingo.Type.{Codes, Message, Overwrite, Parse, User}
 
   @type channel_type ::
           :guild_text
@@ -39,7 +44,7 @@ defmodule Lingo.Type.Channel do
           application_id: String.t() | nil,
           managed: boolean(),
           parent_id: String.t() | nil,
-          last_pin_timestamp: String.t() | nil,
+          last_pin_timestamp: DateTime.t() | nil,
           rtc_region: String.t() | nil,
           video_quality_mode: integer() | nil,
           message_count: integer() | nil,
@@ -100,22 +105,6 @@ defmodule Lingo.Type.Channel do
     applied_tags: []
   ]
 
-  @channel_types %{
-    0 => :guild_text,
-    1 => :dm,
-    2 => :guild_voice,
-    3 => :group_dm,
-    4 => :guild_category,
-    5 => :guild_announcement,
-    10 => :announcement_thread,
-    11 => :public_thread,
-    12 => :private_thread,
-    13 => :guild_stage_voice,
-    14 => :guild_directory,
-    15 => :guild_forum,
-    16 => :guild_media
-  }
-
   @channel_obfuscated 1 <<< 17
 
   @doc "Returns whether Discord has hidden this channel's sensitive metadata."
@@ -124,74 +113,16 @@ defmodule Lingo.Type.Channel do
     band(flags, @channel_obfuscated) == @channel_obfuscated
   end
 
+  @doc false
   def new(nil), do: nil
 
   def new(data) when is_map(data) do
-    %__MODULE__{
-      id: data["id"],
-      type: Map.get(@channel_types, data["type"], data["type"]),
-      guild_id: data["guild_id"],
-      position: data["position"],
-      permission_overwrites:
-        (data["permission_overwrites"] || []) |> Enum.map(&Lingo.Type.Overwrite.new/1),
-      name: data["name"],
-      topic: data["topic"],
-      nsfw: data["nsfw"] || false,
-      last_message_id: data["last_message_id"],
-      bitrate: data["bitrate"],
-      user_limit: data["user_limit"],
-      rate_limit_per_user: data["rate_limit_per_user"],
-      recipients: (data["recipients"] || []) |> Enum.map(&Lingo.Type.User.new/1),
-      icon: data["icon"],
-      owner_id: data["owner_id"],
-      application_id: data["application_id"],
-      managed: data["managed"] || false,
-      parent_id: data["parent_id"],
-      last_pin_timestamp: data["last_pin_timestamp"],
-      rtc_region: data["rtc_region"],
-      video_quality_mode: data["video_quality_mode"],
-      message_count: data["message_count"],
-      member_count: data["member_count"],
-      thread_metadata: data["thread_metadata"],
-      member: data["member"],
-      default_auto_archive_duration: data["default_auto_archive_duration"],
-      permissions: data["permissions"],
-      app_permissions: data["app_permissions"],
-      flags: data["flags"] || 0,
-      total_message_sent: data["total_message_sent"],
-      available_tags: data["available_tags"] || [],
-      applied_tags: data["applied_tags"] || [],
-      default_reaction_emoji: data["default_reaction_emoji"],
-      default_thread_rate_limit_per_user: data["default_thread_rate_limit_per_user"],
-      default_sort_order: data["default_sort_order"],
-      default_forum_layout: data["default_forum_layout"],
+    struct(Parse.fields(__MODULE__, data),
+      type: Codes.name(:channel_type, data["type"]),
+      permission_overwrites: Parse.list(data["permission_overwrites"], &Overwrite.new/1),
+      recipients: Parse.list(data["recipients"], &User.new/1),
+      last_pin_timestamp: Parse.timestamp(data["last_pin_timestamp"]),
       message: Message.new(data["message"])
-    }
-  end
-end
-
-defmodule Lingo.Type.Overwrite do
-  @moduledoc false
-
-  @type overwrite_type :: :role | :member
-
-  @type t :: %__MODULE__{
-          id: String.t(),
-          type: overwrite_type(),
-          allow: String.t(),
-          deny: String.t()
-        }
-
-  defstruct [:id, :type, :allow, :deny]
-
-  def new(nil), do: nil
-
-  def new(data) when is_map(data) do
-    %__MODULE__{
-      id: data["id"],
-      type: if(data["type"] == 0, do: :role, else: :member),
-      allow: data["allow"] || "0",
-      deny: data["deny"] || "0"
-    }
+    )
   end
 end

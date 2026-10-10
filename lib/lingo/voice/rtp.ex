@@ -10,7 +10,7 @@ defmodule Lingo.Voice.RTP do
   # The counter goes at the start of the nonce, zero padded to 12 bytes for
   # AES-256-GCM and to 24 bytes for XChaCha20-Poly1305.
 
-  import Bitwise
+  alias Lingo.Voice.RTP.AEAD
 
   @payload_type 0x78
   @modes ["aead_aes256_gcm_rtpsize", "aead_xchacha20_poly1305_rtpsize"]
@@ -29,7 +29,7 @@ defmodule Lingo.Voice.RTP do
   def encrypt(mode, key, header, nonce, payload) do
     header = <<0x80, @payload_type, header.sequence::16, header.timestamp::32, header.ssrc::32>>
 
-    [header, seal(mode, key, <<nonce::32>>, header, payload), <<nonce::32>>]
+    [header, AEAD.seal(mode, key, <<nonce::32>>, header, payload), <<nonce::32>>]
     |> IO.iodata_to_binary()
   end
 
@@ -43,7 +43,7 @@ defmodule Lingo.Voice.RTP do
          <<header::binary-size(^header_size), sealed::binary>> = packet,
          sealed_size = byte_size(sealed) - 4,
          <<sealed::binary-size(^sealed_size), nonce::binary-4>> = sealed,
-         {:ok, plaintext} <- open(mode, key, nonce, header, sealed),
+         {:ok, plaintext} <- AEAD.open(mode, key, nonce, header, sealed),
          skip = extension_size(header, extension),
          <<_extension::binary-size(^skip), payload::binary>> <- plaintext,
          {:ok, payload} <- unpad(payload, padding) do
@@ -77,80 +77,11 @@ defmodule Lingo.Voice.RTP do
 
   ## AEAD
 
-  defp seal("aead_aes256_gcm_rtpsize", key, counter, aad, plaintext) do
-    {ciphertext, tag} =
-      :crypto.crypto_one_time_aead(:aes_256_gcm, key, counter <> <<0::64>>, plaintext, aad, true)
-
-    ciphertext <> tag
-  end
-
-  defp seal("aead_xchacha20_poly1305_rtpsize", key, counter, aad, plaintext) do
-    {subkey, nonce} = xchacha_key(key, counter <> <<0::160>>)
-
-    {ciphertext, tag} =
-      :crypto.crypto_one_time_aead(:chacha20_poly1305, subkey, nonce, plaintext, aad, true)
-
-    ciphertext <> tag
-  end
-
-  defp open(_mode, _key, _counter, _aad, sealed) when byte_size(sealed) < 16, do: :error
-
-  defp open(mode, key, counter, aad, sealed) do
-    size = byte_size(sealed) - 16
-    <<ciphertext::binary-size(^size), tag::binary-16>> = sealed
-
-    result =
-      case mode do
-        "aead_aes256_gcm_rtpsize" ->
-          :crypto.crypto_one_time_aead(
-            :aes_256_gcm,
-            key,
-            counter <> <<0::64>>,
-            ciphertext,
-            aad,
-            tag,
-            false
-          )
-
-        "aead_xchacha20_poly1305_rtpsize" ->
-          {subkey, nonce} = xchacha_key(key, counter <> <<0::160>>)
-
-          :crypto.crypto_one_time_aead(
-            :chacha20_poly1305,
-            subkey,
-            nonce,
-            ciphertext,
-            aad,
-            tag,
-            false
-          )
-      end
-
-    if result == :error, do: :error, else: {:ok, result}
-  end
-
-  # XChaCha20-Poly1305 is ChaCha20-Poly1305 under a subkey derived with HChaCha20
-  # from the first 16 nonce bytes, using the last 8 as the nonce
-  defp xchacha_key(key, <<prefix::binary-16, suffix::binary-8>>),
-    do: {hchacha20(key, prefix), <<0::32, suffix::binary>>}
-
   @doc """
   HChaCha20 (draft-irtf-cfrg-xchacha, section 2.2). :crypto has no direct
   call for it, but a ChaCha20 keystream block is the round output plus the
   input state, so subtracting the input recovers the words HChaCha20 needs.
   """
-  @spec hchacha20(binary(), binary()) :: binary()
-  def hchacha20(key, <<_::binary-16>> = nonce) do
-    keystream = :crypto.crypto_one_time(:chacha20, key, nonce, <<0::512>>, true)
-    input = words("expand 32-byte k" <> key <> nonce)
-    rounds = Enum.zip_with(words(keystream), input, fn k, s -> k - s &&& 0xFFFFFFFF end)
-
-    (Enum.slice(rounds, 0..3) ++ Enum.slice(rounds, 12..15))
-    |> Enum.map(&<<&1::32-little>>)
-    |> IO.iodata_to_binary()
-  end
-
-  defp words(binary), do: for(<<word::32-little <- binary>>, do: word)
 
   ## IP discovery
 

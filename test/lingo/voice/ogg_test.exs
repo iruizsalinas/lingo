@@ -17,7 +17,7 @@ defmodule Lingo.Voice.OggTest do
 
     head = <<"OggS", 0, header_type, 0::64, serial::32-little, 0::32>>
     tail = [length(lacing) | lacing] |> :binary.list_to_bin() |> Kernel.<>(body)
-    crc = Ogg.crc([head, <<0::32>>, tail])
+    crc = Lingo.Voice.Ogg.Page.crc([head, <<0::32>>, tail])
     head <> <<crc::32-little>> <> tail
   end
 

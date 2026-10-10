@@ -3,7 +3,7 @@ defmodule Lingo.Voice.Dave.SessionTest do
 
   @moduletag :capture_log
 
-  alias Lingo.MLS.{Codec, Crypto, KeyPackage, Message}
+  alias Lingo.MLS.{Codec, Crypto, Framing, KeyPackage, Message, Welcome}
   alias Lingo.Voice.Dave.Session
 
   @channel 1_234_567_890
@@ -17,7 +17,7 @@ defmodule Lingo.Voice.Dave.SessionTest do
   defp external_sender_package(gateway),
     do:
       IO.iodata_to_binary(
-        Message.encode_external_sender(Map.take(gateway, [:signature_key, :credential]))
+        Welcome.encode_external_sender(Map.take(gateway, [:signature_key, :credential]))
       )
 
   defp proposal(gateway, epoch, proposal) do
@@ -33,7 +33,7 @@ defmodule Lingo.Voice.Dave.SessionTest do
       Crypto.sign_with_label(
         gateway.private_key,
         "FramedContentTBS",
-        Message.framed_content_tbs(content, <<>>)
+        Framing.framed_content_tbs(content, <<>>)
       )
 
     message = %{

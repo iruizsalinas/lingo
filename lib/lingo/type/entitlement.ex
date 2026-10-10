@@ -1,5 +1,5 @@
 defmodule Lingo.Type.Entitlement do
-  @moduledoc false
+  @moduledoc "An entitlement: a user's or guild's access to a SKU."
 
   @type entitlement_type ::
           :purchase
@@ -18,8 +18,8 @@ defmodule Lingo.Type.Entitlement do
           guild_id: String.t() | nil,
           type: entitlement_type(),
           deleted: boolean(),
-          starts_at: String.t() | nil,
-          ends_at: String.t() | nil,
+          starts_at: DateTime.t() | nil,
+          ends_at: DateTime.t() | nil,
           consumed: boolean(),
           subscription_id: String.t() | nil
         }
@@ -49,6 +49,7 @@ defmodule Lingo.Type.Entitlement do
     8 => :application_subscription
   }
 
+  @doc false
   def new(nil), do: nil
 
   def new(data) when is_map(data) do
@@ -60,8 +61,8 @@ defmodule Lingo.Type.Entitlement do
       guild_id: data["guild_id"],
       type: Map.get(@types, data["type"], data["type"]),
       deleted: data["deleted"] || false,
-      starts_at: data["starts_at"],
-      ends_at: data["ends_at"],
+      starts_at: Lingo.Type.Parse.timestamp(data["starts_at"]),
+      ends_at: Lingo.Type.Parse.timestamp(data["ends_at"]),
       consumed: data["consumed"] || false,
       subscription_id: data["subscription_id"]
     }

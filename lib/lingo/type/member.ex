@@ -1,5 +1,5 @@
 defmodule Lingo.Type.Member do
-  @moduledoc false
+  @moduledoc "A guild member: the user plus their nickname, roles and guild-specific state."
 
   alias Lingo.Type.User
 
@@ -12,14 +12,14 @@ defmodule Lingo.Type.Member do
           avatar_decoration_data: map() | nil,
           collectibles: map() | nil,
           roles: [String.t()],
-          joined_at: String.t() | nil,
-          premium_since: String.t() | nil,
+          joined_at: DateTime.t() | nil,
+          premium_since: DateTime.t() | nil,
           deaf: boolean(),
           mute: boolean(),
           flags: integer(),
           pending: boolean(),
           permissions: String.t() | nil,
-          communication_disabled_until: String.t() | nil
+          communication_disabled_until: DateTime.t() | nil
         }
 
   defstruct [
@@ -41,6 +41,7 @@ defmodule Lingo.Type.Member do
     pending: false
   ]
 
+  @doc false
   def new(nil), do: nil
 
   def new(data) when is_map(data) do
@@ -53,14 +54,15 @@ defmodule Lingo.Type.Member do
       avatar_decoration_data: data["avatar_decoration_data"],
       collectibles: data["collectibles"],
       roles: data["roles"] || [],
-      joined_at: data["joined_at"],
-      premium_since: data["premium_since"],
+      joined_at: Lingo.Type.Parse.timestamp(data["joined_at"]),
+      premium_since: Lingo.Type.Parse.timestamp(data["premium_since"]),
       deaf: data["deaf"] || false,
       mute: data["mute"] || false,
       flags: data["flags"] || 0,
       pending: data["pending"] || false,
       permissions: data["permissions"],
-      communication_disabled_until: data["communication_disabled_until"]
+      communication_disabled_until:
+        Lingo.Type.Parse.timestamp(data["communication_disabled_until"])
     }
   end
 end

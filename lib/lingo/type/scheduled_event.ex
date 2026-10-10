@@ -1,5 +1,5 @@
 defmodule Lingo.Type.ScheduledEvent do
-  @moduledoc false
+  @moduledoc "A guild scheduled event."
 
   alias Lingo.Type.User
 
@@ -14,8 +14,8 @@ defmodule Lingo.Type.ScheduledEvent do
           creator_id: String.t() | nil,
           name: String.t(),
           description: String.t() | nil,
-          scheduled_start_time: String.t(),
-          scheduled_end_time: String.t() | nil,
+          scheduled_start_time: DateTime.t(),
+          scheduled_end_time: DateTime.t() | nil,
           privacy_level: privacy_level(),
           status: status(),
           entity_type: entity_type(),
@@ -48,6 +48,7 @@ defmodule Lingo.Type.ScheduledEvent do
   @entity_types %{1 => :stage_instance, 2 => :voice, 3 => :external}
   @statuses %{1 => :scheduled, 2 => :active, 3 => :completed, 4 => :canceled}
 
+  @doc false
   def new(nil), do: nil
 
   def new(data) when is_map(data) do
@@ -58,8 +59,8 @@ defmodule Lingo.Type.ScheduledEvent do
       creator_id: data["creator_id"],
       name: data["name"],
       description: data["description"],
-      scheduled_start_time: data["scheduled_start_time"],
-      scheduled_end_time: data["scheduled_end_time"],
+      scheduled_start_time: Lingo.Type.Parse.timestamp(data["scheduled_start_time"]),
+      scheduled_end_time: Lingo.Type.Parse.timestamp(data["scheduled_end_time"]),
       privacy_level: :guild_only,
       status: Map.get(@statuses, data["status"], data["status"] || :scheduled),
       entity_type: Map.get(@entity_types, data["entity_type"], data["entity_type"] || :external),

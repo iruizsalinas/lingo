@@ -5,7 +5,7 @@ defmodule Lingo.Integration.MiscApiTest do
   setup do
     guild_id = System.get_env("GUILD_ID")
     if is_nil(guild_id) or guild_id == "", do: raise("GUILD_ID not set")
-    %{guild_id: guild_id, app_id: Lingo.Config.application_id()}
+    %{guild_id: guild_id}
   end
 
   # -- Audit Log --
@@ -26,8 +26,8 @@ defmodule Lingo.Integration.MiscApiTest do
       assert is_binary(data["name"])
     end
 
-    test "get_role_connection_metadata returns a list", %{app_id: app_id} do
-      assert {:ok, list} = Lingo.Api.Application.get_role_connection_metadata(app_id)
+    test "get_role_connection_metadata returns a list" do
+      assert {:ok, list} = Lingo.Api.Application.get_role_connection_metadata()
       assert is_list(list)
     end
   end
@@ -48,8 +48,8 @@ defmodule Lingo.Integration.MiscApiTest do
       assert user.id == me.id
     end
 
-    test "get_guilds returns at least one guild" do
-      assert {:ok, list} = Lingo.Api.User.get_guilds()
+    test "list_guilds returns at least one guild" do
+      assert {:ok, list} = Lingo.Api.User.list_guilds()
       assert is_list(list)
       assert length(list) >= 1
     end
@@ -106,8 +106,8 @@ defmodule Lingo.Integration.MiscApiTest do
   # -- Entitlements --
 
   describe "entitlements" do
-    test "list returns entitlements (may be empty)", %{app_id: app_id} do
-      assert {:ok, list} = Lingo.Api.Entitlement.list(app_id)
+    test "list returns entitlements (may be empty)" do
+      assert {:ok, list} = Lingo.Api.Entitlement.list()
       assert is_list(list)
     end
   end
@@ -115,8 +115,8 @@ defmodule Lingo.Integration.MiscApiTest do
   # -- SKUs --
 
   describe "SKUs" do
-    test "list returns SKUs (may be empty)", %{app_id: app_id} do
-      assert {:ok, list} = Lingo.Api.SKU.list(app_id)
+    test "list returns SKUs (may be empty)" do
+      assert {:ok, list} = Lingo.Api.SKU.list()
       assert is_list(list)
     end
   end
@@ -153,7 +153,7 @@ defmodule Lingo.Integration.MiscApiTest do
       assert is_map(expired)
     end
 
-    test "get_answer_voters returns voters for answer 1", %{channel_id: channel_id} do
+    test "list_answer_voters returns voters for answer 1", %{channel_id: channel_id} do
       {:ok, msg} =
         Lingo.Api.Message.create(channel_id, %{
           poll: %{
@@ -169,7 +169,7 @@ defmodule Lingo.Integration.MiscApiTest do
       # Expire so the poll is finalized
       Lingo.Api.Poll.expire(channel_id, msg.id)
 
-      assert {:ok, data} = Lingo.Api.Poll.get_answer_voters(channel_id, msg.id, 1)
+      assert {:ok, data} = Lingo.Api.Poll.list_answer_voters(channel_id, msg.id, 1)
       assert is_map(data)
     end
   end
@@ -177,10 +177,7 @@ defmodule Lingo.Integration.MiscApiTest do
   # -- Guild Commands --
 
   describe "guild command CRUD" do
-    test "create, list, get, edit, and delete a guild command", %{
-      guild_id: guild_id,
-      app_id: app_id
-    } do
+    test "create, list, get, edit, and delete a guild command", %{guild_id: guild_id} do
       name = "lingo_guild_test_#{:rand.uniform(99999)}"
 
       params = %{
@@ -190,18 +187,18 @@ defmodule Lingo.Integration.MiscApiTest do
       }
 
       # Create
-      assert {:ok, created} = Lingo.Api.Command.create_guild(app_id, guild_id, params)
+      assert {:ok, created} = Lingo.Api.Command.create_guild(guild_id, params)
       assert created.name == name
       assert is_binary(created.id)
       command_id = created.id
 
       # List
-      assert {:ok, commands} = Lingo.Api.Command.list_guild(app_id, guild_id)
+      assert {:ok, commands} = Lingo.Api.Command.list_guild(guild_id)
       assert is_list(commands)
       assert Enum.any?(commands, &(&1.id == command_id))
 
       # Get
-      assert {:ok, fetched} = Lingo.Api.Command.get_guild(app_id, guild_id, command_id)
+      assert {:ok, fetched} = Lingo.Api.Command.get_guild(guild_id, command_id)
       assert fetched.id == command_id
       assert fetched.name == name
 
@@ -209,7 +206,7 @@ defmodule Lingo.Integration.MiscApiTest do
       new_desc = "Updated description"
 
       assert {:ok, edited} =
-               Lingo.Api.Command.edit_guild(app_id, guild_id, command_id, %{
+               Lingo.Api.Command.update_guild(guild_id, command_id, %{
                  "description" => new_desc
                })
 
@@ -217,16 +214,16 @@ defmodule Lingo.Integration.MiscApiTest do
       assert edited.description == new_desc
 
       # Delete
-      assert :ok = Lingo.Api.Command.delete_guild(app_id, guild_id, command_id)
+      assert :ok = Lingo.Api.Command.delete_guild(guild_id, command_id)
 
       Process.sleep(500)
-      assert {:ok, remaining} = Lingo.Api.Command.list_guild(app_id, guild_id)
+      assert {:ok, remaining} = Lingo.Api.Command.list_guild(guild_id)
       refute Enum.any?(remaining, &(&1.id == command_id))
     end
   end
 
   describe "guild command bulk overwrite" do
-    test "bulk_overwrite_guild replaces guild commands", %{guild_id: guild_id, app_id: app_id} do
+    test "bulk_overwrite_guild replaces guild commands", %{guild_id: guild_id} do
       name1 = "lingo_gbulk_a_#{:rand.uniform(99999)}"
       name2 = "lingo_gbulk_b_#{:rand.uniform(99999)}"
 
@@ -235,7 +232,7 @@ defmodule Lingo.Integration.MiscApiTest do
         %{"name" => name2, "description" => "Guild bulk B", "type" => 1}
       ]
 
-      assert {:ok, result} = Lingo.Api.Command.bulk_overwrite_guild(app_id, guild_id, commands)
+      assert {:ok, result} = Lingo.Api.Command.bulk_overwrite_guild(guild_id, commands)
       assert is_list(result)
       assert length(result) >= 2
 
@@ -245,7 +242,7 @@ defmodule Lingo.Integration.MiscApiTest do
 
       # Clean up
       for cmd <- result, cmd.name in [name1, name2] do
-        Lingo.Api.Command.delete_guild(app_id, guild_id, cmd.id)
+        Lingo.Api.Command.delete_guild(guild_id, cmd.id)
       end
     end
   end

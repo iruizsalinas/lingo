@@ -3,35 +3,49 @@ defmodule Lingo.Supervisor do
 
   use Supervisor
 
+  alias Lingo.Instance
+
   def start_link(opts) do
-    Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
+    name = Keyword.fetch!(opts, :name)
+    Supervisor.start_link(__MODULE__, opts, name: Instance.process_name(name, __MODULE__))
   end
 
   @impl true
   def init(opts) do
-    token = Keyword.fetch!(opts, :token)
-    bot_module = Keyword.fetch!(opts, :bot_module)
-    intents = Keyword.get(opts, :intents, [:guilds, :guild_messages])
+    name = Keyword.fetch!(opts, :name)
+    bot = Keyword.fetch!(opts, :bot)
+    Code.ensure_loaded!(bot)
 
-    Lingo.Config.put(:token, token)
-    Lingo.Config.put(:bot_module, bot_module)
-    Lingo.Config.put(:intents, intents)
-    Lingo.Config.put(:max_wait, opts |> Keyword.get(:rate_limit, []) |> Keyword.get(:max_wait))
-
-    cache_opts = Keyword.get(opts, :cache, [])
-    sharding = Keyword.get(opts, :sharding, [])
-    presence = Keyword.get(opts, :presence, [])
-
-    children = [
-      {Lingo.Cache, cache_opts},
-      Lingo.Api.RateLimiter,
-      {Registry, keys: :duplicate, name: Lingo.Collector.Registry},
-      {DynamicSupervisor, name: Lingo.Voice.Supervisor, strategy: :one_for_one},
-      Lingo.Voice.Manager,
-      {Lingo.Gateway.ShardManager,
-       token: token, intents: intents, sharding: sharding, presence: presence}
+    config = [
+      name: name,
+      bot: bot,
+      token: Keyword.fetch!(opts, :token),
+      intents: opts[:intents],
+      max_wait: get_in(opts, [:rate_limit, :max_wait]),
+      register_commands: opts[:register_commands],
+      # tests stand in for Discord here
+      http_request: opts[:http_request]
     ]
 
-    Supervisor.init(children, strategy: :one_for_one)
+    children = [
+      {Instance, config},
+      {Task.Supervisor, name: Instance.process_name(name, Lingo.TaskSupervisor)},
+      {Lingo.Cache.Tables, bot: name, config: opts[:cache]},
+      {Lingo.Rest.RateLimiter, bot: name},
+      {Registry, keys: :duplicate, name: Instance.process_name(name, Lingo.Collector.Registry)},
+      {DynamicSupervisor,
+       name: Instance.process_name(name, Lingo.Voice.Supervisor), strategy: :one_for_one},
+      {Lingo.Voice.Manager, bot: name},
+      {Lingo.Gateway.ShardManager,
+       bot: name,
+       token: config[:token],
+       intents: opts[:intents],
+       sharding: opts[:sharding],
+       presence: opts[:presence]}
+    ]
+
+    # everything after Instance reads the config it owns (table references
+    # included), so a restarted Instance restarts them too
+    Supervisor.init(children, strategy: :rest_for_one)
   end
 end

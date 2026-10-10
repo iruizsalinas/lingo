@@ -1,5 +1,5 @@
 defmodule Lingo.Type.Invite do
-  @moduledoc false
+  @moduledoc "An invite to a guild or group DM."
 
   alias Lingo.Type.{Channel, Guild, Role, ScheduledEvent, User}
 
@@ -16,14 +16,14 @@ defmodule Lingo.Type.Invite do
           target_application: map() | nil,
           approximate_presence_count: integer() | nil,
           approximate_member_count: integer() | nil,
-          expires_at: String.t() | nil,
+          expires_at: DateTime.t() | nil,
           guild_scheduled_event: ScheduledEvent.t() | nil,
           roles: [Role.t()],
           uses: integer() | nil,
           max_uses: integer() | nil,
           max_age: integer() | nil,
           temporary: boolean(),
-          created_at: String.t() | nil,
+          created_at: DateTime.t() | nil,
           role_ids: [String.t()],
           flags: integer()
         }
@@ -53,6 +53,7 @@ defmodule Lingo.Type.Invite do
     flags: 0
   ]
 
+  @doc false
   def new(nil), do: nil
 
   def new(data) when is_map(data) do
@@ -69,7 +70,7 @@ defmodule Lingo.Type.Invite do
       target_application: data["target_application"],
       approximate_presence_count: data["approximate_presence_count"],
       approximate_member_count: data["approximate_member_count"],
-      expires_at: data["expires_at"],
+      expires_at: Lingo.Type.Parse.timestamp(data["expires_at"]),
       guild_scheduled_event: ScheduledEvent.new(data["guild_scheduled_event"]),
       roles:
         (data["roles"] || [])
@@ -78,7 +79,7 @@ defmodule Lingo.Type.Invite do
       max_uses: data["max_uses"],
       max_age: data["max_age"],
       temporary: data["temporary"] || false,
-      created_at: data["created_at"],
+      created_at: Lingo.Type.Parse.timestamp(data["created_at"]),
       role_ids: data["role_ids"] || [],
       flags: data["flags"] || 0
     }

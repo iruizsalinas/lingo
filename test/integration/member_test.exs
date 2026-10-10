@@ -15,7 +15,7 @@ defmodule Lingo.Integration.MemberTest do
 
     on_exit(fn ->
       try do
-        Lingo.Api.Member.modify_current(guild_id, %{nick: nil})
+        Lingo.Api.Member.update_current(guild_id, %{nick: nil})
       rescue
         _ -> :ok
       catch
@@ -61,15 +61,15 @@ defmodule Lingo.Integration.MemberTest do
     end
   end
 
-  describe "modify_current/3" do
+  describe "update_current/3" do
     test "sets the bot nickname", %{guild_id: guild_id} do
-      assert {:ok, member} = Lingo.Api.Member.modify_current(guild_id, %{nick: "lingo-test"})
+      assert {:ok, member} = Lingo.Api.Member.update_current(guild_id, %{nick: "lingo-test"})
       assert member.nick == "lingo-test"
     end
 
     test "resets the bot nickname", %{guild_id: guild_id} do
-      {:ok, _} = Lingo.Api.Member.modify_current(guild_id, %{nick: "lingo-test"})
-      assert {:ok, member} = Lingo.Api.Member.modify_current(guild_id, %{nick: nil})
+      {:ok, _} = Lingo.Api.Member.update_current(guild_id, %{nick: "lingo-test"})
+      assert {:ok, member} = Lingo.Api.Member.update_current(guild_id, %{nick: nil})
       assert is_nil(member.nick)
     end
   end

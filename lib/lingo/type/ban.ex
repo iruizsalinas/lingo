@@ -1,5 +1,5 @@
 defmodule Lingo.Type.Ban do
-  @moduledoc false
+  @moduledoc "A guild ban: the banned user and the reason."
 
   alias Lingo.Type.User
 
@@ -10,6 +10,7 @@ defmodule Lingo.Type.Ban do
 
   defstruct [:reason, :user]
 
+  @doc false
   def new(nil), do: nil
 
   def new(data) when is_map(data) do

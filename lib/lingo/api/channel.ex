@@ -1,62 +1,54 @@
 defmodule Lingo.Api.Channel do
-  @moduledoc false
+  @moduledoc """
+  Channels: settings, permission overwrites, pins, invites and typing.
 
-  alias Lingo.Api.Client
-  alias Lingo.Type.{Channel, Invite, Message}
+  Every function returns `{:ok, result}`, `:ok` when Discord sends no body, or
+  `{:error, %Lingo.Error{}}`. Calls go to the current bot (see `Lingo.with_bot/2`).
+  """
 
+  alias Lingo.Api
+  alias Lingo.Rest.Client
+  alias Lingo.Type.{Channel, Message}
+
+  @doc "Fetches a channel or thread."
+  @spec get(Api.id()) :: Api.result(Channel.t())
   def get(channel_id) do
-    with {:ok, data} <- Client.request(:get, "/channels/#{channel_id}") do
-      {:ok, Channel.new(data)}
-    end
+    Client.request(:get, "/channels/#{channel_id}") |> Client.into(&Channel.new/1)
   end
 
-  def modify(channel_id, params, opts \\ []) do
-    with {:ok, data} <-
-           Client.request(:patch, "/channels/#{channel_id}", json: params, reason: opts[:reason]) do
-      {:ok, Channel.new(data)}
-    end
+  @doc "Edits a channel or thread."
+  @spec update(Api.id(), Api.params(), keyword()) :: Api.result(Channel.t())
+  def update(channel_id, params, opts \\ []) do
+    Client.request(:patch, "/channels/#{channel_id}", json: params, reason: opts[:reason])
+    |> Client.into(&Channel.new/1)
   end
 
+  @doc "Deletes a channel, or closes a DM."
+  @spec delete(Api.id(), keyword()) :: Api.result(Channel.t())
   def delete(channel_id, opts \\ []) do
-    with {:ok, data} <- Client.request(:delete, "/channels/#{channel_id}", reason: opts[:reason]) do
-      {:ok, Channel.new(data)}
-    end
+    Client.request(:delete, "/channels/#{channel_id}", reason: opts[:reason])
+    |> Client.into(&Channel.new/1)
   end
 
-  def edit_permissions(channel_id, overwrite_id, params, opts \\ []) do
+  @doc "Sets a permission overwrite for a role or member in a channel."
+  @spec update_permission(Api.id(), Api.id(), Api.params(), keyword()) :: Api.result()
+  def update_permission(channel_id, overwrite_id, params, opts \\ []) do
     Client.request(:put, "/channels/#{channel_id}/permissions/#{overwrite_id}",
       json: params,
       reason: opts[:reason]
     )
   end
 
+  @doc "Removes a permission overwrite from a channel."
+  @spec delete_permission(Api.id(), Api.id(), keyword()) :: Api.result()
   def delete_permission(channel_id, overwrite_id, opts \\ []) do
     Client.request(:delete, "/channels/#{channel_id}/permissions/#{overwrite_id}",
       reason: opts[:reason]
     )
   end
 
-  def get_invites(channel_id) do
-    with {:ok, data} <- Client.request(:get, "/channels/#{channel_id}/invites") do
-      {:ok, Enum.map(data, &Invite.new/1)}
-    end
-  end
-
-  def create_invite(channel_id, params \\ %{}, opts \\ [])
-
-  def create_invite(channel_id, params, opts) when is_list(params) do
-    create_invite(channel_id, Map.new(params), opts)
-  end
-
-  def create_invite(channel_id, params, opts) when is_map(params) do
-    request_opts = [reason: opts[:reason]] ++ invite_body_opts(params)
-
-    with {:ok, data} <-
-           Client.request(:post, "/channels/#{channel_id}/invites", request_opts) do
-      {:ok, Invite.new(data)}
-    end
-  end
-
+  @doc "Follows an announcement channel into another channel."
+  @spec follow_announcement(Api.id(), Api.id(), keyword()) :: Api.result(map())
   def follow_announcement(channel_id, webhook_channel_id, opts \\ []) do
     Client.request(:post, "/channels/#{channel_id}/followers",
       json: %{webhook_channel_id: webhook_channel_id},
@@ -64,10 +56,14 @@ defmodule Lingo.Api.Channel do
     )
   end
 
+  @doc "Shows the bot as typing in a channel for a few seconds."
+  @spec trigger_typing(Api.id()) :: Api.result()
   def trigger_typing(channel_id) do
     Client.request(:post, "/channels/#{channel_id}/typing")
   end
 
+  @doc "Sets the status text of a voice channel."
+  @spec set_voice_status(Api.id(), Api.params(), keyword()) :: Api.result()
   def set_voice_status(channel_id, params, opts \\ []) do
     Client.request(:put, "/channels/#{channel_id}/voice-status",
       json: params,
@@ -75,11 +71,15 @@ defmodule Lingo.Api.Channel do
     )
   end
 
-  def get_pinned_messages(channel_id, opts \\ []) do
+  @doc "Lists a channel's pinned messages."
+  @spec list_pins(Api.id(), keyword()) ::
+          Api.result(%{
+            items: [%{pinned_at: String.t(), message: Message.t()}],
+            has_more: boolean()
+          })
+  def list_pins(channel_id, opts \\ []) do
     params =
-      opts
-      |> Keyword.drop([:reason])
-      |> Enum.into(%{})
+      Client.params(opts)
 
     with {:ok, data} <-
            Client.request(:get, "/channels/#{channel_id}/messages/pins", params: params) do
@@ -98,51 +98,19 @@ defmodule Lingo.Api.Channel do
     }
   end
 
+  @doc "Pins a message."
+  @spec pin_message(Api.id(), Api.id(), keyword()) :: Api.result()
   def pin_message(channel_id, message_id, opts \\ []) do
     Client.request(:put, "/channels/#{channel_id}/messages/pins/#{message_id}",
       reason: opts[:reason]
     )
   end
 
+  @doc "Unpins a message."
+  @spec unpin_message(Api.id(), Api.id(), keyword()) :: Api.result()
   def unpin_message(channel_id, message_id, opts \\ []) do
     Client.request(:delete, "/channels/#{channel_id}/messages/pins/#{message_id}",
       reason: opts[:reason]
     )
-  end
-
-  defp invite_body_opts(%{target_users_file: target_users_file} = params) do
-    json = Map.delete(params, :target_users_file)
-
-    [
-      multipart: [
-        {"payload_json", {JSON.encode!(json), content_type: "application/json"}},
-        target_users_file_part(target_users_file)
-      ]
-    ]
-  end
-
-  defp invite_body_opts(%{"target_users_file" => target_users_file} = params) do
-    json = Map.delete(params, "target_users_file")
-
-    [
-      multipart: [
-        {"payload_json", {JSON.encode!(json), content_type: "application/json"}},
-        target_users_file_part(target_users_file)
-      ]
-    ]
-  end
-
-  defp invite_body_opts(params), do: [json: params]
-
-  defp target_users_file_part(user_ids) when is_list(user_ids) do
-    target_users_file_part("user_id\n" <> Enum.join(user_ids, "\n"))
-  end
-
-  defp target_users_file_part({filename, csv}) when is_binary(filename) do
-    {"target_users_file", {csv, filename: filename, content_type: "text/csv"}}
-  end
-
-  defp target_users_file_part(csv) when is_binary(csv) do
-    {"target_users_file", {csv, filename: "target_users.csv", content_type: "text/csv"}}
   end
 end

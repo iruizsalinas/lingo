@@ -59,20 +59,20 @@ defmodule Lingo.Integration.WebhookTest do
     end
   end
 
-  describe "get_channel_webhooks/1" do
+  describe "list_channel/1" do
     test "lists webhooks for the channel", %{channel_id: channel_id, webhook_id: webhook_id} do
-      assert {:ok, webhooks} = Lingo.Api.Webhook.get_channel_webhooks(channel_id)
+      assert {:ok, webhooks} = Lingo.Api.Webhook.list_channel(channel_id)
       assert is_list(webhooks)
       assert Enum.any?(webhooks, &(&1.id == webhook_id))
     end
   end
 
-  describe "get_guild_webhooks/1" do
+  describe "list_guild/1" do
     test "lists webhooks for the guild including ours", %{
       guild_id: guild_id,
       webhook_id: webhook_id
     } do
-      assert {:ok, webhooks} = Lingo.Api.Webhook.get_guild_webhooks(guild_id)
+      assert {:ok, webhooks} = Lingo.Api.Webhook.list_guild(guild_id)
       assert is_list(webhooks)
       assert Enum.any?(webhooks, &(&1.id == webhook_id))
     end
@@ -80,19 +80,19 @@ defmodule Lingo.Integration.WebhookTest do
 
   describe "modify/2" do
     test "renames the webhook", %{webhook_id: webhook_id} do
-      assert {:ok, wh} = Lingo.Api.Webhook.modify(webhook_id, %{name: "renamed-hook"})
+      assert {:ok, wh} = Lingo.Api.Webhook.update(webhook_id, %{name: "renamed-hook"})
       assert wh.id == webhook_id
       assert wh.name == "renamed-hook"
     end
   end
 
-  describe "modify_with_token/3" do
+  describe "update_with_token/3" do
     test "renames the webhook via token auth", %{
       webhook_id: webhook_id,
       webhook_token: webhook_token
     } do
       assert {:ok, wh} =
-               Lingo.Api.Webhook.modify_with_token(webhook_id, webhook_token, %{
+               Lingo.Api.Webhook.update_with_token(webhook_id, webhook_token, %{
                  name: "token-renamed"
                })
 
@@ -144,7 +144,7 @@ defmodule Lingo.Integration.WebhookTest do
 
       # edit the message
       assert {:ok, edited} =
-               Lingo.Api.Webhook.edit_message(
+               Lingo.Api.Webhook.update_message(
                  webhook_id,
                  webhook_token,
                  msg.id,
@@ -165,14 +165,14 @@ defmodule Lingo.Integration.WebhookTest do
       {:ok, wh2} = Lingo.Api.Webhook.create(channel_id, %{name: "lingo-delete-token-hook"})
 
       assert :ok = Lingo.Api.Webhook.delete_with_token(wh2.id, wh2.token)
-      assert {:error, {404, _}} = Lingo.Api.Webhook.get(wh2.id)
+      assert {:error, %Lingo.Error{status: 404}} = Lingo.Api.Webhook.get(wh2.id)
     end
   end
 
   describe "delete/1" do
     test "deletes the webhook using bot auth", %{webhook_id: webhook_id} do
       assert :ok = Lingo.Api.Webhook.delete(webhook_id)
-      assert {:error, {404, _}} = Lingo.Api.Webhook.get(webhook_id)
+      assert {:error, %Lingo.Error{status: 404}} = Lingo.Api.Webhook.get(webhook_id)
     end
   end
 end

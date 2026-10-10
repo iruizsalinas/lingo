@@ -1,7 +1,13 @@
 defmodule Lingo.Api.Interaction do
-  @moduledoc false
+  @moduledoc """
+  Interaction responses and follow-ups.
 
-  alias Lingo.Api.Client
+  Inside a bot, `Lingo.Context` answers interactions for you; these are for
+  answering them by hand, with the interaction's id and token.
+  """
+
+  alias Lingo.Api
+  alias Lingo.Rest.{Body, Client}
   alias Lingo.Type.Message
 
   @response_types %{
@@ -15,155 +21,77 @@ defmodule Lingo.Api.Interaction do
     launch_activity: 12
   }
 
+  @doc """
+  Responds to an interaction. `type` is one of `:channel_message`,
+  `:deferred_channel_message`, `:deferred_update_message`, `:update_message`,
+  `:autocomplete`, `:modal`, `:launch_activity` or `:pong`.
+  """
+  @spec create_response(Api.id(), String.t(), atom(), map() | nil, keyword()) ::
+          Api.result() | {:ok, map()}
   def create_response(interaction_id, interaction_token, type, data \\ nil, opts \\ []) do
-    type_int = Map.get(@response_types, type, type)
-    params = opts |> Keyword.drop([:reason]) |> Map.new()
+    path = "/interactions/#{interaction_id}/#{interaction_token}/callback"
+    type = Map.get(@response_types, type, type)
+    params = Client.params(opts)
 
-    case data do
-      %{files: files} = data_map when is_list(files) ->
-        clean_data = Map.delete(data_map, :files)
-        json = %{type: type_int, data: clean_data}
+    body =
+      case data do
+        %{files: files} when is_list(files) ->
+          [multipart: Body.multipart(%{type: type, data: Map.delete(data, :files)}, files)]
 
-        Client.request(
-          :post,
-          "/interactions/#{interaction_id}/#{interaction_token}/callback",
-          multipart: build_multipart(json, files),
-          params: params
-        )
+        nil ->
+          [json: %{type: type}]
 
-      nil ->
-        Client.request(
-          :post,
-          "/interactions/#{interaction_id}/#{interaction_token}/callback",
-          json: %{type: type_int},
-          params: params
-        )
-
-      data ->
-        Client.request(
-          :post,
-          "/interactions/#{interaction_id}/#{interaction_token}/callback",
-          json: %{type: type_int, data: data},
-          params: params
-        )
-    end
-  end
-
-  def get_original_response(application_id, interaction_token) do
-    with {:ok, data} <-
-           Client.request(
-             :get,
-             "/webhooks/#{application_id}/#{interaction_token}/messages/@original"
-           ) do
-      {:ok, Message.new(data)}
-    end
-  end
-
-  def edit_original_response(application_id, interaction_token, params) when is_map(params) do
-    {files, json} = Map.pop(params, :files)
-
-    opts =
-      if files do
-        [multipart: build_multipart(json, files)]
-      else
-        [json: json]
+        data ->
+          [json: %{type: type, data: data}]
       end
 
-    with {:ok, data} <-
-           Client.request(
-             :patch,
-             "/webhooks/#{application_id}/#{interaction_token}/messages/@original",
-             opts
-           ) do
-      {:ok, Message.new(data)}
+    Client.request(:post, path, [params: params] ++ body)
+  end
+
+  @doc "Fetches the first response to an interaction."
+  @spec get_original_response(String.t()) :: Api.result(Message.t())
+  def get_original_response(interaction_token),
+    do: message(:get, interaction_token, "messages/@original", [])
+
+  @doc "Edits the first response to an interaction."
+  @spec update_original_response(String.t(), Api.content()) :: Api.result(Message.t())
+  def update_original_response(interaction_token, params),
+    do: message(:patch, interaction_token, "messages/@original", Body.opts(params))
+
+  @doc "Deletes the first response to an interaction."
+  @spec delete_original_response(String.t()) :: Api.result()
+  def delete_original_response(interaction_token),
+    do: webhook(:delete, interaction_token, "messages/@original", [])
+
+  @doc "Sends a follow-up message to an interaction."
+  @spec create_followup(String.t(), Api.content()) :: Api.result(Message.t())
+  def create_followup(interaction_token, params),
+    do: message(:post, interaction_token, nil, Body.opts(params))
+
+  @doc "Fetches a follow-up message."
+  @spec get_followup(String.t(), Api.id()) :: Api.result(Message.t())
+  def get_followup(interaction_token, message_id),
+    do: message(:get, interaction_token, "messages/#{message_id}", [])
+
+  @doc "Edits a follow-up message."
+  @spec update_followup(String.t(), Api.id(), Api.content()) :: Api.result(Message.t())
+  def update_followup(interaction_token, message_id, params),
+    do: message(:patch, interaction_token, "messages/#{message_id}", Body.opts(params))
+
+  @doc "Deletes a follow-up message."
+  @spec delete_followup(String.t(), Api.id()) :: Api.result()
+  def delete_followup(interaction_token, message_id),
+    do: webhook(:delete, interaction_token, "messages/#{message_id}", [])
+
+  defp message(method, token, path, opts) do
+    with {:ok, data} <- webhook(method, token, path, opts), do: {:ok, Message.new(data)}
+  end
+
+  # interaction follow-ups go through the application's webhook
+  defp webhook(method, token, path, opts) do
+    with {:ok, app_id} <- Lingo.Instance.application_id() do
+      base = "/webhooks/#{app_id}/#{token}"
+      Client.request(method, if(path, do: "#{base}/#{path}", else: base), opts)
     end
   end
-
-  def edit_original_response(application_id, interaction_token, params) do
-    with {:ok, data} <-
-           Client.request(
-             :patch,
-             "/webhooks/#{application_id}/#{interaction_token}/messages/@original",
-             json: params
-           ) do
-      {:ok, Message.new(data)}
-    end
-  end
-
-  def delete_original_response(application_id, interaction_token) do
-    Client.request(:delete, "/webhooks/#{application_id}/#{interaction_token}/messages/@original")
-  end
-
-  def create_followup(application_id, interaction_token, params) when is_map(params) do
-    {files, json} = Map.pop(params, :files)
-
-    opts =
-      if files do
-        [multipart: build_multipart(json, files)]
-      else
-        [json: json]
-      end
-
-    with {:ok, data} <-
-           Client.request(:post, "/webhooks/#{application_id}/#{interaction_token}", opts) do
-      {:ok, Message.new(data)}
-    end
-  end
-
-  def create_followup(application_id, interaction_token, params) do
-    with {:ok, data} <-
-           Client.request(:post, "/webhooks/#{application_id}/#{interaction_token}", json: params) do
-      {:ok, Message.new(data)}
-    end
-  end
-
-  def get_followup(application_id, interaction_token, message_id) do
-    with {:ok, data} <-
-           Client.request(
-             :get,
-             "/webhooks/#{application_id}/#{interaction_token}/messages/#{message_id}"
-           ) do
-      {:ok, Message.new(data)}
-    end
-  end
-
-  def edit_followup(application_id, interaction_token, message_id, params) when is_map(params) do
-    {files, json} = Map.pop(params, :files)
-
-    opts =
-      if files do
-        [multipart: build_multipart(json, files)]
-      else
-        [json: json]
-      end
-
-    with {:ok, data} <-
-           Client.request(
-             :patch,
-             "/webhooks/#{application_id}/#{interaction_token}/messages/#{message_id}",
-             opts
-           ) do
-      {:ok, Message.new(data)}
-    end
-  end
-
-  def edit_followup(application_id, interaction_token, message_id, params) do
-    with {:ok, data} <-
-           Client.request(
-             :patch,
-             "/webhooks/#{application_id}/#{interaction_token}/messages/#{message_id}",
-             json: params
-           ) do
-      {:ok, Message.new(data)}
-    end
-  end
-
-  def delete_followup(application_id, interaction_token, message_id) do
-    Client.request(
-      :delete,
-      "/webhooks/#{application_id}/#{interaction_token}/messages/#{message_id}"
-    )
-  end
-
-  defp build_multipart(json, files), do: Client.build_multipart(json, files)
 end

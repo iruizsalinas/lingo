@@ -12,6 +12,7 @@ defmodule Lingo.Voice.Dave.Frame do
   # in little-endian order, which is how libdave copies it in memory.
 
   import Bitwise
+  alias Lingo.Voice.Dave.Frame.Ranges
 
   @marker <<0xFA, 0xFA>>
   @tag_size 8
@@ -33,7 +34,7 @@ defmodule Lingo.Voice.Dave.Frame do
 
   @spec encrypt(binary(), binary(), non_neg_integer(), [range()]) :: binary()
   def encrypt(frame, key, nonce, ranges \\ []) do
-    {aad, plaintext} = split(frame, ranges)
+    {aad, plaintext} = Ranges.split(frame, ranges)
 
     {ciphertext, tag} =
       :crypto.crypto_one_time_aead(
@@ -46,11 +47,11 @@ defmodule Lingo.Voice.Dave.Frame do
         true
       )
 
-    supplemental = [tag, uleb128(nonce), encode_ranges(ranges)]
+    supplemental = [tag, uleb128(nonce), Ranges.encode_ranges(ranges)]
     size = IO.iodata_length(supplemental) + 3
 
     IO.iodata_to_binary([
-      interleave(ciphertext, aad, ranges, byte_size(frame)),
+      Ranges.interleave(ciphertext, aad, ranges, byte_size(frame)),
       supplemental,
       size,
       @marker
@@ -68,9 +69,9 @@ defmodule Lingo.Voice.Dave.Frame do
          true <- size >= @min_supplemental_size and size <= frame_size,
          <<body::binary-size(^body_size), tag::binary-size(@tag_size), rest::binary>> <- frame,
          {:ok, nonce, rest} <- decode_uleb128(binary_part(rest, 0, byte_size(rest) - 3)),
-         {:ok, ranges} <- decode_ranges(rest, []),
-         true <- valid_ranges?(ranges, body_size) do
-      {aad, ciphertext} = split(body, ranges)
+         {:ok, ranges} <- Ranges.decode_ranges(rest, []),
+         true <- Ranges.valid_ranges?(ranges, body_size) do
+      {aad, ciphertext} = Ranges.split(body, ranges)
 
       {:ok,
        %{
@@ -99,65 +100,17 @@ defmodule Lingo.Voice.Dave.Frame do
            parsed.tag,
            false
          ) do
-      :error -> :error
-      plaintext -> {:ok, interleave(plaintext, parsed.aad, parsed.ranges, parsed.body_size)}
+      :error ->
+        :error
+
+      plaintext ->
+        {:ok, Ranges.interleave(plaintext, parsed.aad, parsed.ranges, parsed.body_size)}
     end
   end
 
   defp full_nonce(nonce), do: <<0::64, nonce::32-little>>
 
   ## Unencrypted ranges
-
-  # splits a frame into the concatenated unencrypted ranges and the rest
-  defp split(frame, ranges) do
-    {aad, plaintext, offset} =
-      Enum.reduce(ranges, {[], [], 0}, fn {start, size}, {aad, plaintext, offset} ->
-        {[aad, binary_part(frame, start, size)],
-         [plaintext, binary_part(frame, offset, start - offset)], start + size}
-      end)
-
-    plaintext = [plaintext, binary_part(frame, offset, byte_size(frame) - offset)]
-    {IO.iodata_to_binary(aad), IO.iodata_to_binary(plaintext)}
-  end
-
-  # the inverse of split/2: puts the unencrypted ranges back in place
-  defp interleave(encrypted, _aad, [], _size), do: encrypted
-
-  defp interleave(encrypted, aad, ranges, size) do
-    {parts, encrypted, aad, offset} =
-      Enum.reduce(ranges, {[], encrypted, aad, 0}, fn {start, range_size},
-                                                      {parts, encrypted, aad, offset} ->
-        gap = start - offset
-        <<before::binary-size(^gap), encrypted::binary>> = encrypted
-        <<plain::binary-size(^range_size), aad::binary>> = aad
-        {[parts, before, plain], encrypted, aad, start + range_size}
-      end)
-
-    <<>> = aad
-    ^size = offset + byte_size(encrypted)
-    IO.iodata_to_binary([parts, encrypted])
-  end
-
-  defp encode_ranges(ranges),
-    do: Enum.map(ranges, fn {offset, size} -> [uleb128(offset), uleb128(size)] end)
-
-  defp decode_ranges(<<>>, acc), do: {:ok, Enum.reverse(acc)}
-
-  defp decode_ranges(binary, acc) do
-    with {:ok, offset, rest} <- decode_uleb128(binary),
-         {:ok, size, rest} <- decode_uleb128(rest) do
-      decode_ranges(rest, [{offset, size} | acc])
-    end
-  end
-
-  # ascending, non-overlapping and inside the frame
-  defp valid_ranges?(ranges, body_size) do
-    Enum.reduce_while(ranges, 0, fn {offset, size}, minimum ->
-      if offset >= minimum and offset + size <= body_size,
-        do: {:cont, offset + size},
-        else: {:halt, false}
-    end) != false
-  end
 
   ## ULEB128
 

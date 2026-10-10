@@ -1,5 +1,5 @@
 defmodule Lingo.Type.StageInstance do
-  @moduledoc false
+  @moduledoc "A live stage in a stage channel."
 
   @type privacy_level :: :guild_only
 
@@ -21,6 +21,7 @@ defmodule Lingo.Type.StageInstance do
     privacy_level: :guild_only
   ]
 
+  @doc false
   def new(nil), do: nil
 
   def new(data) when is_map(data) do

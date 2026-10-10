@@ -1,17 +1,15 @@
 defmodule Lingo.Voice.ManagerTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   @moduletag :capture_log
 
   alias Lingo.Voice.Manager
 
   setup do
-    previous = Lingo.Config.get(:user_id)
-    Lingo.Config.put(:user_id, "42")
-    on_exit(fn -> Lingo.Config.put(:user_id, previous) end)
-
-    start_supervised!({DynamicSupervisor, name: Lingo.Voice.Supervisor, strategy: :one_for_one})
-    start_supervised!(Manager)
+    bot = Lingo.TestBot.start(user_id: "42")
+    supervisor = Lingo.Instance.process_name(bot, Lingo.Voice.Supervisor)
+    start_supervised!({DynamicSupervisor, name: supervisor, strategy: :one_for_one})
+    start_supervised!({Manager, bot: bot})
     :ok
   end
 

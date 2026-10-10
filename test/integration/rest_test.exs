@@ -5,11 +5,13 @@ defmodule Lingo.Integration.RestTest do
   # a raw GET, bypassing the client, with the body decoded and headers as a map
   defp get(path) do
     headers = [
-      {"authorization", "Bot #{Lingo.Config.token()}"},
+      {"authorization", "Bot #{Lingo.Instance.get(:token)}"},
       {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.3.0)"}
     ]
 
-    {:ok, response} = Lingo.Api.HTTP.request(:get, "https://discord.com/api/v10" <> path, headers)
+    {:ok, response} =
+      Lingo.Rest.HTTP.request(:get, "https://discord.com/api/v10" <> path, headers)
+
     %{response | body: JSON.decode!(response.body), headers: Map.new(response.headers)}
   end
 
@@ -32,7 +34,7 @@ defmodule Lingo.Integration.RestTest do
     end
 
     test "returns error for nonexistent user" do
-      assert {:error, {404, _body}} = Lingo.Api.User.get("1")
+      assert {:error, %Lingo.Error{status: 404}} = Lingo.Api.User.get("1")
     end
   end
 
@@ -84,23 +86,23 @@ defmodule Lingo.Integration.RestTest do
       end
 
       # get the first text channel
-      {:ok, channels} = Lingo.Api.Guild.get_channels(guild_id)
+      {:ok, channels} = Lingo.Api.Guild.list_channels(guild_id)
       channel = Enum.find(channels, fn c -> c.type == :guild_text end)
 
       # create a temporary invite
-      {:ok, invite} = Lingo.Api.Channel.create_invite(channel.id, %{max_age: 300, unique: true})
+      {:ok, invite} = Lingo.Api.Invite.create(channel.id, %{max_age: 300, unique: true})
 
       on_exit(fn -> Lingo.Api.Invite.delete(invite.code) end)
 
       %{channel_id: channel.id, invite_code: invite.code}
     end
 
-    test "get_target_users returns 404 on fresh invite", %{invite_code: code} do
-      assert {:error, {404, _}} = Lingo.Api.Invite.get_target_users(code)
+    test "list_target_users returns 404 on fresh invite", %{invite_code: code} do
+      assert {:error, %Lingo.Error{status: 404}} = Lingo.Api.Invite.list_target_users(code)
     end
 
     test "get_target_users_status returns 404 when no job exists", %{invite_code: code} do
-      assert {:error, {404, _}} = Lingo.Api.Invite.get_target_users_status(code)
+      assert {:error, %Lingo.Error{status: 404}} = Lingo.Api.Invite.get_target_users_status(code)
     end
 
     test "set, get, and status round-trip", %{invite_code: code} do
@@ -119,7 +121,7 @@ defmodule Lingo.Integration.RestTest do
       Process.sleep(3_000)
 
       # get target users
-      assert {:ok, ids} = Lingo.Api.Invite.get_target_users(code)
+      assert {:ok, ids} = Lingo.Api.Invite.list_target_users(code)
       assert is_list(ids)
       assert me.id in ids
     end
@@ -128,7 +130,7 @@ defmodule Lingo.Integration.RestTest do
       {:ok, me} = Lingo.Api.User.get_current()
 
       assert {:ok, invite} =
-               Lingo.Api.Channel.create_invite(channel_id, %{
+               Lingo.Api.Invite.create(channel_id, %{
                  max_age: 300,
                  unique: true,
                  target_users_file: [me.id]
@@ -144,14 +146,19 @@ defmodule Lingo.Integration.RestTest do
 
       Process.sleep(3_000)
 
-      assert {:ok, ids} = Lingo.Api.Invite.get_target_users(invite.code)
+      assert {:ok, ids} = Lingo.Api.Invite.list_target_users(invite.code)
       assert me.id in ids
     end
 
     test "returns error for invalid invite code" do
-      assert {:error, {404, _}} = Lingo.Api.Invite.get_target_users("invalid_code_xyz")
-      assert {:error, {404, _}} = Lingo.Api.Invite.set_target_users("invalid_code_xyz", ["123"])
-      assert {:error, {404, _}} = Lingo.Api.Invite.get_target_users_status("invalid_code_xyz")
+      assert {:error, %Lingo.Error{status: 404}} =
+               Lingo.Api.Invite.list_target_users("invalid_code_xyz")
+
+      assert {:error, %Lingo.Error{status: 404}} =
+               Lingo.Api.Invite.set_target_users("invalid_code_xyz", ["123"])
+
+      assert {:error, %Lingo.Error{status: 404}} =
+               Lingo.Api.Invite.get_target_users_status("invalid_code_xyz")
     end
   end
 

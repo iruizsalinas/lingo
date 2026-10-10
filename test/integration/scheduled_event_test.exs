@@ -56,7 +56,7 @@ defmodule Lingo.Integration.ScheduledEventTest do
       {:ok, event} = Lingo.Api.ScheduledEvent.create(guild_id, event_params())
 
       assert {:ok, updated} =
-               Lingo.Api.ScheduledEvent.modify(guild_id, event.id, %{name: "Renamed"})
+               Lingo.Api.ScheduledEvent.update(guild_id, event.id, %{name: "Renamed"})
 
       assert updated.id == event.id
       assert updated.name == "Renamed"
@@ -65,11 +65,11 @@ defmodule Lingo.Integration.ScheduledEventTest do
     end
   end
 
-  describe "get_users/2" do
+  describe "list_users/2" do
     test "returns a list of users", %{guild_id: guild_id} do
       {:ok, event} = Lingo.Api.ScheduledEvent.create(guild_id, event_params())
 
-      assert {:ok, users} = Lingo.Api.ScheduledEvent.get_users(guild_id, event.id)
+      assert {:ok, users} = Lingo.Api.ScheduledEvent.list_users(guild_id, event.id)
       assert is_list(users)
 
       Lingo.Api.ScheduledEvent.delete(guild_id, event.id)
@@ -81,7 +81,9 @@ defmodule Lingo.Integration.ScheduledEventTest do
       {:ok, event} = Lingo.Api.ScheduledEvent.create(guild_id, event_params())
 
       assert :ok = Lingo.Api.ScheduledEvent.delete(guild_id, event.id)
-      assert {:error, {404, _}} = Lingo.Api.ScheduledEvent.get(guild_id, event.id)
+
+      assert {:error, %Lingo.Error{status: 404}} =
+               Lingo.Api.ScheduledEvent.get(guild_id, event.id)
     end
   end
 end

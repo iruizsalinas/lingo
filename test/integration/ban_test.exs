@@ -16,8 +16,10 @@ defmodule Lingo.Integration.BanTest do
   end
 
   describe "get/2" do
-    test "returns {:error, {404, _}} for a non-existent user", %{guild_id: guild_id} do
-      assert {:error, {404, _}} = Lingo.Api.Ban.get(guild_id, "1")
+    test "returns {:error, %Lingo.Error{status: 404}} for a non-existent user", %{
+      guild_id: guild_id
+    } do
+      assert {:error, %Lingo.Error{status: 404}} = Lingo.Api.Ban.get(guild_id, "1")
     end
   end
 

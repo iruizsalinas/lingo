@@ -1,23 +1,41 @@
 defmodule Lingo.Api.Application do
-  @moduledoc false
+  @moduledoc """
+  The bot's application and its role connection metadata.
 
-  alias Lingo.Api.Client
+  Every function returns `{:ok, result}`, `:ok` when Discord sends no body, or
+  `{:error, %Lingo.Error{}}`. Calls go to the current bot (see `Lingo.with_bot/2`).
+  """
 
+  alias Lingo.Api
+  alias Lingo.Rest.Client
+
+  @doc "Fetches the bot's application."
+  @spec get_current() :: Api.result(map())
   def get_current do
     Client.request(:get, "/applications/@me")
   end
 
-  def modify_current(params) do
+  @doc "Edits the bot's application."
+  @spec update_current(Api.params()) :: Api.result(map())
+  def update_current(params) do
     Client.request(:patch, "/applications/@me", json: params)
   end
 
-  def get_role_connection_metadata(application_id) do
-    Client.request(:get, "/applications/#{application_id}/role-connections/metadata")
+  @doc "Fetches the application's role connection metadata."
+  @spec get_role_connection_metadata() :: Api.result([map()])
+  def get_role_connection_metadata do
+    Client.app(fn application_id ->
+      Client.request(:get, "/applications/#{application_id}/role-connections/metadata")
+    end)
   end
 
-  def update_role_connection_metadata(application_id, params) do
-    Client.request(:put, "/applications/#{application_id}/role-connections/metadata",
-      json: params
-    )
+  @doc "Replaces the application's role connection metadata."
+  @spec update_role_connection_metadata(Api.params()) :: Api.result([map()])
+  def update_role_connection_metadata(params) do
+    Client.app(fn application_id ->
+      Client.request(:put, "/applications/#{application_id}/role-connections/metadata",
+        json: params
+      )
+    end)
   end
 end

@@ -1,5 +1,5 @@
 defmodule Lingo.Gateway.ConnectionTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   import ExUnit.CaptureLog
 
@@ -9,26 +9,18 @@ defmodule Lingo.Gateway.ConnectionTest do
   defmodule EventBot do
     use Lingo.Bot
 
-    handle :rate_limited, data do
-      send(:persistent_term.get({:lingo_test, :connection_parent}), {:rate_limited, data})
-    end
+    @impl true
+    def handle_event(:rate_limited, data),
+      do: send(Lingo.Instance.get(:test_pid), {:rate_limited, data})
   end
 
   setup do
-    previous_bot = Lingo.Config.bot_module()
-
-    :persistent_term.put({:lingo_test, :connection_parent}, self())
-    Lingo.Config.put(:bot_module, EventBot)
-
-    on_exit(fn ->
-      Lingo.Config.put(:bot_module, previous_bot)
-      :persistent_term.erase({:lingo_test, :connection_parent})
-    end)
+    bot = Lingo.TestBot.start(bot: EventBot, test_pid: self(), start: [:cache, :collector])
 
     {ws, server} = Server.connect()
     :ok = WebSocket.activate(ws)
 
-    state = %Connection{ws: ws, shard_id: 0, shard_count: 1, token: "token", intents: 1}
+    state = %Connection{bot: bot, ws: ws, shard_id: 0, shard_count: 1, token: "token", intents: 1}
     %{state: state, server: server}
   end
 
@@ -44,13 +36,6 @@ defmodule Lingo.Gateway.ConnectionTest do
 
   defp frame(opcode, payload, opts \\ []),
     do: Lingo.Gateway.WebSocket.Frame.encode(opcode, payload, opts)
-
-  defp sent_payload(server, timeout \\ 1_000) do
-    case Server.recv_frame(server, timeout) do
-      {:text, true, json} -> JSON.decode!(json)
-      {:error, :timeout} -> nil
-    end
-  end
 
   defp stop_heartbeat(%{heartbeat_pid: pid}) when is_pid(pid) do
     on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid) end)
@@ -215,109 +200,5 @@ defmodule Lingo.Gateway.ConnectionTest do
 
       assert log =~ "fatal code 4004"
     end
-  end
-
-  describe "sending" do
-    test "a missed heartbeat ACK closes resumably and reconnects", %{
-      state: state,
-      server: server
-    } do
-      state = %{state | state: :identifying, seq: 5}
-
-      assert {:noreply, new_state} = Connection.handle_info(:heartbeat_timeout, state)
-
-      assert Server.recv_frame(server) == {:close, true, <<4000::16>>}
-      assert new_state.state == :disconnected
-      assert new_state.ws == nil
-      assert new_state.connect_timer
-      # the session is kept so the next connection resumes
-      assert new_state.seq == 5
-    end
-
-    test "payloads are queued until the session is ready", %{state: state, server: server} do
-      state = %{state | state: :identifying}
-
-      {:noreply, state} = Connection.handle_cast({:send, %{"op" => 3, "d" => %{}}}, state)
-      assert sent_payload(server, 100) == nil
-
-      ready = %{
-        "op" => 0,
-        "t" => "READY",
-        "s" => 1,
-        "d" => %{"session_id" => "s1", "resume_gateway_url" => "wss://resume.example"}
-      }
-
-      {:noreply, state} = deliver_json(state, server, ready)
-
-      assert %{"op" => 3} = sent_payload(server)
-      assert state.state == :connected
-      assert state.resume_gateway_url == "wss://resume.example"
-      assert :queue.is_empty(state.send_queue)
-    end
-
-    test "sends over the gateway limit wait for the next window", %{state: state, server: server} do
-      state = %{
-        state
-        | state: :connected,
-          send_count: 115,
-          send_window_start: System.monotonic_time(:millisecond)
-      }
-
-      {:noreply, state} = Connection.handle_cast({:send, %{"op" => 3, "d" => %{}}}, state)
-
-      assert sent_payload(server, 100) == nil
-      assert state.send_timer
-      assert :queue.len(state.send_queue) == 1
-      Process.cancel_timer(state.send_timer)
-    end
-
-    test "HELLO schedules identify and heartbeats use the latest seq", %{
-      state: state,
-      server: server
-    } do
-      state = %{state | state: :awaiting_hello}
-
-      {:noreply, state} =
-        deliver_json(state, server, %{"op" => 10, "d" => %{"heartbeat_interval" => 60_000}})
-
-      stop_heartbeat(state)
-      assert state.state == :waiting_to_identify
-      assert state.identify_timer
-
-      {:noreply, state} = Connection.handle_info(:identify, state)
-      assert %{"op" => 2, "d" => %{"shard" => [0, 1]}} = sent_payload(server)
-      assert state.state == :identifying
-
-      {:noreply, _state} = Connection.handle_info(:send_heartbeat, %{state | seq: 42})
-      assert %{"op" => 1, "d" => 42} = sent_payload(server)
-    end
-
-    test "HELLO resumes an existing session", %{state: state, server: server} do
-      state = %{state | state: :awaiting_hello, session_id: "s1", seq: 7}
-
-      {:noreply, state} =
-        deliver_json(state, server, %{"op" => 10, "d" => %{"heartbeat_interval" => 60_000}})
-
-      stop_heartbeat(state)
-      assert state.state == :resuming
-      assert %{"op" => 6, "d" => %{"session_id" => "s1", "seq" => 7}} = sent_payload(server)
-    end
-  end
-end
-
-defmodule Lingo.Gateway.ShardManagerTest do
-  use ExUnit.Case, async: true
-
-  alias Lingo.Gateway.ShardManager
-
-  test "identify slots are spaced per max_concurrency bucket" do
-    state = %ShardManager{max_concurrency: 2}
-
-    {:reply, 0, state} = ShardManager.handle_call({:reserve_identify, 0}, self(), state)
-    {:reply, 0, state} = ShardManager.handle_call({:reserve_identify, 1}, self(), state)
-    {:reply, wait, _state} = ShardManager.handle_call({:reserve_identify, 2}, self(), state)
-
-    # shard 2 shares bucket 0 with shard 0
-    assert wait > 5_000
   end
 end

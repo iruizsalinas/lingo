@@ -1,5 +1,5 @@
 defmodule Lingo.Type.User do
-  @moduledoc false
+  @moduledoc "A Discord user."
 
   @type t :: %__MODULE__{
           id: String.t(),
@@ -45,6 +45,7 @@ defmodule Lingo.Type.User do
     system: false
   ]
 
+  @doc false
   def new(nil), do: nil
 
   def new(data) when is_map(data) do

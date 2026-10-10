@@ -1,70 +1,82 @@
 defmodule Lingo.Api.Webhook do
-  @moduledoc false
+  @moduledoc """
+  Webhooks and the messages they send.
 
-  alias Lingo.Api.Client
+  Every function returns `{:ok, result}`, `:ok` when Discord sends no body, or
+  `{:error, %Lingo.Error{}}`. Calls go to the current bot (see `Lingo.with_bot/2`).
+  """
+
+  alias Lingo.Api
+  alias Lingo.Rest.{Body, Client}
   alias Lingo.Type.{Message, Webhook}
 
+  @doc "Creates a webhook in a channel."
+  @spec create(Api.id(), Api.params(), keyword()) :: Api.result(Webhook.t())
   def create(channel_id, params, opts \\ []) do
-    with {:ok, data} <-
-           Client.request(:post, "/channels/#{channel_id}/webhooks",
-             json: params,
-             reason: opts[:reason]
-           ) do
-      {:ok, Webhook.new(data)}
-    end
+    Client.request(:post, "/channels/#{channel_id}/webhooks",
+      json: params,
+      reason: opts[:reason]
+    )
+    |> Client.into(&Webhook.new/1)
   end
 
-  def get_channel_webhooks(channel_id) do
-    with {:ok, data} <- Client.request(:get, "/channels/#{channel_id}/webhooks") do
-      {:ok, Enum.map(data, &Webhook.new/1)}
-    end
+  @doc "Lists a channel's webhooks."
+  @spec list_channel(Api.id()) :: Api.result([Webhook.t()])
+  def list_channel(channel_id) do
+    Client.request(:get, "/channels/#{channel_id}/webhooks") |> Client.into(&Webhook.new/1)
   end
 
-  def get_guild_webhooks(guild_id) do
-    with {:ok, data} <- Client.request(:get, "/guilds/#{guild_id}/webhooks") do
-      {:ok, Enum.map(data, &Webhook.new/1)}
-    end
+  @doc "Lists a guild's webhooks."
+  @spec list_guild(Api.id()) :: Api.result([Webhook.t()])
+  def list_guild(guild_id) do
+    Client.request(:get, "/guilds/#{guild_id}/webhooks") |> Client.into(&Webhook.new/1)
   end
 
+  @doc "Fetches a webhook."
+  @spec get(Api.id()) :: Api.result(Webhook.t())
   def get(webhook_id) do
-    with {:ok, data} <- Client.request(:get, "/webhooks/#{webhook_id}") do
-      {:ok, Webhook.new(data)}
-    end
+    Client.request(:get, "/webhooks/#{webhook_id}") |> Client.into(&Webhook.new/1)
   end
 
+  @doc "Fetches a webhook using its token instead of the bot's."
+  @spec get_with_token(Api.id(), String.t()) :: Api.result(Webhook.t())
   def get_with_token(webhook_id, webhook_token) do
-    with {:ok, data} <- Client.request(:get, "/webhooks/#{webhook_id}/#{webhook_token}") do
-      {:ok, Webhook.new(data)}
-    end
+    Client.request(:get, "/webhooks/#{webhook_id}/#{webhook_token}")
+    |> Client.into(&Webhook.new/1)
   end
 
-  def modify(webhook_id, params, opts \\ []) do
-    with {:ok, data} <-
-           Client.request(:patch, "/webhooks/#{webhook_id}", json: params, reason: opts[:reason]) do
-      {:ok, Webhook.new(data)}
-    end
+  @doc "Edits a webhook."
+  @spec update(Api.id(), Api.params(), keyword()) :: Api.result(Webhook.t())
+  def update(webhook_id, params, opts \\ []) do
+    Client.request(:patch, "/webhooks/#{webhook_id}", json: params, reason: opts[:reason])
+    |> Client.into(&Webhook.new/1)
   end
 
-  def modify_with_token(webhook_id, webhook_token, params) do
-    with {:ok, data} <-
-           Client.request(:patch, "/webhooks/#{webhook_id}/#{webhook_token}", json: params) do
-      {:ok, Webhook.new(data)}
-    end
+  @doc "Edits a webhook using its token."
+  @spec update_with_token(Api.id(), String.t(), Api.params()) :: Api.result(Webhook.t())
+  def update_with_token(webhook_id, webhook_token, params) do
+    Client.request(:patch, "/webhooks/#{webhook_id}/#{webhook_token}", json: params)
+    |> Client.into(&Webhook.new/1)
   end
 
+  @doc "Deletes a webhook."
+  @spec delete(Api.id(), keyword()) :: Api.result()
   def delete(webhook_id, opts \\ []) do
     Client.request(:delete, "/webhooks/#{webhook_id}", reason: opts[:reason])
   end
 
+  @doc "Deletes a webhook using its token."
+  @spec delete_with_token(Api.id(), String.t()) :: Api.result()
   def delete_with_token(webhook_id, webhook_token) do
     Client.request(:delete, "/webhooks/#{webhook_id}/#{webhook_token}")
   end
 
+  @doc "Sends a Slack-formatted message through a webhook."
+  @spec execute_slack(Api.id(), String.t(), Api.params(), keyword()) ::
+          Api.result() | {:ok, map()}
   def execute_slack(webhook_id, webhook_token, params, opts \\ []) do
     query_params =
-      opts
-      |> Keyword.drop([:reason])
-      |> Enum.into(%{})
+      Client.params(opts)
 
     Client.request(:post, "/webhooks/#{webhook_id}/#{webhook_token}/slack",
       json: params,
@@ -72,11 +84,12 @@ defmodule Lingo.Api.Webhook do
     )
   end
 
+  @doc "Sends a GitHub event through a webhook."
+  @spec execute_github(Api.id(), String.t(), Api.params(), keyword()) ::
+          Api.result() | {:ok, map()}
   def execute_github(webhook_id, webhook_token, params, opts \\ []) do
     query_params =
-      opts
-      |> Keyword.drop([:reason])
-      |> Enum.into(%{})
+      Client.params(opts)
 
     Client.request(:post, "/webhooks/#{webhook_id}/#{webhook_token}/github",
       json: params,
@@ -84,20 +97,14 @@ defmodule Lingo.Api.Webhook do
     )
   end
 
-  def execute(webhook_id, webhook_token, params, opts \\ []) when is_map(params) do
+  @doc "Sends a message through a webhook. Pass `wait: true` to get the message back."
+  @spec execute(Api.id(), String.t(), Api.content(), keyword()) ::
+          Api.result() | {:ok, Message.t()}
+  def execute(webhook_id, webhook_token, params, opts \\ []) do
     query_params =
-      opts
-      |> Keyword.drop([:reason])
-      |> Enum.into(%{})
+      Client.params(opts)
 
-    {files, json} = Map.pop(params, :files)
-
-    req_opts =
-      if files do
-        [multipart: build_multipart(json, files), params: query_params]
-      else
-        [json: json, params: query_params]
-      end
+    req_opts = [params: query_params] ++ Body.opts(params)
 
     with {:ok, data} <-
            Client.request(:post, "/webhooks/#{webhook_id}/#{webhook_token}", req_opts) do
@@ -105,50 +112,41 @@ defmodule Lingo.Api.Webhook do
     end
   end
 
+  @doc "Fetches a message a webhook sent."
+  @spec get_message(Api.id(), String.t(), Api.id(), keyword()) :: Api.result(Message.t())
   def get_message(webhook_id, webhook_token, message_id, opts \\ []) do
-    params = opts |> Keyword.drop([:reason]) |> Map.new()
+    params = Client.params(opts)
 
-    with {:ok, data} <-
-           Client.request(:get, "/webhooks/#{webhook_id}/#{webhook_token}/messages/#{message_id}",
-             params: params
-           ) do
-      {:ok, Message.new(data)}
-    end
+    Client.request(:get, "/webhooks/#{webhook_id}/#{webhook_token}/messages/#{message_id}",
+      params: params
+    )
+    |> Client.into(&Message.new/1)
   end
 
-  def edit_message(webhook_id, webhook_token, message_id, params, opts \\ [])
-      when is_map(params) do
+  @doc "Edits a message a webhook sent."
+  @spec update_message(Api.id(), String.t(), Api.id(), Api.content(), keyword()) ::
+          Api.result(Message.t())
+  def update_message(webhook_id, webhook_token, message_id, params, opts \\ []) do
     query_params =
-      opts
-      |> Keyword.drop([:reason])
-      |> Enum.into(%{})
+      Client.params(opts)
 
-    {files, json} = Map.pop(params, :files)
+    req_opts = [params: query_params] ++ Body.opts(params)
 
-    req_opts =
-      if files do
-        [multipart: build_multipart(json, files), params: query_params]
-      else
-        [json: json, params: query_params]
-      end
-
-    with {:ok, data} <-
-           Client.request(
-             :patch,
-             "/webhooks/#{webhook_id}/#{webhook_token}/messages/#{message_id}",
-             req_opts
-           ) do
-      {:ok, Message.new(data)}
-    end
+    Client.request(
+      :patch,
+      "/webhooks/#{webhook_id}/#{webhook_token}/messages/#{message_id}",
+      req_opts
+    )
+    |> Client.into(&Message.new/1)
   end
 
+  @doc "Deletes a message a webhook sent."
+  @spec delete_message(Api.id(), String.t(), Api.id(), keyword()) :: Api.result()
   def delete_message(webhook_id, webhook_token, message_id, opts \\ []) do
-    query_params = opts |> Keyword.drop([:reason]) |> Map.new()
+    query_params = Client.params(opts)
 
     Client.request(:delete, "/webhooks/#{webhook_id}/#{webhook_token}/messages/#{message_id}",
       params: query_params
     )
   end
-
-  defp build_multipart(json, files), do: Client.build_multipart(json, files)
 end

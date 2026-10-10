@@ -2,8 +2,8 @@ defmodule Lingo.Test.VoiceBot do
   @moduledoc false
 
   # A bare main-gateway session for one bot, just enough to join a voice
-  # channel and collect what Lingo.Voice.Connection needs. Lingo's own gateway
-  # is one bot per VM, and the voice tests run three bots at once.
+  # channel and collect what Lingo.Voice.Connection needs, so the voice tests
+  # can drive three connections directly without a full Lingo bot each.
 
   use GenServer
 

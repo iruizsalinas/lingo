@@ -9,7 +9,7 @@ defmodule Lingo.Voice.WebM do
   without being buffered.
   """
 
-  import Bitwise
+  alias Lingo.Voice.WebM.{Block, EBML}
 
   alias Lingo.Voice.Opus
 
@@ -49,7 +49,7 @@ defmodule Lingo.Voice.WebM do
   end
 
   defp read(state, packets) do
-    with {:ok, id, size, body} <- element_header(state.buffer),
+    with {:ok, id, size, body} <- EBML.element_header(state.buffer),
          {:ok, state, packets} <- element(id, size, %{state | buffer: body}, packets) do
       read(state, packets)
     else
@@ -65,10 +65,10 @@ defmodule Lingo.Voice.WebM do
 
   # a block of another track is skipped as soon as its track number is read
   defp element(id, size, state, packets) when id in [@simple_block, @block] do
-    case decode_vint(state.buffer) do
+    case EBML.decode_vint(state.buffer) do
       {:ok, track, _rest} when track != state.opus -> {:ok, %{state | skip: size}, packets}
       :more when byte_size(state.buffer) < size -> :more
-      _ours -> with_body(size, state, &{:ok, &2, Enum.reverse(frames(&1), packets)})
+      _ours -> with_body(size, state, &{:ok, &2, Enum.reverse(Block.frames(&1), packets)})
     end
   end
 
@@ -125,99 +125,5 @@ defmodule Lingo.Voice.WebM do
 
   ## Blocks (RFC 9559, section 10)
 
-  defp frames(block) do
-    {:ok, _track, <<_timecode::16, flags, data::binary>>} = decode_vint(block)
-
-    case flags >>> 1 &&& 3 do
-      0 -> [data]
-      lacing -> laced(lacing, data)
-    end
-  rescue
-    # a damaged block is dropped, as a page with a bad checksum is in Ogg
-    _malformed in [MatchError, FunctionClauseError] -> []
-  end
-
-  # lacing packs several frames in one block; the last frame's size is what's left
-  defp laced(lacing, <<count_minus_one, data::binary>>) do
-    {sizes, data} =
-      case lacing do
-        1 -> xiph_sizes(count_minus_one, data)
-        2 -> {List.duplicate(div(byte_size(data), count_minus_one + 1), count_minus_one), data}
-        3 -> ebml_sizes(count_minus_one, data)
-      end
-
-    {frames, last} =
-      Enum.map_reduce(sizes, data, fn size, data ->
-        <<frame::binary-size(^size), rest::binary>> = data
-        {frame, rest}
-      end)
-
-    frames ++ [last]
-  end
-
-  # each size is a run of 255s plus the byte that ends it
-  defp xiph_sizes(count, data) do
-    Enum.map_reduce(1..count//1, data, fn _index, data -> xiph_size(data, 0) end)
-  end
-
-  defp xiph_size(<<255, rest::binary>>, sum), do: xiph_size(rest, sum + 255)
-  defp xiph_size(<<byte, rest::binary>>, sum), do: {sum + byte, rest}
-
-  # the first size, then each one as a signed difference from the one before
-  defp ebml_sizes(0, data), do: {[], data}
-
-  defp ebml_sizes(count, data) do
-    {:ok, first, data} = decode_vint(data)
-
-    {sizes, data} =
-      Enum.reduce(2..count//1, {[first], data}, fn _, {[previous | _] = sizes, data} ->
-        {:ok, raw, length, data} = decode_vint_with_length(data)
-        {[previous + raw - ((1 <<< (7 * length - 1)) - 1) | sizes], data}
-      end)
-
-    {Enum.reverse(sizes), data}
-  end
-
   ## EBML variable-length integers (RFC 8794, section 4)
-
-  defp element_header(buffer) do
-    with {:ok, id, rest} <- decode_id(buffer),
-         {:ok, size, length, rest} <- decode_vint_with_length(rest) do
-      {:ok, id, if(size == (1 <<< (7 * length)) - 1, do: :unknown, else: size), rest}
-    end
-  end
-
-  # element IDs keep their length marker
-  defp decode_id(<<first, _::binary>> = buffer) do
-    length = vint_length(first)
-
-    case buffer do
-      <<id::unit(8)-size(^length), rest::binary>> -> {:ok, id, rest}
-      _incomplete -> :more
-    end
-  end
-
-  defp decode_id(<<>>), do: :more
-
-  defp decode_vint(buffer) do
-    with {:ok, value, _length, rest} <- decode_vint_with_length(buffer), do: {:ok, value, rest}
-  end
-
-  defp decode_vint_with_length(<<first, _::binary>> = buffer) do
-    length = vint_length(first)
-    bits = 7 * length
-
-    case buffer do
-      <<_marker::size(^length), value::size(^bits), rest::binary>> -> {:ok, value, length, rest}
-      _incomplete -> :more
-    end
-  end
-
-  defp decode_vint_with_length(<<>>), do: :more
-
-  # the number of leading zero bits, plus one
-  defp vint_length(first) do
-    Enum.find(1..8, &(first >>> (8 - &1) == 1)) ||
-      raise ArgumentError, "malformed WebM: invalid variable-length integer"
-  end
 end

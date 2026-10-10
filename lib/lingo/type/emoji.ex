@@ -1,5 +1,5 @@
 defmodule Lingo.Type.Emoji do
-  @moduledoc false
+  @moduledoc "A custom or unicode emoji."
 
   alias Lingo.Type.User
 
@@ -25,6 +25,7 @@ defmodule Lingo.Type.Emoji do
     available: true
   ]
 
+  @doc false
   def new(nil), do: nil
 
   def new(data) when is_map(data) do
@@ -40,6 +41,7 @@ defmodule Lingo.Type.Emoji do
     }
   end
 
+  @doc "Formats an emoji for use in message content."
   @spec format(t()) :: String.t()
   def format(%__MODULE__{id: nil, name: name}), do: name
   def format(%__MODULE__{animated: true, name: name, id: id}), do: "<a:#{name}:#{id}>"

@@ -1,12 +1,13 @@
 defmodule Lingo.CollectorTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   alias Lingo.Collector
 
   setup do
-    start_supervised!({Registry, keys: :duplicate, name: Lingo.Collector.Registry})
-    :ok
+    %{bot: Lingo.TestBot.start(start: [:collector])}
   end
+
+  defp registry, do: Lingo.Instance.process_name(Lingo.Collector.Registry)
 
   describe "await_component" do
     test "returns {:ok, interaction} when a matching event arrives" do
@@ -25,7 +26,7 @@ defmodule Lingo.CollectorTest do
         data: %{"custom_id" => "confirm"}
       }
 
-      result = Collector.try_match(:interaction_create, interaction)
+      result = Lingo.Collector.Match.try_match(:interaction_create, interaction)
       assert result == :collected
 
       assert {:ok, ^interaction} = Task.await(task, 5_000)
@@ -54,7 +55,7 @@ defmodule Lingo.CollectorTest do
         data: %{"custom_id" => "no"}
       }
 
-      Collector.try_match(:interaction_create, no_match)
+      Lingo.Collector.Match.try_match(:interaction_create, no_match)
 
       # send a matching event
       yes_match = %{
@@ -63,7 +64,7 @@ defmodule Lingo.CollectorTest do
         data: %{"custom_id" => "yes"}
       }
 
-      assert :collected = Collector.try_match(:interaction_create, yes_match)
+      assert :collected = Lingo.Collector.Match.try_match(:interaction_create, yes_match)
       assert {:ok, ^yes_match} = Task.await(task, 5_000)
     end
 
@@ -76,7 +77,7 @@ defmodule Lingo.CollectorTest do
       Process.sleep(20)
 
       interaction = %{type: :message_component, message: %{id: "msg789"}, data: %{}}
-      assert Collector.try_match(:interaction_create, interaction) == :collected
+      assert Lingo.Collector.Match.try_match(:interaction_create, interaction) == :collected
       Task.await(task, 5_000)
     end
 
@@ -87,15 +88,15 @@ defmodule Lingo.CollectorTest do
       first = %{type: :message_component, message: %{id: "msg_dbl"}, data: %{"n" => 1}}
       second = %{type: :message_component, message: %{id: "msg_dbl"}, data: %{"n" => 2}}
 
-      assert Collector.try_match(:interaction_create, first) == :collected
-      assert Collector.try_match(:interaction_create, second) == :miss
+      assert Lingo.Collector.Match.try_match(:interaction_create, first) == :collected
+      assert Lingo.Collector.Match.try_match(:interaction_create, second) == :miss
       assert {:ok, ^first} = Task.await(task, 5_000)
     end
 
     test "non-collectable events return :miss immediately" do
-      assert Collector.try_match(:message_create, %{id: "123"}) == :miss
-      assert Collector.try_match(:guild_update, %{id: "456"}) == :miss
-      assert Collector.try_match(:presence_update, %{}) == :miss
+      assert Lingo.Collector.Match.try_match(:message_create, %{id: "123"}) == :miss
+      assert Lingo.Collector.Match.try_match(:guild_update, %{id: "456"}) == :miss
+      assert Lingo.Collector.Match.try_match(:presence_update, %{}) == :miss
     end
   end
 
@@ -109,7 +110,7 @@ defmodule Lingo.CollectorTest do
       Process.sleep(20)
 
       reaction = %{message_id: "msg_react", channel_id: "ch1", emoji: %{name: "👍"}}
-      Collector.try_match(:message_reaction_add, reaction)
+      Lingo.Collector.Match.try_match(:message_reaction_add, reaction)
 
       assert {:ok, ^reaction} = Task.await(task, 5_000)
     end
@@ -124,7 +125,7 @@ defmodule Lingo.CollectorTest do
 
       # wrong channel
       wrong = %{message_id: "msg_react2", channel_id: "ch_wrong", emoji: %{name: "👍"}}
-      Collector.try_match(:message_reaction_add, wrong)
+      Lingo.Collector.Match.try_match(:message_reaction_add, wrong)
 
       assert :timeout = Task.await(task, 5_000)
     end
@@ -148,11 +149,11 @@ defmodule Lingo.CollectorTest do
       r2 = %{message_id: "msg_poll", channel_id: "ch1", emoji: %{name: "👎"}, user_id: "u2"}
       r3 = %{message_id: "msg_poll", channel_id: "ch1", emoji: %{name: "👍"}, user_id: "u3"}
 
-      Collector.try_match(:message_reaction_add, r1)
+      Lingo.Collector.Match.try_match(:message_reaction_add, r1)
       Process.sleep(50)
-      Collector.try_match(:message_reaction_add, r2)
+      Lingo.Collector.Match.try_match(:message_reaction_add, r2)
       Process.sleep(50)
-      Collector.try_match(:message_reaction_add, r3)
+      Lingo.Collector.Match.try_match(:message_reaction_add, r3)
 
       {:ok, reactions} = Task.await(task, 5_000)
       assert length(reactions) == 3
@@ -177,8 +178,8 @@ defmodule Lingo.CollectorTest do
       yes = %{message_id: "msg_filter", channel_id: "ch1", emoji: %{name: "👍"}, user_id: "u1"}
       no = %{message_id: "msg_filter", channel_id: "ch1", emoji: %{name: "👎"}, user_id: "u2"}
 
-      Collector.try_match(:message_reaction_add, yes)
-      Collector.try_match(:message_reaction_add, no)
+      Lingo.Collector.Match.try_match(:message_reaction_add, yes)
+      Lingo.Collector.Match.try_match(:message_reaction_add, no)
 
       {:ok, reactions} = Task.await(task, 5_000)
       assert length(reactions) == 1
@@ -187,16 +188,17 @@ defmodule Lingo.CollectorTest do
   end
 
   describe "cleanup" do
-    test "registry is cleaned up when awaiting process dies" do
+    test "registry is cleaned up when awaiting process dies", %{bot: bot} do
       {pid, ref} =
         spawn_monitor(fn ->
+          Lingo.put_bot(bot)
           Collector.await_component("msg_cleanup", timeout: 60_000)
         end)
 
       Process.sleep(20)
 
       # verify registration exists
-      assert Registry.lookup(Lingo.Collector.Registry, {:component, "msg_cleanup"}) != []
+      assert Registry.lookup(registry(), {:component, "msg_cleanup"}) != []
 
       # kill the process
       Process.exit(pid, :kill)
@@ -205,14 +207,14 @@ defmodule Lingo.CollectorTest do
       Process.sleep(20)
 
       # registry should be clean
-      assert Registry.lookup(Lingo.Collector.Registry, {:component, "msg_cleanup"}) == []
+      assert Registry.lookup(registry(), {:component, "msg_cleanup"}) == []
     end
 
     test "registry is cleaned up after timeout" do
       Collector.await_component("msg_timeout_cleanup", timeout: 50)
       Process.sleep(20)
 
-      assert Registry.lookup(Lingo.Collector.Registry, {:component, "msg_timeout_cleanup"}) == []
+      assert Registry.lookup(registry(), {:component, "msg_timeout_cleanup"}) == []
     end
   end
 
@@ -233,8 +235,8 @@ defmodule Lingo.CollectorTest do
       ia = %{type: :message_component, message: %{id: "msg_a"}, data: %{}}
       ib = %{type: :message_component, message: %{id: "msg_b"}, data: %{}}
 
-      Collector.try_match(:interaction_create, ia)
-      Collector.try_match(:interaction_create, ib)
+      Lingo.Collector.Match.try_match(:interaction_create, ia)
+      Lingo.Collector.Match.try_match(:interaction_create, ib)
 
       assert {:ok, ^ia} = Task.await(t1, 5_000)
       assert {:ok, ^ib} = Task.await(t2, 5_000)

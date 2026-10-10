@@ -1,7 +1,13 @@
 defmodule Lingo.Api.Message do
-  @moduledoc false
+  @moduledoc """
+  Messages: sending, editing, deleting, bulk deletion and search.
 
-  alias Lingo.Api.Client
+  Every function returns `{:ok, result}`, `:ok` when Discord sends no body, or
+  `{:error, %Lingo.Error{}}`. Calls go to the current bot (see `Lingo.with_bot/2`).
+  """
+
+  alias Lingo.Api
+  alias Lingo.Rest.{Body, Client}
   alias Lingo.Type.Message
 
   @search_index_retries 3
@@ -22,74 +28,51 @@ defmodule Lingo.Api.Message do
     attachment_extension
   )a
 
+  @doc "Fetches a message."
+  @spec get(Api.id(), Api.id()) :: Api.result(Message.t())
   def get(channel_id, message_id) do
-    with {:ok, data} <- Client.request(:get, "/channels/#{channel_id}/messages/#{message_id}") do
-      {:ok, Message.new(data)}
-    end
+    Client.request(:get, "/channels/#{channel_id}/messages/#{message_id}")
+    |> Client.into(&Message.new/1)
   end
 
+  @doc "Lists a channel's messages, newest first. Takes `limit:`, `before:`, `after:` and `around:`."
+  @spec list(Api.id(), keyword()) :: Api.result([Message.t()])
   def list(channel_id, opts \\ []) do
     params =
-      opts
-      |> Keyword.drop([:reason])
-      |> Enum.into(%{})
+      Client.params(opts)
 
-    with {:ok, data} <- Client.request(:get, "/channels/#{channel_id}/messages", params: params) do
-      {:ok, Enum.map(data, &Message.new/1)}
-    end
+    Client.request(:get, "/channels/#{channel_id}/messages", params: params)
+    |> Client.into(&Message.new/1)
   end
 
-  def create(channel_id, params) when is_map(params) do
-    {files, json} = Map.pop(params, :files)
-
-    if files do
-      multipart = build_multipart(json, files)
-      do_create(channel_id, multipart: multipart)
-    else
-      do_create(channel_id, json: json)
-    end
+  @doc "Sends a message. Pass a string, or a map or keyword list of message fields, including `:files` as `{name, binary}` tuples."
+  @spec create(Api.id(), Api.content()) :: Api.result(Message.t())
+  def create(channel_id, content) do
+    Client.request(:post, "/channels/#{channel_id}/messages", Body.opts(content))
+    |> Client.into(&Message.new/1)
   end
 
-  def create(channel_id, params) when is_list(params) do
-    create(channel_id, Map.new(params))
+  @doc "Edits a message the bot sent."
+  @spec update(Api.id(), Api.id(), Api.content()) :: Api.result(Message.t())
+  def update(channel_id, message_id, params) do
+    Client.request(
+      :patch,
+      "/channels/#{channel_id}/messages/#{message_id}",
+      Body.opts(params)
+    )
+    |> Client.into(&Message.new/1)
   end
 
-  def create(channel_id, content) when is_binary(content) do
-    create(channel_id, %{content: content})
-  end
-
-  defp do_create(channel_id, opts) do
-    with {:ok, data} <- Client.request(:post, "/channels/#{channel_id}/messages", opts) do
-      {:ok, Message.new(data)}
-    end
-  end
-
-  def edit(channel_id, message_id, params) when is_map(params) do
-    {files, json} = Map.pop(params, :files)
-
-    opts =
-      if files do
-        [multipart: build_multipart(json, files)]
-      else
-        [json: json]
-      end
-
-    with {:ok, data} <-
-           Client.request(:patch, "/channels/#{channel_id}/messages/#{message_id}", opts) do
-      {:ok, Message.new(data)}
-    end
-  end
-
-  def edit(channel_id, message_id, params) when is_list(params) do
-    edit(channel_id, message_id, Map.new(params))
-  end
-
+  @doc "Deletes a message."
+  @spec delete(Api.id(), Api.id(), keyword()) :: Api.result()
   def delete(channel_id, message_id, opts \\ []) do
     Client.request(:delete, "/channels/#{channel_id}/messages/#{message_id}",
       reason: opts[:reason]
     )
   end
 
+  @doc "Deletes many messages at once, in chunks of 100. Messages older than two weeks can't be bulk deleted."
+  @spec bulk_delete(Api.id(), [Api.id()], keyword()) :: Api.result()
   def bulk_delete(channel_id, message_ids, opts \\ []) when is_list(message_ids) do
     message_ids
     |> Enum.chunk_every(100)
@@ -112,13 +95,15 @@ defmodule Lingo.Api.Message do
     end)
   end
 
+  @doc "Publishes a message in an announcement channel to its followers."
+  @spec crosspost(Api.id(), Api.id()) :: Api.result(Message.t())
   def crosspost(channel_id, message_id) do
-    with {:ok, data} <-
-           Client.request(:post, "/channels/#{channel_id}/messages/#{message_id}/crosspost") do
-      {:ok, Message.new(data)}
-    end
+    Client.request(:post, "/channels/#{channel_id}/messages/#{message_id}/crosspost")
+    |> Client.into(&Message.new/1)
   end
 
+  @doc "Searches a guild's messages. Retries while Discord is still indexing the guild."
+  @spec search(Api.id(), keyword()) :: Api.result(map())
   def search(guild_id, opts \\ []) do
     search_index_retries = Keyword.get(opts, :search_index_retries, @search_index_retries)
 
@@ -140,7 +125,7 @@ defmodule Lingo.Api.Message do
         do_search(guild_id, params, retries_left - 1, short_delay)
 
       {:ok, %{"code" => 110_000} = body} ->
-        {:error, {:index_not_ready, body}}
+        {:error, %Lingo.Error{reason: :index_not_ready, details: body}}
 
       result ->
         result
@@ -164,6 +149,4 @@ defmodule Lingo.Api.Message do
         [param]
     end)
   end
-
-  defp build_multipart(json, files), do: Client.build_multipart(json, files)
 end

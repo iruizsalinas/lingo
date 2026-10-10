@@ -114,7 +114,7 @@ defmodule Lingo.Integration.ThreadTest do
           type: 11
         })
 
-      {:ok, _} = Lingo.Api.Channel.modify(thread.id, %{archived: true})
+      {:ok, _} = Lingo.Api.Channel.update(thread.id, %{archived: true})
 
       assert {:ok, result} = Lingo.Api.Thread.list_public_archived(channel_id)
       assert is_map(result)
@@ -129,7 +129,7 @@ defmodule Lingo.Integration.ThreadTest do
           type: 12
         })
 
-      {:ok, _} = Lingo.Api.Channel.modify(thread.id, %{archived: true})
+      {:ok, _} = Lingo.Api.Channel.update(thread.id, %{archived: true})
 
       assert {:ok, result} = Lingo.Api.Thread.list_private_archived(channel_id)
       assert is_map(result)
@@ -144,7 +144,7 @@ defmodule Lingo.Integration.ThreadTest do
           type: 12
         })
 
-      {:ok, _} = Lingo.Api.Channel.modify(thread.id, %{archived: true})
+      {:ok, _} = Lingo.Api.Channel.update(thread.id, %{archived: true})
 
       assert {:ok, result} = Lingo.Api.Thread.list_joined_private_archived(channel_id)
       assert is_map(result)

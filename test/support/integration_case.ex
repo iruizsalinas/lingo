@@ -3,6 +3,8 @@ defmodule Lingo.IntegrationCase do
 
   use ExUnit.CaseTemplate
 
+  @bot Lingo.IntegrationBot
+
   using do
     quote do
       @moduletag :integration
@@ -17,15 +19,22 @@ defmodule Lingo.IntegrationCase do
       raise "BOT_TOKEN not set in the environment"
     end
 
-    Lingo.Config.put(:token, token)
-    Lingo.Config.put(:application_id, client_id)
+    # REST only: the config and a rate limiter, no gateway
+    start_supervised!({Lingo.Instance, name: @bot, token: token, application_id: client_id})
+    start_supervised!({Lingo.Rest.RateLimiter, bot: @bot})
 
-    case Lingo.Api.RateLimiter.start_link([]) do
-      {:ok, pid} ->
-        %{rate_limiter: pid, token: token, client_id: client_id}
+    start_supervised!(
+      {Task.Supervisor, name: Lingo.Instance.process_name(@bot, Lingo.TaskSupervisor)}
+    )
 
-      {:error, {:already_started, pid}} ->
-        %{rate_limiter: pid, token: token, client_id: client_id}
-    end
+    # setup_all callbacks in the using module run in this process too
+    Lingo.put_bot(@bot)
+
+    %{bot: @bot, token: token, client_id: client_id}
+  end
+
+  setup %{bot: bot} do
+    Lingo.put_bot(bot)
+    :ok
   end
 end

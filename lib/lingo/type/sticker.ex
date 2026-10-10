@@ -1,5 +1,5 @@
 defmodule Lingo.Type.Sticker do
-  @moduledoc false
+  @moduledoc "A sticker."
 
   alias Lingo.Type.User
 
@@ -37,6 +37,7 @@ defmodule Lingo.Type.Sticker do
   @format_types %{1 => :png, 2 => :apng, 3 => :lottie, 4 => :gif}
   @sticker_types %{1 => :standard, 2 => :guild}
 
+  @doc false
   def new(nil), do: nil
 
   def new(data) when is_map(data) do

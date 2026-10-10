@@ -5,7 +5,7 @@ defmodule Lingo.Test.OggWriter do
   # span pages the way libogg-based encoders (opusenc) lay them out and
   # ffmpeg never does. ffprobe reads its output (see the voice tests).
 
-  alias Lingo.Voice.{Ogg, Opus}
+  alias Lingo.Voice.Opus
 
   def file(head, packets, opts \\ []) do
     page_size = Keyword.get(opts, :page_size, 4096)
@@ -63,6 +63,6 @@ defmodule Lingo.Test.OggWriter do
       <<"OggS", 0, flags, granule::64-signed-little, serial::32-little, sequence::32-little>>
 
     tail = <<byte_size(lacing)>> <> lacing <> body
-    head <> <<Ogg.crc([head, <<0::32>>, tail])::32-little>> <> tail
+    head <> <<Lingo.Voice.Ogg.Page.crc([head, <<0::32>>, tail])::32-little>> <> tail
   end
 end

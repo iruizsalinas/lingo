@@ -54,13 +54,13 @@ defmodule Lingo.Integration.AutomodTest do
     end
   end
 
-  describe "modify_rule/3" do
+  describe "update_rule/3" do
     test "renames the rule", %{guild_id: guild_id} do
       {:ok, rule} = AutoModeration.create_rule(guild_id, rule_params())
 
       on_exit(fn -> AutoModeration.delete_rule(guild_id, rule.id) end)
 
-      assert {:ok, updated} = AutoModeration.modify_rule(guild_id, rule.id, %{name: "renamed"})
+      assert {:ok, updated} = AutoModeration.update_rule(guild_id, rule.id, %{name: "renamed"})
       assert updated.id == rule.id
       assert updated.name == "renamed"
     end
@@ -72,7 +72,7 @@ defmodule Lingo.Integration.AutomodTest do
 
       assert :ok = AutoModeration.delete_rule(guild_id, rule.id)
 
-      assert {:error, {404, _}} = AutoModeration.get_rule(guild_id, rule.id)
+      assert {:error, %Lingo.Error{status: 404}} = AutoModeration.get_rule(guild_id, rule.id)
     end
   end
 end

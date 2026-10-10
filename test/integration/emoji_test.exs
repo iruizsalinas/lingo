@@ -34,35 +34,33 @@ defmodule Lingo.Integration.EmojiTest do
       assert fetched.name == name
 
       # modify
-      assert {:ok, updated} = Lingo.Api.Emoji.modify(guild_id, emoji.id, %{name: "lingorenamed"})
+      assert {:ok, updated} = Lingo.Api.Emoji.update(guild_id, emoji.id, %{name: "lingorenamed"})
       assert updated.id == emoji.id
       assert updated.name == "lingorenamed"
 
       # delete
       assert :ok = Lingo.Api.Emoji.delete(guild_id, emoji.id)
-      assert {:error, {404, _}} = Lingo.Api.Emoji.get(guild_id, emoji.id)
+      assert {:error, %Lingo.Error{status: 404}} = Lingo.Api.Emoji.get(guild_id, emoji.id)
     end
   end
 
   describe "application emojis" do
     test "list, create, and delete an application emoji" do
-      app_id = Lingo.Config.application_id()
-
-      assert {:ok, emojis} = Lingo.Api.Emoji.list_application(app_id)
+      assert {:ok, emojis} = Lingo.Api.Emoji.list_application()
       assert is_list(emojis)
 
       name = "lingoapptest#{:rand.uniform(99999)}"
 
       {:ok, emoji} =
-        Lingo.Api.Emoji.create_application(app_id, %{name: name, image: @test_image})
+        Lingo.Api.Emoji.create_application(%{name: name, image: @test_image})
 
-      on_exit(fn -> Lingo.Api.Emoji.delete_application(app_id, emoji.id) end)
+      on_exit(fn -> Lingo.Api.Emoji.delete_application(emoji.id) end)
 
       assert is_binary(emoji.id)
       assert emoji.name == name
 
       # delete
-      assert :ok = Lingo.Api.Emoji.delete_application(app_id, emoji.id)
+      assert :ok = Lingo.Api.Emoji.delete_application(emoji.id)
     end
   end
 end

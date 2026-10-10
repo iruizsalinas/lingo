@@ -49,7 +49,35 @@ defmodule Lingo.MixProject do
   defp docs do
     [
       main: "Lingo",
-      source_ref: "v#{@version}"
+      source_ref: "v#{@version}",
+      extras: ["README.md"],
+      groups_for_modules: [
+        Bots: [
+          Lingo.Bot,
+          Lingo.Bot.Commands,
+          Lingo.Bot.Options,
+          Lingo.Context,
+          Lingo.Collector,
+          Lingo.Error
+        ],
+        "REST API": [Lingo.Api, ~r/^Lingo\.Api\./],
+        Gateway: [Lingo.Gateway, Lingo.Cache],
+        Voice: [~r/^Lingo\.Voice/],
+        "Message content": [
+          Lingo.Component,
+          Lingo.Component.Layout,
+          Lingo.Component.Modal,
+          Lingo.Embed
+        ],
+        Utilities: [
+          ~r/^Lingo.Helper./,
+          Lingo.CDN,
+          Lingo.Format,
+          Lingo.Permissions,
+          Lingo.Snowflake
+        ],
+        Types: [~r/^Lingo\.Type\./]
+      ]
     ]
   end
 end

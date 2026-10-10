@@ -54,7 +54,7 @@ defmodule Lingo.Voice.RTPTest do
       key = :binary.list_to_bin(Enum.to_list(0..31))
       nonce = Base.decode16!("000000090000004A0000000031415927")
 
-      assert RTP.hchacha20(key, nonce) ==
+      assert Lingo.Voice.RTP.AEAD.hchacha20(key, nonce) ==
                Base.decode16!("82413B4227B27BFED30E42508A877D73A0F9E4D58A74A853C12EC41326D3ECDC")
     end
 

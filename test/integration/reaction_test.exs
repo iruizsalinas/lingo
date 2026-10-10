@@ -27,7 +27,7 @@ defmodule Lingo.Integration.ReactionTest do
     end
   end
 
-  describe "get_users/3" do
+  describe "list_users/3" do
     test "lists users who reacted, including the bot", %{
       channel_id: cid,
       message_id: mid,
@@ -35,7 +35,7 @@ defmodule Lingo.Integration.ReactionTest do
     } do
       :ok = Lingo.Api.Reaction.create(cid, mid, "\u{1F44D}")
 
-      assert {:ok, users} = Lingo.Api.Reaction.get_users(cid, mid, "\u{1F44D}")
+      assert {:ok, users} = Lingo.Api.Reaction.list_users(cid, mid, "\u{1F44D}")
       assert is_list(users)
       assert Enum.any?(users, &(&1.id == bot_id))
     end
@@ -47,7 +47,7 @@ defmodule Lingo.Integration.ReactionTest do
 
       assert :ok = Lingo.Api.Reaction.delete_own(cid, mid, "\u{1F44D}")
 
-      assert {:ok, users} = Lingo.Api.Reaction.get_users(cid, mid, "\u{1F44D}")
+      assert {:ok, users} = Lingo.Api.Reaction.list_users(cid, mid, "\u{1F44D}")
       assert users == []
     end
   end
@@ -58,7 +58,7 @@ defmodule Lingo.Integration.ReactionTest do
 
       assert :ok = Lingo.Api.Reaction.delete_all_for_emoji(cid, mid, "\u{1F44D}")
 
-      assert {:ok, users} = Lingo.Api.Reaction.get_users(cid, mid, "\u{1F44D}")
+      assert {:ok, users} = Lingo.Api.Reaction.list_users(cid, mid, "\u{1F44D}")
       assert users == []
     end
   end
@@ -70,16 +70,16 @@ defmodule Lingo.Integration.ReactionTest do
 
       assert :ok = Lingo.Api.Reaction.delete_all(cid, mid)
 
-      assert {:ok, []} = Lingo.Api.Reaction.get_users(cid, mid, "\u{1F44D}")
-      assert {:ok, []} = Lingo.Api.Reaction.get_users(cid, mid, "\u{2764}\u{FE0F}")
+      assert {:ok, []} = Lingo.Api.Reaction.list_users(cid, mid, "\u{1F44D}")
+      assert {:ok, []} = Lingo.Api.Reaction.list_users(cid, mid, "\u{2764}\u{FE0F}")
     end
   end
 
-  describe "get_users/4 with limit" do
+  describe "list_users/4 with limit" do
     test "respects the limit option", %{channel_id: cid, message_id: mid} do
       :ok = Lingo.Api.Reaction.create(cid, mid, "\u{1F44D}")
 
-      assert {:ok, users} = Lingo.Api.Reaction.get_users(cid, mid, "\u{1F44D}", limit: 1)
+      assert {:ok, users} = Lingo.Api.Reaction.list_users(cid, mid, "\u{1F44D}", limit: 1)
       assert length(users) <= 1
     end
   end
@@ -94,7 +94,7 @@ defmodule Lingo.Integration.ReactionTest do
 
       assert :ok = Lingo.Api.Reaction.delete_user(cid, mid, "\u{1F44D}", bot_id)
 
-      assert {:ok, users} = Lingo.Api.Reaction.get_users(cid, mid, "\u{1F44D}")
+      assert {:ok, users} = Lingo.Api.Reaction.list_users(cid, mid, "\u{1F44D}")
       refute Enum.any?(users, &(&1.id == bot_id))
     end
   end

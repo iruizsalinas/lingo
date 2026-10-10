@@ -1,5 +1,14 @@
 defmodule Lingo.Permissions do
-  @moduledoc false
+  @moduledoc """
+  Permission bitfields.
+
+  Discord sends permissions as bitfields (often as strings). These functions
+  check and build them using atoms like `:send_messages` and `:ban_members`.
+
+      Lingo.Permissions.has?(member_permissions, :manage_messages)
+      Lingo.Permissions.resolve([:view_channel, :send_messages])
+      #=> 3072
+  """
 
   import Bitwise
 
@@ -60,6 +69,7 @@ defmodule Lingo.Permissions do
 
   @type permission :: atom()
 
+  @doc "Whether the bitfield includes `permission`. Administrator doesn't imply anything here; use `compute/5` for effective permissions."
   @spec has?(String.t() | integer(), permission()) :: boolean()
   def has?(bitfield, permission) when is_binary(bitfield) do
     has?(String.to_integer(bitfield), permission)
@@ -70,16 +80,19 @@ defmodule Lingo.Permissions do
     Bitwise.band(bitfield, flag) == flag
   end
 
+  @doc "Whether the bitfield includes every one of `permissions`."
   @spec has_all?(String.t() | integer(), [permission()]) :: boolean()
   def has_all?(bitfield, permissions) do
     Enum.all?(permissions, &has?(bitfield, &1))
   end
 
+  @doc "Whether the bitfield includes at least one of `permissions`."
   @spec has_any?(String.t() | integer(), [permission()]) :: boolean()
   def has_any?(bitfield, permissions) do
     Enum.any?(permissions, &has?(bitfield, &1))
   end
 
+  @doc "Combines permission atoms (and raw bits) into a bitfield."
   @spec resolve([permission()]) :: integer()
   def resolve(permissions) when is_list(permissions) do
     Enum.reduce(permissions, 0, fn
@@ -89,6 +102,7 @@ defmodule Lingo.Permissions do
     end)
   end
 
+  @doc "The permission atoms set in a bitfield."
   @spec to_list(String.t() | integer()) :: [permission()]
   def to_list(bitfield) when is_binary(bitfield), do: to_list(String.to_integer(bitfield))
 
@@ -99,10 +113,8 @@ defmodule Lingo.Permissions do
   end
 
   @spec all_permissions :: [permission()]
+  @doc "Every permission atom Lingo knows."
   def all_permissions, do: Map.keys(@permissions)
-
-  @admin_flag @permissions[:administrator]
-  @all_flags Enum.reduce(@permissions, 0, fn {_, v}, acc -> bor(acc, v) end)
 
   @spec compute(
           base_permissions :: String.t() | integer(),
@@ -113,83 +125,21 @@ defmodule Lingo.Permissions do
           ],
           member_id :: String.t() | nil
         ) :: integer()
-  def compute(everyone_perms, member_role_ids, roles, overwrites \\ [], member_id \\ nil) do
-    base = parse_bitfield(everyone_perms)
-    member_role_ids = role_id_map(member_role_ids)
+  @doc """
+  Effective permissions of a member in a channel: the `@everyone` role's
+  permissions, plus their roles', then the channel's overwrites for
+  `@everyone`, their roles and them. Administrators get everything.
 
-    base =
-      roles
-      |> Enum.reduce(base, fn role, acc ->
-        if Map.has_key?(member_role_ids, role.id) do
-          bor(acc, parse_bitfield(role.permissions))
-        else
-          acc
-        end
-      end)
+  `roles` are the guild's `Lingo.Type.Role` structs and `overwrites` the
+  channel's `Lingo.Type.Overwrite` structs. `Lingo.Helper.Channel.permissions_for/2`
+  does this from the cache.
+  """
+  defdelegate compute(everyone_perms, member_role_ids, roles, overwrites \\ [], member_id \\ nil),
+    to: Lingo.Permissions.Effective
 
-    if band(base, @admin_flag) == @admin_flag do
-      @all_flags
-    else
-      guild_id = everyone_role_id(roles)
-      apply_overwrites(base, guild_id, member_role_ids, overwrites, member_id)
-    end
-  end
+  @doc false
+  def flag(permission), do: Map.fetch!(@permissions, permission)
 
-  defp everyone_role_id(roles) do
-    case Enum.find(roles, fn r -> r.position == 0 end) do
-      nil -> nil
-      role -> role.id
-    end
-  end
-
-  defp apply_overwrites(perms, _guild_id, _role_ids, [], _member_id), do: perms
-
-  defp apply_overwrites(perms, guild_id, role_ids, overwrites, member_id) do
-    # @everyone overwrite (id == guild_id)
-    everyone_ow = Enum.find(overwrites, fn ow -> ow.type == :role and ow.id == guild_id end)
-
-    perms =
-      if everyone_ow do
-        perms
-        |> band(bnot(parse_bitfield(everyone_ow.deny)))
-        |> bor(parse_bitfield(everyone_ow.allow))
-      else
-        perms
-      end
-
-    # role overwrites
-    {role_allow, role_deny} =
-      Enum.reduce(overwrites, {0, 0}, fn ow, {allow, deny} ->
-        if ow.type == :role and Map.has_key?(role_ids, ow.id) do
-          {bor(allow, parse_bitfield(ow.allow)), bor(deny, parse_bitfield(ow.deny))}
-        else
-          {allow, deny}
-        end
-      end)
-
-    perms = perms |> band(bnot(role_deny)) |> bor(role_allow)
-
-    # member overwrite
-    if member_id do
-      case Enum.find(overwrites, fn ow -> ow.type == :member and ow.id == member_id end) do
-        nil ->
-          perms
-
-        ow ->
-          perms
-          |> band(bnot(parse_bitfield(ow.deny)))
-          |> bor(parse_bitfield(ow.allow))
-      end
-    else
-      perms
-    end
-  end
-
-  defp parse_bitfield(v) when is_integer(v), do: v
-  defp parse_bitfield(v) when is_binary(v), do: String.to_integer(v)
-  defp parse_bitfield(nil), do: 0
-
-  defp role_id_map(role_ids) do
-    Map.new(role_ids, &{&1, true})
-  end
+  @doc false
+  def all_flags, do: Enum.reduce(@permissions, 0, fn {_, v}, acc -> bor(acc, v) end)
 end

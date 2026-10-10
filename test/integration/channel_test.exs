@@ -39,7 +39,7 @@ defmodule Lingo.Integration.ChannelTest do
     test "renames the channel", %{channel_id: channel_id} do
       new_name = "renamed-#{:rand.uniform(99999)}"
 
-      assert {:ok, channel} = Lingo.Api.Channel.modify(channel_id, %{name: new_name})
+      assert {:ok, channel} = Lingo.Api.Channel.update(channel_id, %{name: new_name})
       assert channel.id == channel_id
       assert channel.name == new_name
     end
@@ -52,7 +52,7 @@ defmodule Lingo.Integration.ChannelTest do
     } do
       # guild_id doubles as the @everyone role ID
       assert :ok =
-               Lingo.Api.Channel.edit_permissions(channel_id, guild_id, %{
+               Lingo.Api.Channel.update_permission(channel_id, guild_id, %{
                  allow: "1024",
                  deny: "0",
                  type: 0
@@ -76,13 +76,13 @@ defmodule Lingo.Integration.ChannelTest do
 
   describe "invites" do
     test "get_invites returns empty list initially", %{channel_id: channel_id} do
-      assert {:ok, invites} = Lingo.Api.Channel.get_invites(channel_id)
+      assert {:ok, invites} = Lingo.Api.Invite.list_channel(channel_id)
       assert invites == []
     end
 
     test "create, get, and delete an invite", %{channel_id: channel_id} do
       assert {:ok, invite} =
-               Lingo.Api.Channel.create_invite(channel_id, %{max_age: 300})
+               Lingo.Api.Invite.create(channel_id, %{max_age: 300})
 
       assert is_binary(invite.code)
       assert invite.max_age == 300
@@ -117,14 +117,14 @@ defmodule Lingo.Integration.ChannelTest do
 
       status = "Lingo status #{:rand.uniform(99999)}"
 
-      assert :ok = Lingo.set_voice_channel_status(voice_channel.id, %{status: status})
-      assert :ok = Lingo.set_voice_channel_status(voice_channel.id, %{status: nil})
+      assert :ok = Lingo.Api.Channel.set_voice_status(voice_channel.id, %{status: status})
+      assert :ok = Lingo.Api.Channel.set_voice_status(voice_channel.id, %{status: nil})
     end
   end
 
   describe "pinned messages" do
-    test "get_pinned_messages returns empty result initially", %{channel_id: channel_id} do
-      assert {:ok, pins} = Lingo.Api.Channel.get_pinned_messages(channel_id)
+    test "list_pins returns empty result initially", %{channel_id: channel_id} do
+      assert {:ok, pins} = Lingo.Api.Channel.list_pins(channel_id)
       assert pins.items == []
       assert pins.has_more == false
     end
@@ -137,7 +137,7 @@ defmodule Lingo.Integration.ChannelTest do
       assert :ok = Lingo.Api.Channel.pin_message(channel_id, message.id)
 
       # verify it appears in pinned messages
-      assert {:ok, pins} = Lingo.Api.Channel.get_pinned_messages(channel_id, limit: 1)
+      assert {:ok, pins} = Lingo.Api.Channel.list_pins(channel_id, limit: 1)
       assert length(pins.items) == 1
 
       [pin] = pins.items
@@ -150,7 +150,7 @@ defmodule Lingo.Integration.ChannelTest do
       assert :ok = Lingo.Api.Channel.unpin_message(channel_id, message.id)
 
       # verify removal
-      assert {:ok, pins} = Lingo.Api.Channel.get_pinned_messages(channel_id)
+      assert {:ok, pins} = Lingo.Api.Channel.list_pins(channel_id)
       assert pins.items == []
     end
   end
@@ -167,7 +167,7 @@ defmodule Lingo.Integration.ChannelTest do
       assert deleted.id == temp.id
 
       # confirm it no longer exists
-      assert {:error, {404, _}} = Lingo.Api.Channel.get(temp.id)
+      assert {:error, %Lingo.Error{status: 404}} = Lingo.Api.Channel.get(temp.id)
     end
   end
 end

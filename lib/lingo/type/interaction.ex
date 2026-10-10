@@ -1,5 +1,5 @@
 defmodule Lingo.Type.Interaction do
-  @moduledoc false
+  @moduledoc "A raw interaction. Bot callbacks get a `Lingo.Context` instead, which wraps it."
 
   alias Lingo.Type.{Member, Message, User}
 
@@ -60,6 +60,7 @@ defmodule Lingo.Type.Interaction do
     5 => :modal_submit
   }
 
+  @doc false
   def new(nil), do: nil
 
   def new(data) when is_map(data) do
@@ -87,6 +88,7 @@ defmodule Lingo.Type.Interaction do
     }
   end
 
+  @doc "The user who triggered the interaction, in a guild or a DM."
   @spec author(t()) :: User.t() | nil
   def author(%__MODULE__{member: %Member{user: user}}) when not is_nil(user), do: user
   def author(%__MODULE__{user: user}), do: user

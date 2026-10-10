@@ -34,9 +34,9 @@ defmodule Lingo.Integration.GuildTest do
     end
   end
 
-  describe "get_channels/1" do
+  describe "list_channels/1" do
     test "returns list of channels, each with a :type", %{guild_id: guild_id} do
-      assert {:ok, channels} = Lingo.Api.Guild.get_channels(guild_id)
+      assert {:ok, channels} = Lingo.Api.Guild.list_channels(guild_id)
       assert is_list(channels)
       assert length(channels) > 0
 
@@ -54,23 +54,23 @@ defmodule Lingo.Integration.GuildTest do
     end
   end
 
-  describe "get_voice_regions/1" do
+  describe "list_voice_regions/1" do
     test "returns a list", %{guild_id: guild_id} do
-      assert {:ok, regions} = Lingo.Api.Guild.get_voice_regions(guild_id)
+      assert {:ok, regions} = Lingo.Api.Guild.list_voice_regions(guild_id)
       assert is_list(regions)
     end
   end
 
   describe "get_invites/1" do
     test "returns a list", %{guild_id: guild_id} do
-      assert {:ok, invites} = Lingo.Api.Guild.get_invites(guild_id)
+      assert {:ok, invites} = Lingo.Api.Invite.list_guild(guild_id)
       assert is_list(invites)
     end
   end
 
-  describe "get_integrations/1" do
+  describe "list_integrations/1" do
     test "returns a list", %{guild_id: guild_id} do
-      assert {:ok, integrations} = Lingo.Api.Guild.get_integrations(guild_id)
+      assert {:ok, integrations} = Lingo.Api.Guild.list_integrations(guild_id)
       assert is_list(integrations)
     end
   end
@@ -94,7 +94,7 @@ defmodule Lingo.Integration.GuildTest do
     test "returns ok or 404 error", %{guild_id: guild_id} do
       case Lingo.Api.Guild.get_welcome_screen(guild_id) do
         {:ok, screen} -> assert is_map(screen)
-        {:error, {status, _}} -> assert status in [404, 403]
+        {:error, %Lingo.Error{status: status}} -> assert status in [404, 403]
       end
     end
   end
@@ -103,7 +103,7 @@ defmodule Lingo.Integration.GuildTest do
     test "returns ok or error", %{guild_id: guild_id} do
       case Lingo.Api.Guild.get_onboarding(guild_id) do
         {:ok, data} -> assert is_map(data)
-        {:error, {status, _}} -> assert is_integer(status)
+        {:error, %Lingo.Error{status: status}} -> assert is_integer(status)
       end
     end
   end

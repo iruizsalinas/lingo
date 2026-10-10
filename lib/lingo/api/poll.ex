@@ -1,13 +1,19 @@
 defmodule Lingo.Api.Poll do
-  @moduledoc false
+  @moduledoc """
+  Polls.
 
-  alias Lingo.Api.Client
+  Every function returns `{:ok, result}`, `:ok` when Discord sends no body, or
+  `{:error, %Lingo.Error{}}`. Calls go to the current bot (see `Lingo.with_bot/2`).
+  """
 
-  def get_answer_voters(channel_id, message_id, answer_id, opts \\ []) do
+  alias Lingo.Api
+  alias Lingo.Rest.Client
+
+  @doc "Lists the users who voted for a poll answer."
+  @spec list_answer_voters(Api.id(), Api.id(), Api.id(), keyword()) :: Api.result(map())
+  def list_answer_voters(channel_id, message_id, answer_id, opts \\ []) do
     params =
-      opts
-      |> Keyword.drop([:reason])
-      |> Enum.into(%{})
+      Client.params(opts)
 
     Client.request(
       :get,
@@ -16,6 +22,8 @@ defmodule Lingo.Api.Poll do
     )
   end
 
+  @doc "Ends a poll early."
+  @spec expire(Api.id(), Api.id()) :: Api.result(map())
   def expire(channel_id, message_id) do
     Client.request(:post, "/channels/#{channel_id}/polls/#{message_id}/expire")
   end

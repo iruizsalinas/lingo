@@ -39,16 +39,16 @@ defmodule Lingo.Integration.RoleTest do
 
   describe "modify/3" do
     test "renames the role", %{guild_id: guild_id, role: role} do
-      assert {:ok, updated} = Lingo.Api.Role.modify(guild_id, role.id, %{name: "renamed"})
+      assert {:ok, updated} = Lingo.Api.Role.update(guild_id, role.id, %{name: "renamed"})
       assert updated.id == role.id
       assert updated.name == "renamed"
     end
   end
 
-  describe "modify_positions/2" do
+  describe "update_positions/2" do
     test "reorders roles", %{guild_id: guild_id, role: role} do
       assert {:ok, roles} =
-               Lingo.Api.Role.modify_positions(guild_id, [%{id: role.id, position: 1}])
+               Lingo.Api.Role.update_positions(guild_id, [%{id: role.id, position: 1}])
 
       assert is_list(roles)
       moved = Enum.find(roles, &(&1.id == role.id))
@@ -70,7 +70,7 @@ defmodule Lingo.Integration.RoleTest do
 
       assert :ok = Lingo.Api.Role.delete(guild_id, disposable.id)
 
-      assert {:error, {404, _}} = Lingo.Api.Role.get(guild_id, disposable.id)
+      assert {:error, %Lingo.Error{status: 404}} = Lingo.Api.Role.get(guild_id, disposable.id)
     end
   end
 end

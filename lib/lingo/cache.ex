@@ -1,355 +1,69 @@
 defmodule Lingo.Cache do
-  @moduledoc false
+  @moduledoc """
+  What the gateway has told the bot about guilds, channels, users, members,
+  roles, presences, voice states and recent messages.
 
-  use GenServer
+  Reads are ETS lookups, so they're cheap and never touch Discord. Anything
+  not cached returns `nil` (or `[]`). Which resources are cached, and how many
+  messages per channel, is set with the `:cache` option of `Lingo.start_link/1`.
+  Members, presences and messages also need their gateway intents.
+  """
 
-  @all_resources [
-    :guilds,
-    :channels,
-    :users,
-    :members,
-    :presences,
-    :roles,
-    :voice_states,
-    :messages
-  ]
+  alias Lingo.Cache.Tables
+  alias Lingo.Type.{Channel, Guild, Member, Message, Presence, Role, User, VoiceState}
 
-  @resource_tables %{
-    guilds: :lingo_guilds,
-    channels: :lingo_channels,
-    users: :lingo_users,
-    members: :lingo_members,
-    presences: :lingo_presences,
-    roles: :lingo_roles,
-    voice_states: :lingo_voice_states,
-    messages: :lingo_messages
-  }
+  @doc "A guild."
+  @spec get_guild(String.t()) :: Guild.t() | nil
+  def get_guild(id), do: Tables.get(:guilds, id)
 
-  @default_opts [
-    max_messages_per_channel: 200,
-    enabled: @all_resources
-  ]
+  @doc "Every cached guild."
+  @spec list_guilds() :: [Guild.t()]
+  def list_guilds, do: Tables.select(:guilds, [{{:_, :"$1"}, [], [:"$1"]}])
 
-  def start_link(opts \\ []) do
-    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
-  end
+  @doc "A channel or thread."
+  @spec get_channel(String.t()) :: Channel.t() | nil
+  def get_channel(id), do: Tables.get(:channels, id)
 
-  @impl true
-  def init(false), do: init(enabled: [])
+  @doc "A user."
+  @spec get_user(String.t()) :: User.t() | nil
+  def get_user(id), do: Tables.get(:users, id)
 
-  def init(opts) do
-    config = Keyword.merge(@default_opts, opts)
-    enabled = config[:enabled] |> List.wrap() |> Map.new(&{&1, true})
+  @doc "The bot's own user, once the first shard is ready."
+  @spec get_current_user() :: User.t() | nil
+  def get_current_user, do: Tables.get(:users, :me)
 
-    :persistent_term.put(:lingo_cache_enabled, enabled)
-    :persistent_term.put(:lingo_max_messages, config[:max_messages_per_channel])
-
-    for {resource, table} <- @resource_tables, Map.has_key?(enabled, resource) do
-      if resource == :messages do
-        :ets.new(table, [:named_table, :public, :ordered_set, {:read_concurrency, true}])
-      else
-        :ets.new(table, [:named_table, :public, :set, {:read_concurrency, true}])
-      end
-    end
-
-    {:ok, %{}}
-  end
-
-  # Guilds
-
-  def get_guild(id), do: ets_get(:lingo_guilds, id)
-  def put_guild(%{id: id} = guild), do: safe_insert(:lingo_guilds, {id, guild})
-
-  def delete_guild(id) do
-    safe_delete(:lingo_guilds, id)
-    delete_by_guild(:lingo_members, id)
-    delete_by_guild(:lingo_roles, id)
-    delete_by_guild(:lingo_presences, id)
-    delete_by_guild(:lingo_voice_states, id)
-
-    # single scan: collect channel IDs during deletion, then clean up their messages
-    channel_ids = pop_guild_channels(id)
-    Enum.each(channel_ids, &delete_channel_messages/1)
-  end
-
-  def list_guilds do
-    if table_exists?(:lingo_guilds) do
-      :ets.tab2list(:lingo_guilds) |> Enum.map(&elem(&1, 1))
-    else
-      []
-    end
-  end
-
-  # Channels
-
-  def get_channel(id), do: ets_get(:lingo_channels, id)
-  def put_channel(%{id: id} = channel), do: safe_insert(:lingo_channels, {id, channel})
-
-  def delete_channel(id) do
-    safe_delete(:lingo_channels, id)
-    delete_channel_messages(id)
-  end
-
-  # Users
-
-  def get_user(id), do: ets_get(:lingo_users, id)
-  def put_user(%{id: id} = user), do: safe_insert(:lingo_users, {id, user})
-
-  def get_current_user, do: ets_get(:lingo_users, :me)
-  def put_current_user(user), do: safe_insert(:lingo_users, {:me, user})
-
-  # Members - keyed {guild_id, user_id}
-  # user is stored separately in :lingo_users to avoid duplication
-
+  @doc "A guild member, with their user."
+  @spec get_member(String.t(), String.t()) :: Member.t() | nil
   def get_member(guild_id, user_id) do
-    case ets_get(:lingo_members, {guild_id, user_id}) do
+    # users are stored once, in their own table
+    case Tables.get(:members, {guild_id, user_id}) do
       nil -> nil
       member -> %{member | user: get_user(user_id)}
     end
   end
 
-  def put_member(guild_id, %{user: %{id: user_id}} = member) do
-    put_user(member.user)
-    safe_insert(:lingo_members, {{guild_id, user_id}, %{member | user: nil}})
-  end
+  @doc "A role."
+  @spec get_role(String.t(), String.t()) :: Role.t() | nil
+  def get_role(guild_id, role_id), do: Tables.get(:roles, {guild_id, role_id})
 
-  def put_member(_guild_id, _member), do: :ok
+  @doc "A guild's roles."
+  @spec list_roles(String.t()) :: [Role.t()]
+  def list_roles(guild_id), do: Tables.select(:roles, [{{{guild_id, :_}, :"$1"}, [], [:"$1"]}])
 
-  def delete_member(guild_id, user_id) do
-    safe_delete(:lingo_members, {guild_id, user_id})
-    safe_delete(:lingo_presences, {guild_id, user_id})
-    safe_delete(:lingo_voice_states, {guild_id, user_id})
-  end
+  @doc "A recent message."
+  @spec get_message(String.t(), String.t()) :: Message.t() | nil
+  def get_message(channel_id, message_id), do: Tables.get(:messages, {channel_id, message_id})
 
-  # Roles - keyed {guild_id, role_id}
-
-  def get_role(guild_id, role_id), do: ets_get(:lingo_roles, {guild_id, role_id})
-
-  def put_role(guild_id, %{id: role_id} = role) do
-    safe_insert(:lingo_roles, {{guild_id, role_id}, role})
-  end
-
-  def delete_role(guild_id, role_id), do: safe_delete(:lingo_roles, {guild_id, role_id})
-
-  def list_roles(guild_id) do
-    if table_exists?(:lingo_roles) do
-      :ets.select(:lingo_roles, [{{{guild_id, :_}, :"$1"}, [], [:"$1"]}])
-    else
-      []
-    end
-  end
-
-  # Messages - ordered_set keyed {channel_id, message_id}
-
-  def get_message(channel_id, message_id), do: ets_get(:lingo_messages, {channel_id, message_id})
-
-  def put_message(%{id: id, channel_id: channel_id, author: author} = message) do
-    if author, do: put_user(author)
-    safe_insert(:lingo_messages, {{channel_id, id}, message})
-    evict_channel_messages(channel_id)
-  end
-
-  def delete_message(channel_id, message_id) do
-    safe_delete(:lingo_messages, {channel_id, message_id})
-  end
-
-  def merge_message(channel_id, data) do
-    msg_id = data["id"] || data[:id]
-
-    case get_message(channel_id, msg_id) do
-      nil ->
-        put_message(Lingo.Type.Message.new(data))
-
-      existing ->
-        merged = merge_message_struct(existing, data)
-        safe_insert(:lingo_messages, {{channel_id, merged.id}, merged})
-    end
-  end
-
-  # Presences - keyed {guild_id, user_id}
-  # user reference stored separately, not duplicated here
-
+  @doc "A member's presence."
+  @spec get_presence(String.t(), String.t()) :: Presence.t() | nil
   def get_presence(guild_id, user_id) do
-    case ets_get(:lingo_presences, {guild_id, user_id}) do
+    case Tables.get(:presences, {guild_id, user_id}) do
       nil -> nil
-      presence -> %{presence | user: get_user(user_id) || %Lingo.Type.User{id: user_id}}
+      presence -> %{presence | user: get_user(user_id) || %User{id: user_id}}
     end
   end
 
-  def put_presence(guild_id, %{user: %{id: user_id}} = presence) do
-    put_presence_user(user_id, presence.user)
-    safe_insert(:lingo_presences, {{guild_id, user_id}, %{presence | user: nil}})
-  end
-
-  def put_presence(_guild_id, _presence), do: :ok
-
-  # Voice states - keyed {guild_id, user_id}
-
-  def get_voice_state(guild_id, user_id),
-    do: ets_get(:lingo_voice_states, {guild_id, user_id})
-
-  def put_voice_state(guild_id, %{user_id: user_id} = vs) do
-    if vs.channel_id do
-      safe_insert(:lingo_voice_states, {{guild_id, user_id}, vs})
-    else
-      safe_delete(:lingo_voice_states, {guild_id, user_id})
-    end
-  end
-
-  def put_voice_state(_guild_id, _vs), do: :ok
-
-  # Helpers
-
-  defp ets_get(table, key) do
-    if table_exists?(table) do
-      case :ets.lookup(table, key) do
-        [{^key, value}] -> value
-        [] -> nil
-      end
-    else
-      nil
-    end
-  end
-
-  defp safe_insert(table, entry) do
-    if table_exists?(table), do: :ets.insert(table, entry), else: :ok
-  end
-
-  defp safe_delete(table, key) do
-    if table_exists?(table), do: :ets.delete(table, key), else: :ok
-  end
-
-  defp table_exists?(table) do
-    :ets.whereis(table) != :undefined
-  end
-
-  defp evict_channel_messages(channel_id) do
-    if table_exists?(:lingo_messages) do
-      max = :persistent_term.get(:lingo_max_messages, 200)
-      count = count_channel_messages(channel_id)
-
-      if count > max do
-        to_delete = count - max
-
-        :lingo_messages
-        |> :ets.select(
-          [{{{channel_id, :"$1"}, :_}, [], [:"$1"]}],
-          to_delete
-        )
-        |> elem(0)
-        |> Enum.each(fn msg_id ->
-          :ets.delete(:lingo_messages, {channel_id, msg_id})
-        end)
-      end
-    end
-  end
-
-  defp count_channel_messages(channel_id) do
-    if table_exists?(:lingo_messages) do
-      :ets.select_count(:lingo_messages, [{{{channel_id, :_}, :_}, [], [true]}])
-    else
-      0
-    end
-  end
-
-  defp delete_channel_messages(channel_id) do
-    if table_exists?(:lingo_messages) do
-      :ets.select_delete(:lingo_messages, [{{{channel_id, :_}, :_}, [], [true]}])
-    end
-  end
-
-  defp pop_guild_channels(guild_id) do
-    if table_exists?(:lingo_channels) do
-      ids =
-        :ets.select(:lingo_channels, [
-          {{:"$1", %{guild_id: guild_id}}, [], [:"$1"]}
-        ])
-
-      Enum.each(ids, fn id -> :ets.delete(:lingo_channels, id) end)
-      ids
-    else
-      []
-    end
-  end
-
-  defp delete_by_guild(table, guild_id) do
-    if table_exists?(table) do
-      :ets.select_delete(table, [{{{guild_id, :_}, :_}, [], [true]}])
-    end
-  end
-
-  defp merge_message_struct(%Lingo.Type.Message{} = existing, data) when is_map(data) do
-    parsed =
-      data
-      |> maybe_put_existing_message_context(existing)
-      |> Lingo.Type.Message.new()
-
-    existing
-    |> Map.from_struct()
-    |> Map.keys()
-    |> Enum.reduce(existing, fn field, acc ->
-      if message_field_present?(data, field) do
-        Map.put(acc, field, Map.get(parsed, field))
-      else
-        acc
-      end
-    end)
-  end
-
-  defp message_field_present?(data, :mention_members),
-    do: Map.has_key?(data, "mention_members") or Map.has_key?(data, "mentions")
-
-  defp message_field_present?(data, field), do: Map.has_key?(data, Atom.to_string(field))
-
-  defp maybe_put_existing_message_context(data, existing) do
-    data
-    |> maybe_put_existing_message_value("guild_id", existing.guild_id)
-    |> maybe_put_existing_message_value("author", existing.author)
-  end
-
-  defp maybe_put_existing_message_value(data, _key, nil), do: data
-
-  defp maybe_put_existing_message_value(data, key, value) do
-    if Map.has_key?(data, key) do
-      data
-    else
-      Map.put(data, key, message_context_value(value))
-    end
-  end
-
-  defp message_context_value(%_{} = struct) do
-    struct
-    |> Map.from_struct()
-    |> Map.new(fn {key, value} -> {Atom.to_string(key), value} end)
-  end
-
-  defp message_context_value(value), do: value
-
-  defp put_presence_user(user_id, user) do
-    case get_user(user_id) do
-      nil ->
-        if user_has_details?(user), do: put_user(user)
-
-      existing ->
-        put_user(merge_user(existing, user))
-    end
-  end
-
-  defp merge_user(existing, user) do
-    user
-    |> Map.from_struct()
-    |> Enum.reduce(existing, fn
-      {_field, nil}, acc ->
-        acc
-
-      {field, false}, acc when field in [:bot, :system] ->
-        if Map.get(acc, field), do: acc, else: Map.put(acc, field, false)
-
-      {field, value}, acc ->
-        Map.put(acc, field, value)
-    end)
-  end
-
-  defp user_has_details?(%{username: username}) when is_binary(username), do: true
-  defp user_has_details?(_user), do: false
+  @doc "A user's voice state, while they're in a voice channel."
+  @spec get_voice_state(String.t(), String.t()) :: VoiceState.t() | nil
+  def get_voice_state(guild_id, user_id), do: Tables.get(:voice_states, {guild_id, user_id})
 end

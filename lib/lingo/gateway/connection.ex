@@ -1,22 +1,17 @@
 defmodule Lingo.Gateway.Connection do
   @moduledoc false
 
+  # One shard's connection to the main gateway. This module holds the process
+  # and decodes frames; Protocol decides what each payload means and
+  # Transport owns the socket.
+
   use GenServer, restart: :transient
 
-  alias Lingo.Gateway.{Compression, Heartbeat, Payload, WebSocket}
-
-  require Logger
-
-  @fatal_codes [4004, 4010, 4011, 4012, 4013, 4014]
-  @session_dead_codes [4003, 4005, 4007, 4008, 4009]
-  @hello_timeout 60_000
-
-  # gateway allows 120 sends per 60s, we use 115 as safe margin
-  # (heartbeats, identify and resume bypass the queue)
-  @send_limit 115
-  @send_window_ms 60_000
+  alias Lingo.Gateway.{Compression, Payload, WebSocket}
+  alias Lingo.Gateway.Connection.{Outbox, Protocol, Transport}
 
   defstruct [
+    :bot,
     :ws,
     :connect_task,
     :heartbeat_pid,
@@ -35,22 +30,14 @@ defmodule Lingo.Gateway.Connection do
     :send_timer,
     presence: [],
     state: :disconnected,
-    send_queue: :queue.new(),
-    send_count: 0,
-    send_window_start: 0
+    outbox: %Outbox{}
   ]
 
-  def start_link(opts) do
-    GenServer.start_link(__MODULE__, opts)
-  end
+  def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
 
-  def send_payload(pid, payload) do
-    GenServer.cast(pid, {:send, payload})
-  end
+  def send_payload(pid, payload), do: GenServer.cast(pid, {:send, payload})
 
-  def update_presence(pid, presence) do
-    GenServer.cast(pid, {:update_presence, presence})
-  end
+  def update_presence(pid, presence), do: GenServer.cast(pid, {:update_presence, presence})
 
   def status(pid) do
     GenServer.call(pid, :status, 2_000)
@@ -60,7 +47,11 @@ defmodule Lingo.Gateway.Connection do
 
   @impl true
   def init(opts) do
+    bot = Keyword.fetch!(opts, :bot)
+    Lingo.Instance.put_current(bot)
+
     state = %__MODULE__{
+      bot: bot,
       shard_id: Keyword.fetch!(opts, :shard_id),
       shard_count: Keyword.fetch!(opts, :shard_count),
       token: Keyword.fetch!(opts, :token),
@@ -74,54 +65,46 @@ defmodule Lingo.Gateway.Connection do
   end
 
   @impl true
-  def handle_call(:status, _from, state) do
-    {:reply, state.state, state}
-  end
+  def handle_call(:status, _from, state), do: {:reply, state.state, state}
 
   @impl true
-  def handle_cast({:send, payload}, state) do
-    {:noreply, enqueue_send(state, Payload.encode(payload))}
-  end
+  def handle_cast({:send, payload}, state),
+    do: {:noreply, Transport.enqueue(state, Payload.encode(payload))}
 
   def handle_cast({:update_presence, presence}, state) do
-    payload =
-      Payload.presence_update(presence[:status] || :online, presence[:text], presence[:activity])
-
-    {:noreply, enqueue_send(%{state | presence: presence}, Payload.encode(payload))}
+    status = presence[:status] || :online
+    payload = Payload.presence_update(status, presence[:text], presence[:activity])
+    {:noreply, Transport.enqueue(%{state | presence: presence}, Payload.encode(payload))}
   end
 
   @impl true
-  def handle_info(:connect, %{ws: nil, connect_task: nil} = state) do
-    {:noreply, start_connect(%{state | connect_timer: nil})}
-  end
+  def handle_info(:connect, %{ws: nil, connect_task: nil} = state),
+    do: {:noreply, Transport.start_connect(%{state | connect_timer: nil})}
 
   def handle_info(:connect, state), do: {:noreply, %{state | connect_timer: nil}}
 
-  def handle_info(:reconnect, state) do
-    {:noreply, reconnect(state)}
-  end
+  def handle_info(:reconnect, state), do: {:noreply, Transport.reconnect(state)}
 
+  # zombied connection: close with a non-1000 code so the session stays resumable
   def handle_info(:heartbeat_timeout, %{ws: %WebSocket{}} = state) do
-    # zombied connection: close with a non-1000 code so the session stays resumable
-    graceful_close(state)
-    {:noreply, reconnect(state)}
+    Transport.graceful_close(state)
+    {:noreply, Transport.reconnect(state)}
   end
 
   def handle_info(:heartbeat_timeout, state), do: {:noreply, state}
 
-  def handle_info(:hello_timeout, %{state: :awaiting_hello} = state) do
-    {:noreply, reconnect(state)}
-  end
+  def handle_info(:hello_timeout, %{state: :awaiting_hello} = state),
+    do: {:noreply, Transport.reconnect(state)}
 
   def handle_info(:hello_timeout, state), do: {:noreply, state}
 
   def handle_info(:send_heartbeat, state) do
-    send_frame(state, Payload.encode(Payload.heartbeat(state.seq)))
+    Transport.send_frame(state, Payload.encode(Payload.heartbeat(state.seq)))
     {:noreply, state}
   end
 
   def handle_info(:identify, %{ws: %WebSocket{}} = state) do
-    payload =
+    identify =
       Payload.identify(
         state.token,
         state.intents,
@@ -130,22 +113,21 @@ defmodule Lingo.Gateway.Connection do
         state.presence
       )
 
-    send_frame(state, Payload.encode(payload))
+    Transport.send_frame(state, Payload.encode(identify))
     {:noreply, %{state | identify_timer: nil, state: :identifying}}
   end
 
   def handle_info(:identify, state), do: {:noreply, %{state | identify_timer: nil}}
 
-  def handle_info(:flush_send, state) do
-    {:noreply, flush_send_queue(%{state | send_timer: nil})}
-  end
+  def handle_info(:flush_send, state), do: {:noreply, Transport.flush(%{state | send_timer: nil})}
 
   def handle_info({ref, result}, %{connect_task: %Task{ref: ref}} = state) do
     Process.demonitor(ref, [:flush])
+    state = %{state | connect_task: nil}
 
     case result do
-      {:ok, ws} -> {:noreply, connected(%{state | connect_task: nil, ws: ws})}
-      {:error, _reason} -> {:noreply, reconnect(%{state | connect_task: nil})}
+      {:ok, ws} -> {:noreply, Transport.connected(%{state | ws: ws})}
+      {:error, _reason} -> {:noreply, Transport.reconnect(state)}
     end
   end
 
@@ -154,14 +136,12 @@ defmodule Lingo.Gateway.Connection do
   def handle_info(message, %{ws: %WebSocket{} = ws} = state) do
     case WebSocket.stream(ws, message) do
       {:ok, ws, frames} -> handle_frames(frames, %{state | ws: ws})
-      {:error, _ws, _reason} -> {:noreply, reconnect(state)}
+      {:error, _ws, _reason} -> {:noreply, Transport.reconnect(state)}
       :unknown -> {:noreply, state}
     end
   end
 
   def handle_info(_message, state), do: {:noreply, state}
-
-  # websocket frames
 
   defp handle_frames([], state), do: {:noreply, state}
 
@@ -179,13 +159,12 @@ defmodule Lingo.Gateway.Connection do
     case inflate(state.zlib, data) do
       {:ok, zlib, nil} -> {:noreply, %{state | zlib: zlib}}
       {:ok, zlib, json} -> handle_json(json, %{state | zlib: zlib})
-      :error -> {:noreply, reconnect(state)}
+      :error -> {:noreply, Transport.reconnect(state)}
     end
   end
 
   defp handle_frame({:text, json}, state), do: handle_json(json, state)
-
-  defp handle_frame({:close, code, _reason}, state), do: handle_close(state, code)
+  defp handle_frame({:close, code, _reason}, state), do: Protocol.close(state, code)
 
   defp inflate(zlib, data) do
     {zlib, json} = Compression.push(zlib, data)
@@ -196,337 +175,8 @@ defmodule Lingo.Gateway.Connection do
 
   defp handle_json(json, state) do
     case JSON.decode(json) do
-      {:ok, payload} -> handle_gateway_message(payload, state)
+      {:ok, payload} -> Protocol.handle(payload, state)
       {:error, _reason} -> {:noreply, state}
     end
-  end
-
-  # gateway opcodes
-
-  defp handle_gateway_message(%{"op" => 10, "d" => %{"heartbeat_interval" => interval}}, state) do
-    if state.hello_timer, do: Process.cancel_timer(state.hello_timer)
-    state = stop_heartbeat(%{state | hello_timer: nil})
-
-    {:ok, hb_pid} =
-      Heartbeat.start_link(interval: interval, connection: self(), shard_id: state.shard_id)
-
-    state = %{state | heartbeat_pid: hb_pid}
-
-    if state.session_id && state.seq do
-      send_frame(state, Payload.encode(Payload.resume(state.token, state.session_id, state.seq)))
-      {:noreply, %{state | state: :resuming}}
-    else
-      # wait for an identify slot without blocking, so heartbeats keep flowing
-      delay = Lingo.Gateway.ShardManager.reserve_identify(state.shard_id)
-      timer = Process.send_after(self(), :identify, delay)
-      {:noreply, %{state | state: :waiting_to_identify, identify_timer: timer}}
-    end
-  end
-
-  defp handle_gateway_message(%{"op" => 0, "t" => event_type, "d" => data, "s" => seq}, state) do
-    state = %{state | seq: seq || state.seq}
-    state = handle_dispatch(event_type, data, state)
-    {:noreply, state}
-  end
-
-  defp handle_gateway_message(%{"op" => 11}, state) do
-    if state.heartbeat_pid, do: Heartbeat.ack(state.heartbeat_pid)
-    {:noreply, state}
-  end
-
-  defp handle_gateway_message(%{"op" => 1}, state) do
-    send_frame(state, Payload.encode(Payload.heartbeat(state.seq)))
-    {:noreply, state}
-  end
-
-  defp handle_gateway_message(%{"op" => 7}, state) do
-    graceful_close(state)
-    {:noreply, reconnect(state, 0)}
-  end
-
-  defp handle_gateway_message(%{"op" => 9, "d" => resumable}, state) do
-    state =
-      if resumable do
-        state
-      else
-        %{state | session_id: nil, seq: nil, resume_gateway_url: nil}
-      end
-
-    {:noreply, reconnect(state)}
-  end
-
-  defp handle_gateway_message(_msg, state), do: {:noreply, state}
-
-  # dispatch events
-
-  defp handle_dispatch("READY", data, state) do
-    application_id = get_in(data, ["application", "id"])
-    if application_id, do: Lingo.Config.put(:application_id, application_id)
-
-    user_id = get_in(data, ["user", "id"])
-    if user_id, do: Lingo.Config.put(:user_id, user_id)
-
-    state = %{
-      state
-      | session_id: data["session_id"],
-        resume_gateway_url: data["resume_gateway_url"],
-        state: :connected
-    }
-
-    state = dispatch_event(state, :shard_ready, Map.put(data, "shard_id", state.shard_id))
-    Lingo.Gateway.ShardManager.shard_ready(state.shard_id)
-    flush_send_queue(state)
-  end
-
-  defp handle_dispatch("RESUMED", _data, state) do
-    %{state | state: :connected}
-    |> dispatch_event(:shard_resumed, %{shard_id: state.shard_id})
-    |> flush_send_queue()
-  end
-
-  defp handle_dispatch(event_type, data, state) do
-    event_atom = safe_event_atom(event_type)
-    dispatch_event(state, event_atom, data)
-  end
-
-  defp dispatch_event(state, event, data) do
-    Lingo.Gateway.Dispatcher.dispatch(event, data)
-    state
-  end
-
-  # send rate limiting: payloads are queued and only sent once the session is
-  # ready, at most @send_limit per @send_window_ms
-
-  defp enqueue_send(state, data) do
-    flush_send_queue(%{state | send_queue: :queue.in(data, state.send_queue)})
-  end
-
-  defp flush_send_queue(%{state: :connected, ws: %WebSocket{}} = state) do
-    now = System.monotonic_time(:millisecond)
-
-    state =
-      if now - state.send_window_start >= @send_window_ms do
-        %{state | send_count: 0, send_window_start: now}
-      else
-        state
-      end
-
-    case :queue.out(state.send_queue) do
-      {:empty, _} ->
-        state
-
-      {{:value, data}, rest} ->
-        if state.send_count < @send_limit do
-          send_frame(state, data)
-          flush_send_queue(%{state | send_queue: rest, send_count: state.send_count + 1})
-        else
-          schedule_flush(state, state.send_window_start + @send_window_ms - now)
-        end
-    end
-  end
-
-  defp flush_send_queue(state), do: state
-
-  defp schedule_flush(%{send_timer: nil} = state, delay) do
-    %{state | send_timer: Process.send_after(self(), :flush_send, max(delay, 0))}
-  end
-
-  defp schedule_flush(state, _delay), do: state
-
-  # helpers
-
-  defp reconnect(state, delay \\ nil) do
-    dispatch_event(state, :shard_reconnecting, %{shard_id: state.shard_id})
-    state = close_connection(state)
-    delay = delay || 1_000 + :rand.uniform(4_000)
-
-    if state.connect_timer, do: Process.cancel_timer(state.connect_timer)
-    timer = Process.send_after(self(), :connect, delay)
-    %{state | state: :disconnected, connect_timer: timer}
-  end
-
-  # Connecting blocks through the TCP, TLS and HTTP handshakes, so it runs in
-  # a task to keep this process responsive. The task hands the socket over.
-  defp start_connect(state) do
-    url = gateway_url(state.resume_gateway_url || state.gateway_url || "gateway.discord.gg")
-    owner = self()
-
-    task =
-      Task.async(fn ->
-        with {:ok, ws} <- WebSocket.connect(url) do
-          case WebSocket.controlling_process(ws, owner) do
-            :ok ->
-              {:ok, ws}
-
-            {:error, reason} ->
-              WebSocket.close(ws)
-              {:error, reason}
-          end
-        end
-      end)
-
-    %{state | connect_task: task, state: :connecting}
-  end
-
-  defp connected(state) do
-    case WebSocket.activate(state.ws) do
-      :ok ->
-        timer = Process.send_after(self(), :hello_timeout, @hello_timeout)
-        %{state | state: :awaiting_hello, zlib: Compression.new(), hello_timer: timer}
-
-      {:error, _reason} ->
-        reconnect(state)
-    end
-  end
-
-  defp gateway_url(url) do
-    uri = URI.parse(if url =~ "://", do: url, else: "wss://" <> url)
-    URI.to_string(%{uri | path: "/", query: "v=10&encoding=json&compress=zlib-stream"})
-  end
-
-  defp send_frame(%{ws: nil}, _data), do: :ok
-  defp send_frame(%{ws: ws}, data), do: WebSocket.send_frame(ws, {:text, data})
-
-  # any code but 1000 and 1001 keeps the session resumable
-  defp graceful_close(%{ws: nil}), do: :ok
-  defp graceful_close(%{ws: ws}), do: WebSocket.send_frame(ws, {:close, 4000, ""})
-
-  defp stop_heartbeat(state) do
-    if state.heartbeat_pid && Process.alive?(state.heartbeat_pid) do
-      GenServer.stop(state.heartbeat_pid, :normal, 5_000)
-    end
-
-    %{state | heartbeat_pid: nil}
-  end
-
-  defp close_connection(state) do
-    if state.hello_timer, do: Process.cancel_timer(state.hello_timer)
-    if state.identify_timer, do: Process.cancel_timer(state.identify_timer)
-    if state.send_timer, do: Process.cancel_timer(state.send_timer)
-    if state.zlib, do: Compression.close(state.zlib)
-    if state.connect_task, do: cancel_connect(state.connect_task)
-    if state.ws, do: WebSocket.close(state.ws)
-
-    %{
-      stop_heartbeat(state)
-      | ws: nil,
-        connect_task: nil,
-        zlib: nil,
-        hello_timer: nil,
-        identify_timer: nil,
-        send_timer: nil
-    }
-  end
-
-  defp cancel_connect(task) do
-    case Task.shutdown(task, :brutal_kill) do
-      {:ok, {:ok, ws}} -> WebSocket.close(ws)
-      _other -> :ok
-    end
-  end
-
-  defp handle_close(state, code) when code in @fatal_codes do
-    Logger.error("Lingo shard #{state.shard_id} closed with fatal code #{code}, not reconnecting")
-
-    dispatch_event(state, :shard_error, %{shard_id: state.shard_id, code: code})
-    state = close_connection(state)
-    {:stop, {:shutdown, {:fatal, code}}, %{state | state: :disconnected}}
-  end
-
-  defp handle_close(state, code) when code in @session_dead_codes do
-    dispatch_event(state, :shard_disconnect, %{shard_id: state.shard_id, code: code})
-    state = %{state | session_id: nil, seq: nil, resume_gateway_url: nil}
-    {:noreply, reconnect(state)}
-  end
-
-  defp handle_close(state, code) do
-    dispatch_event(state, :shard_disconnect, %{shard_id: state.shard_id, code: code})
-    {:noreply, reconnect(state)}
-  end
-
-  @known_events %{
-    "READY" => :shard_ready,
-    "RESUMED" => :shard_resumed,
-    "APPLICATION_COMMAND_PERMISSIONS_UPDATE" => :application_command_permissions_update,
-    "AUTO_MODERATION_RULE_CREATE" => :auto_moderation_rule_create,
-    "AUTO_MODERATION_RULE_UPDATE" => :auto_moderation_rule_update,
-    "AUTO_MODERATION_RULE_DELETE" => :auto_moderation_rule_delete,
-    "AUTO_MODERATION_ACTION_EXECUTION" => :auto_moderation_action_execution,
-    "CHANNEL_CREATE" => :channel_create,
-    "CHANNEL_UPDATE" => :channel_update,
-    "CHANNEL_DELETE" => :channel_delete,
-    "CHANNEL_INFO" => :channel_info,
-    "CHANNEL_PINS_UPDATE" => :channel_pins_update,
-    "THREAD_CREATE" => :thread_create,
-    "THREAD_UPDATE" => :thread_update,
-    "THREAD_DELETE" => :thread_delete,
-    "THREAD_LIST_SYNC" => :thread_list_sync,
-    "THREAD_MEMBER_UPDATE" => :thread_member_update,
-    "THREAD_MEMBERS_UPDATE" => :thread_members_update,
-    "ENTITLEMENT_CREATE" => :entitlement_create,
-    "ENTITLEMENT_UPDATE" => :entitlement_update,
-    "ENTITLEMENT_DELETE" => :entitlement_delete,
-    "GUILD_CREATE" => :guild_create,
-    "GUILD_UPDATE" => :guild_update,
-    "GUILD_DELETE" => :guild_delete,
-    "GUILD_AUDIT_LOG_ENTRY_CREATE" => :guild_audit_log_entry_create,
-    "GUILD_BAN_ADD" => :guild_ban_add,
-    "GUILD_BAN_REMOVE" => :guild_ban_remove,
-    "GUILD_EMOJIS_UPDATE" => :guild_emojis_update,
-    "GUILD_STICKERS_UPDATE" => :guild_stickers_update,
-    "GUILD_INTEGRATIONS_UPDATE" => :guild_integrations_update,
-    "GUILD_MEMBER_ADD" => :guild_member_add,
-    "GUILD_MEMBER_REMOVE" => :guild_member_remove,
-    "GUILD_MEMBER_UPDATE" => :guild_member_update,
-    "GUILD_MEMBERS_CHUNK" => :guild_members_chunk,
-    "GUILD_ROLE_CREATE" => :guild_role_create,
-    "GUILD_ROLE_UPDATE" => :guild_role_update,
-    "GUILD_ROLE_DELETE" => :guild_role_delete,
-    "GUILD_SCHEDULED_EVENT_CREATE" => :guild_scheduled_event_create,
-    "GUILD_SCHEDULED_EVENT_UPDATE" => :guild_scheduled_event_update,
-    "GUILD_SCHEDULED_EVENT_DELETE" => :guild_scheduled_event_delete,
-    "GUILD_SCHEDULED_EVENT_USER_ADD" => :guild_scheduled_event_user_add,
-    "GUILD_SCHEDULED_EVENT_USER_REMOVE" => :guild_scheduled_event_user_remove,
-    "GUILD_SOUNDBOARD_SOUND_CREATE" => :guild_soundboard_sound_create,
-    "GUILD_SOUNDBOARD_SOUND_UPDATE" => :guild_soundboard_sound_update,
-    "GUILD_SOUNDBOARD_SOUND_DELETE" => :guild_soundboard_sound_delete,
-    "GUILD_SOUNDBOARD_SOUNDS_UPDATE" => :guild_soundboard_sounds_update,
-    "SOUNDBOARD_SOUNDS" => :soundboard_sounds,
-    "INTEGRATION_CREATE" => :integration_create,
-    "INTEGRATION_UPDATE" => :integration_update,
-    "INTEGRATION_DELETE" => :integration_delete,
-    "INTERACTION_CREATE" => :interaction_create,
-    "INVITE_CREATE" => :invite_create,
-    "INVITE_DELETE" => :invite_delete,
-    "MESSAGE_CREATE" => :message_create,
-    "MESSAGE_UPDATE" => :message_update,
-    "MESSAGE_DELETE" => :message_delete,
-    "MESSAGE_DELETE_BULK" => :message_delete_bulk,
-    "MESSAGE_REACTION_ADD" => :message_reaction_add,
-    "MESSAGE_REACTION_REMOVE" => :message_reaction_remove,
-    "MESSAGE_REACTION_REMOVE_ALL" => :message_reaction_remove_all,
-    "MESSAGE_REACTION_REMOVE_EMOJI" => :message_reaction_remove_emoji,
-    "MESSAGE_POLL_VOTE_ADD" => :message_poll_vote_add,
-    "MESSAGE_POLL_VOTE_REMOVE" => :message_poll_vote_remove,
-    "PRESENCE_UPDATE" => :presence_update,
-    "RATE_LIMITED" => :rate_limited,
-    "STAGE_INSTANCE_CREATE" => :stage_instance_create,
-    "STAGE_INSTANCE_UPDATE" => :stage_instance_update,
-    "STAGE_INSTANCE_DELETE" => :stage_instance_delete,
-    "SUBSCRIPTION_CREATE" => :subscription_create,
-    "SUBSCRIPTION_UPDATE" => :subscription_update,
-    "SUBSCRIPTION_DELETE" => :subscription_delete,
-    "TYPING_START" => :typing_start,
-    "USER_UPDATE" => :user_update,
-    "VOICE_CHANNEL_EFFECT_SEND" => :voice_channel_effect_send,
-    "VOICE_CHANNEL_STATUS_UPDATE" => :voice_channel_status_update,
-    "VOICE_CHANNEL_START_TIME_UPDATE" => :voice_channel_start_time_update,
-    "VOICE_STATE_UPDATE" => :voice_state_update,
-    "VOICE_SERVER_UPDATE" => :voice_server_update,
-    "WEBHOOKS_UPDATE" => :webhooks_update
-  }
-
-  defp safe_event_atom(type) do
-    Map.get(@known_events, type, {:unknown_event, type})
   end
 end

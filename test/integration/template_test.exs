@@ -14,7 +14,7 @@ defmodule Lingo.Integration.TemplateTest do
         {:ok, templates} ->
           assert is_list(templates)
 
-        {:error, {403, _}} ->
+        {:error, %Lingo.Error{status: 403}} ->
           IO.puts("skipping: guild lacks COMMUNITY feature")
       end
     end
@@ -44,7 +44,7 @@ defmodule Lingo.Integration.TemplateTest do
 
           # modify
           assert {:ok, modified} =
-                   Lingo.Api.Template.modify(guild_id, code, %{name: "renamed-template"})
+                   Lingo.Api.Template.update(guild_id, code, %{name: "renamed-template"})
 
           assert modified.code == code
           assert modified.name == "renamed-template"
@@ -59,7 +59,7 @@ defmodule Lingo.Integration.TemplateTest do
           # verify deletion
           assert {:error, _} = Lingo.Api.Template.get(code)
 
-        {:error, {403, _}} ->
+        {:error, %Lingo.Error{status: 403}} ->
           IO.puts("skipping: guild lacks COMMUNITY feature")
       end
     end

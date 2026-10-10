@@ -15,34 +15,42 @@ defmodule Lingo.Voice.Manager do
 
   @join_timeout 20_000
 
-  def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  def start_link(opts) do
+    bot = Keyword.fetch!(opts, :bot)
+    GenServer.start_link(__MODULE__, bot, name: Lingo.Instance.process_name(bot, __MODULE__))
+  end
+
+  defp server, do: Lingo.Instance.process_name(__MODULE__)
 
   @spec join(String.t(), String.t(), keyword()) :: {:ok, pid()} | {:error, term()}
   def join(guild_id, channel_id, opts \\ []) do
     GenServer.call(
-      __MODULE__,
+      server(),
       {:join, to_string(guild_id), to_string(channel_id), opts},
       :infinity
     )
   end
 
   @spec leave(String.t()) :: :ok
-  def leave(guild_id), do: GenServer.call(__MODULE__, {:leave, to_string(guild_id)})
+  def leave(guild_id), do: GenServer.call(server(), {:leave, to_string(guild_id)})
 
   @spec connection(String.t()) :: pid() | nil
-  def connection(guild_id), do: GenServer.call(__MODULE__, {:connection, to_string(guild_id)})
+  def connection(guild_id), do: GenServer.call(server(), {:connection, to_string(guild_id)})
 
   @doc "Called by the dispatcher for every voice event; a no-op when voice isn't running."
   @spec dispatch(atom(), map()) :: :ok
   def dispatch(event, data) when event in [:voice_state_update, :voice_server_update],
-    do: GenServer.cast(__MODULE__, {event, data})
+    do: GenServer.cast(server(), {event, data})
 
   def dispatch(_event, _data), do: :ok
 
   ## Server
 
   @impl true
-  def init(_opts), do: {:ok, %{}}
+  def init(bot) do
+    Lingo.Instance.put_current(bot)
+    {:ok, %{}}
+  end
 
   @impl true
   def handle_call({:join, guild_id, channel_id, opts}, from, guilds) do
@@ -78,7 +86,7 @@ defmodule Lingo.Voice.Manager do
 
   @impl true
   def handle_cast({:voice_state_update, %{"user_id" => user_id} = data}, guilds) do
-    if user_id == Lingo.Config.get(:user_id),
+    if user_id == Lingo.Instance.get(:user_id),
       do: {:noreply, own_voice_state(guilds, data)},
       else: {:noreply, guilds}
   end
@@ -126,14 +134,16 @@ defmodule Lingo.Voice.Manager do
       opts = [
         guild_id: guild_id,
         channel_id: guild.channel_id,
-        user_id: Lingo.Config.get(:user_id),
+        user_id: Lingo.Instance.get(:user_id),
         session_id: session_id,
         token: token,
         endpoint: endpoint,
         subscriber: self()
       ]
 
-      case DynamicSupervisor.start_child(Lingo.Voice.Supervisor, {Connection, opts}) do
+      supervisor = Lingo.Instance.process_name(Lingo.Voice.Supervisor)
+
+      case DynamicSupervisor.start_child(supervisor, {Connection, opts}) do
         {:ok, pid} ->
           Process.monitor(pid)
           Map.merge(guild, %{connection: pid, key: key, ready: false})

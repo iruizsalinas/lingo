@@ -5,9 +5,7 @@ defmodule Lingo.Integration.CommandLifecycleTest do
   @test_command_name "lingo_test_cmd_#{:rand.uniform(99999)}"
 
   describe "global command CRUD" do
-    test "create, list, and delete a global command", ctx do
-      app_id = ctx.client_id
-
+    test "create, list, and delete a global command" do
       params = %{
         "name" => @test_command_name,
         "description" => "Lingo integration test command",
@@ -22,7 +20,7 @@ defmodule Lingo.Integration.CommandLifecycleTest do
         ]
       }
 
-      assert {:ok, created} = Lingo.Api.Command.create_global(app_id, params)
+      assert {:ok, created} = Lingo.Api.Command.create_global(params)
       assert created.name == @test_command_name
       assert created.description == "Lingo integration test command"
       assert is_binary(created.id)
@@ -31,24 +29,23 @@ defmodule Lingo.Integration.CommandLifecycleTest do
 
       command_id = created.id
 
-      assert {:ok, commands} = Lingo.Api.Command.list_global(app_id)
+      assert {:ok, commands} = Lingo.Api.Command.list_global()
       assert is_list(commands)
 
       found = Enum.find(commands, &(&1.id == command_id))
       assert found != nil, "Created command not found in list"
       assert found.name == @test_command_name
 
-      assert :ok = Lingo.Api.Command.delete_global(app_id, command_id)
+      assert :ok = Lingo.Api.Command.delete_global(command_id)
 
       Process.sleep(500)
-      assert {:ok, commands_after} = Lingo.Api.Command.list_global(app_id)
+      assert {:ok, commands_after} = Lingo.Api.Command.list_global()
       refute Enum.any?(commands_after, &(&1.id == command_id))
     end
   end
 
   describe "command serialization roundtrip" do
-    test "Lingo.Type.ApplicationCommand serializes and Discord accepts it", ctx do
-      app_id = ctx.client_id
+    test "Lingo.Type.ApplicationCommand serializes and Discord accepts it" do
       name = "lingo_serial_test_#{:rand.uniform(99999)}"
 
       cmd = %Lingo.Type.ApplicationCommand{
@@ -73,7 +70,7 @@ defmodule Lingo.Integration.CommandLifecycleTest do
 
       payload = Lingo.Type.ApplicationCommand.to_payload(cmd)
 
-      assert {:ok, created} = Lingo.Api.Command.create_global(app_id, payload)
+      assert {:ok, created} = Lingo.Api.Command.create_global(payload)
       assert created.name == name
       assert length(created.options) == 2
 
@@ -83,11 +80,10 @@ defmodule Lingo.Integration.CommandLifecycleTest do
       assert verbose_opt.type == :boolean
       assert verbose_opt.required == false
 
-      :ok = Lingo.Api.Command.delete_global(app_id, created.id)
+      :ok = Lingo.Api.Command.delete_global(created.id)
     end
 
-    test "context menu command payloads are accepted by Discord", ctx do
-      app_id = ctx.client_id
+    test "context menu command payloads are accepted by Discord" do
       guild_id = System.get_env("GUILD_ID")
       if is_nil(guild_id) or guild_id == "", do: raise("GUILD_ID not set")
 
@@ -116,14 +112,14 @@ defmodule Lingo.Integration.CommandLifecycleTest do
           description: "ignored by serializer"
         })
 
-      assert {:ok, user_command} = Lingo.Api.Command.create_guild(app_id, guild_id, user_payload)
+      assert {:ok, user_command} = Lingo.Api.Command.create_guild(guild_id, user_payload)
 
       assert {:ok, message_command} =
-               Lingo.Api.Command.create_guild(app_id, guild_id, message_payload)
+               Lingo.Api.Command.create_guild(guild_id, message_payload)
 
       on_exit(fn ->
-        Lingo.Api.Command.delete_guild(app_id, guild_id, user_command.id)
-        Lingo.Api.Command.delete_guild(app_id, guild_id, message_command.id)
+        Lingo.Api.Command.delete_guild(guild_id, user_command.id)
+        Lingo.Api.Command.delete_guild(guild_id, message_command.id)
       end)
 
       assert user_command.name == user_name
@@ -139,8 +135,7 @@ defmodule Lingo.Integration.CommandLifecycleTest do
   end
 
   describe "bulk overwrite" do
-    test "replaces all commands atomically", ctx do
-      app_id = ctx.client_id
+    test "replaces all commands atomically" do
       name1 = "lingo_bulk_a_#{:rand.uniform(99999)}"
       name2 = "lingo_bulk_b_#{:rand.uniform(99999)}"
 
@@ -149,7 +144,7 @@ defmodule Lingo.Integration.CommandLifecycleTest do
         %{"name" => name2, "description" => "Bulk test B", "type" => 1}
       ]
 
-      assert {:ok, result} = Lingo.Api.Command.bulk_overwrite_global(app_id, commands)
+      assert {:ok, result} = Lingo.Api.Command.bulk_overwrite_global(commands)
       assert length(result) >= 2
 
       names = Enum.map(result, & &1.name)
@@ -158,7 +153,7 @@ defmodule Lingo.Integration.CommandLifecycleTest do
 
       # clean up
       for cmd <- result, cmd.name in [name1, name2] do
-        Lingo.Api.Command.delete_global(app_id, cmd.id)
+        Lingo.Api.Command.delete_global(cmd.id)
       end
     end
   end

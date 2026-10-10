@@ -449,7 +449,7 @@ defmodule Lingo.Integration.VoiceTest do
     headers = [{"authorization", "Bot #{token}"}, {"user-agent", "DiscordBot (lingo tests, 1)"}]
 
     {:ok, %{status: 200, body: body}} =
-      Lingo.Api.HTTP.request(
+      Lingo.Rest.HTTP.request(
         :get,
         "https://discord.com/api/v10/guilds/#{guild_id}/channels",
         headers

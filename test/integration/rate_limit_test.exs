@@ -36,7 +36,7 @@ defmodule Lingo.Integration.RateLimitTest do
 
       results =
         for i <- 1..5 do
-          Lingo.Api.Message.edit(channel_id, msg.id, %{content: "edit #{i}"})
+          Lingo.Api.Message.update(channel_id, msg.id, %{content: "edit #{i}"})
         end
 
       assert Enum.all?(results, &match?({:ok, _}, &1))
@@ -134,7 +134,7 @@ defmodule Lingo.Integration.RateLimitTest do
     test "parallel channel reads under load", %{guild_id: guild_id} do
       tasks =
         for _ <- 1..10 do
-          Task.async(fn -> Lingo.Api.Guild.get_channels(guild_id) end)
+          Task.async(fn -> Lingo.Api.Guild.list_channels(guild_id) end)
         end
 
       results = Enum.map(tasks, &Task.await(&1, 30_000))
@@ -201,7 +201,7 @@ defmodule Lingo.Integration.RateLimitTest do
       # create, edit, get, delete cycle x5
       for i <- 1..5 do
         {:ok, msg} = Lingo.Api.Message.create(channel_id, %{content: "crud #{i}"})
-        {:ok, _} = Lingo.Api.Message.edit(channel_id, msg.id, %{content: "edited #{i}"})
+        {:ok, _} = Lingo.Api.Message.update(channel_id, msg.id, %{content: "edited #{i}"})
         {:ok, fetched} = Lingo.Api.Message.get(channel_id, msg.id)
         assert fetched.content == "edited #{i}"
         :ok = Lingo.Api.Message.delete(channel_id, msg.id)
@@ -212,10 +212,10 @@ defmodule Lingo.Integration.RateLimitTest do
   describe "global rate limit recovery" do
     test "pause_global and wait_global work correctly" do
       # simulate a 500ms global pause
-      Lingo.Api.RateLimiter.pause_global(500)
+      Lingo.Rest.GlobalLimit.pause(500)
 
       start = System.monotonic_time(:millisecond)
-      Lingo.Api.RateLimiter.wait_global()
+      Lingo.Rest.GlobalLimit.wait()
       elapsed = System.monotonic_time(:millisecond) - start
 
       # should have waited roughly 500ms (+ some buffer)
@@ -224,14 +224,14 @@ defmodule Lingo.Integration.RateLimitTest do
 
       # second wait should be instant (pause cleared)
       start2 = System.monotonic_time(:millisecond)
-      Lingo.Api.RateLimiter.wait_global()
+      Lingo.Rest.GlobalLimit.wait()
       elapsed2 = System.monotonic_time(:millisecond) - start2
       assert elapsed2 < 100
     end
 
     test "requests succeed after global pause expires", %{channel_id: channel_id} do
       # simulate a brief global pause
-      Lingo.Api.RateLimiter.pause_global(200)
+      Lingo.Rest.GlobalLimit.pause(200)
 
       # this request should wait for the pause then succeed
       assert {:ok, _} = Lingo.Api.Message.create(channel_id, %{content: "post-pause"})
@@ -249,7 +249,7 @@ defmodule Lingo.Integration.RateLimitTest do
         # messages
         Task.async(fn ->
           {:ok, msg} = Lingo.Api.Message.create(channel_id, %{content: "concurrent 1"})
-          {:ok, _} = Lingo.Api.Message.edit(channel_id, msg.id, %{content: "edited"})
+          {:ok, _} = Lingo.Api.Message.update(channel_id, msg.id, %{content: "edited"})
           :ok = Lingo.Api.Message.delete(channel_id, msg.id)
           :messages_ok
         end),
@@ -266,7 +266,7 @@ defmodule Lingo.Integration.RateLimitTest do
           {:ok, role} =
             Lingo.Api.Role.create(guild_id, %{name: "rl-cross-#{:rand.uniform(99999)}"})
 
-          {:ok, _} = Lingo.Api.Role.modify(guild_id, role.id, %{name: "renamed"})
+          {:ok, _} = Lingo.Api.Role.update(guild_id, role.id, %{name: "renamed"})
           Lingo.Api.Role.delete(guild_id, role.id)
           :roles_ok
         end),
@@ -281,7 +281,7 @@ defmodule Lingo.Integration.RateLimitTest do
         # channels
         Task.async(fn ->
           {:ok, _} = Lingo.Api.Channel.get(channel_id)
-          {:ok, _} = Lingo.Api.Guild.get_channels(guild_id)
+          {:ok, _} = Lingo.Api.Guild.list_channels(guild_id)
           :channels_ok
         end),
 

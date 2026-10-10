@@ -1,5 +1,5 @@
 defmodule Lingo.Type.Webhook do
-  @moduledoc false
+  @moduledoc "A webhook."
 
   alias Lingo.Type.{Channel, Guild, User}
 
@@ -37,6 +37,7 @@ defmodule Lingo.Type.Webhook do
 
   @webhook_types %{1 => :incoming, 2 => :channel_follower, 3 => :application}
 
+  @doc false
   def new(nil), do: nil
 
   def new(data) when is_map(data) do

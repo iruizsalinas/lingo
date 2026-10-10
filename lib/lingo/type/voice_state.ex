@@ -1,5 +1,5 @@
 defmodule Lingo.Type.VoiceState do
-  @moduledoc false
+  @moduledoc "A user's voice connection state in a guild."
 
   alias Lingo.Type.Member
 
@@ -16,7 +16,7 @@ defmodule Lingo.Type.VoiceState do
           self_stream: boolean(),
           self_video: boolean(),
           suppress: boolean(),
-          request_to_speak_timestamp: String.t() | nil
+          request_to_speak_timestamp: DateTime.t() | nil
         }
 
   defstruct [
@@ -35,6 +35,7 @@ defmodule Lingo.Type.VoiceState do
     suppress: false
   ]
 
+  @doc false
   def new(nil), do: nil
 
   def new(data) when is_map(data) do
@@ -51,7 +52,7 @@ defmodule Lingo.Type.VoiceState do
       self_stream: data["self_stream"] || false,
       self_video: data["self_video"] || false,
       suppress: data["suppress"] || false,
-      request_to_speak_timestamp: data["request_to_speak_timestamp"]
+      request_to_speak_timestamp: Lingo.Type.Parse.timestamp(data["request_to_speak_timestamp"])
     }
   end
 end

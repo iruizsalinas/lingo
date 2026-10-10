@@ -67,7 +67,7 @@ defmodule Lingo.Integration.MessageTest do
     test "edits message content", %{channel_id: channel_id} do
       {:ok, msg} = Lingo.Api.Message.create(channel_id, %{content: "original"})
 
-      assert {:ok, edited} = Lingo.Api.Message.edit(channel_id, msg.id, %{content: "edited"})
+      assert {:ok, edited} = Lingo.Api.Message.update(channel_id, msg.id, %{content: "edited"})
       assert edited.id == msg.id
       assert edited.content == "edited"
     end
@@ -78,7 +78,7 @@ defmodule Lingo.Integration.MessageTest do
       {:ok, msg} = Lingo.Api.Message.create(channel_id, %{content: "delete me"})
 
       assert :ok = Lingo.Api.Message.delete(channel_id, msg.id)
-      assert {:error, {404, _}} = Lingo.Api.Message.get(channel_id, msg.id)
+      assert {:error, %Lingo.Error{status: 404}} = Lingo.Api.Message.get(channel_id, msg.id)
     end
   end
 
@@ -89,8 +89,8 @@ defmodule Lingo.Integration.MessageTest do
 
       assert :ok = Lingo.Api.Message.bulk_delete(channel_id, [m1.id, m2.id])
 
-      assert {:error, {404, _}} = Lingo.Api.Message.get(channel_id, m1.id)
-      assert {:error, {404, _}} = Lingo.Api.Message.get(channel_id, m2.id)
+      assert {:error, %Lingo.Error{status: 404}} = Lingo.Api.Message.get(channel_id, m1.id)
+      assert {:error, %Lingo.Error{status: 404}} = Lingo.Api.Message.get(channel_id, m2.id)
     end
   end
 

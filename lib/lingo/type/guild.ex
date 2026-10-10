@@ -1,7 +1,7 @@
 defmodule Lingo.Type.Guild do
-  @moduledoc false
+  @moduledoc "A guild (server)."
 
-  alias Lingo.Type.{Channel, Emoji, Role, Sticker}
+  alias Lingo.Type.{Channel, Codes, Emoji, Member, Parse, Role, Sticker}
 
   @type verification_level :: :none | :low | :medium | :high | :very_high
   @type notification_level :: :all_messages | :only_mentions
@@ -56,7 +56,7 @@ defmodule Lingo.Type.Guild do
           channels: [Channel.t()],
           members: [Lingo.Type.Member.t()],
           member_count: integer() | nil,
-          joined_at: String.t() | nil,
+          joined_at: DateTime.t() | nil,
           large: boolean(),
           unavailable: boolean()
         }
@@ -78,7 +78,6 @@ defmodule Lingo.Type.Guild do
     :vanity_url_code,
     :description,
     :banner,
-    :preferred_locale,
     :public_updates_channel_id,
     :max_video_channel_users,
     :max_stage_video_channel_users,
@@ -90,6 +89,7 @@ defmodule Lingo.Type.Guild do
     :widget_channel_id,
     :member_count,
     :joined_at,
+    preferred_locale: "en-US",
     owner: false,
     afk_timeout: 0,
     widget_enabled: false,
@@ -112,86 +112,30 @@ defmodule Lingo.Type.Guild do
     unavailable: false
   ]
 
-  @verification_levels %{0 => :none, 1 => :low, 2 => :medium, 3 => :high, 4 => :very_high}
-  @notification_levels %{0 => :all_messages, 1 => :only_mentions}
-  @explicit_filters %{0 => :disabled, 1 => :members_without_roles, 2 => :all_members}
-  @mfa_levels %{0 => :none, 1 => :elevated}
-  @nsfw_levels %{0 => :default, 1 => :explicit, 2 => :safe, 3 => :age_restricted}
-  @premium_tiers %{0 => :none, 1 => :tier_1, 2 => :tier_2, 3 => :tier_3}
-
+  @doc false
   def new(nil), do: nil
 
   def new(data) when is_map(data) do
-    %__MODULE__{
-      id: data["id"],
-      name: data["name"],
-      icon: data["icon"],
-      splash: data["splash"],
-      discovery_splash: data["discovery_splash"],
-      owner: data["owner"] || false,
-      owner_id: data["owner_id"],
-      permissions: data["permissions"],
-      afk_channel_id: data["afk_channel_id"],
-      afk_timeout: data["afk_timeout"] || 0,
-      widget_enabled: data["widget_enabled"] || false,
-      widget_channel_id: data["widget_channel_id"],
-      verification_level:
-        Map.get(
-          @verification_levels,
-          data["verification_level"],
-          data["verification_level"] || :none
-        ),
-      default_message_notifications:
-        Map.get(
-          @notification_levels,
-          data["default_message_notifications"],
-          data["default_message_notifications"] || :all_messages
-        ),
-      explicit_content_filter:
-        Map.get(
-          @explicit_filters,
-          data["explicit_content_filter"],
-          data["explicit_content_filter"] || :disabled
-        ),
-      roles:
-        (data["roles"] || [])
-        |> Enum.map(fn role -> Role.new(Map.put(role, "guild_id", data["id"])) end),
-      emojis: (data["emojis"] || []) |> Enum.map(&Emoji.new/1),
-      features: data["features"] || [],
-      mfa_level: Map.get(@mfa_levels, data["mfa_level"], data["mfa_level"] || :none),
-      application_id: data["application_id"],
-      system_channel_id: data["system_channel_id"],
-      system_channel_flags: data["system_channel_flags"] || 0,
-      rules_channel_id: data["rules_channel_id"],
-      max_presences: data["max_presences"],
-      max_members: data["max_members"],
-      vanity_url_code: data["vanity_url_code"],
-      description: data["description"],
-      banner: data["banner"],
-      premium_tier: Map.get(@premium_tiers, data["premium_tier"], data["premium_tier"] || :none),
-      premium_subscription_count: data["premium_subscription_count"] || 0,
-      preferred_locale: data["preferred_locale"] || "en-US",
-      public_updates_channel_id: data["public_updates_channel_id"],
-      max_video_channel_users: data["max_video_channel_users"],
-      max_stage_video_channel_users: data["max_stage_video_channel_users"],
-      approximate_member_count: data["approximate_member_count"],
-      approximate_presence_count: data["approximate_presence_count"],
-      welcome_screen: data["welcome_screen"],
-      nsfw_level: Map.get(@nsfw_levels, data["nsfw_level"], data["nsfw_level"] || :default),
-      stickers: (data["stickers"] || []) |> Enum.map(&Sticker.new/1),
-      premium_progress_bar_enabled: data["premium_progress_bar_enabled"] || false,
-      safety_alerts_channel_id: data["safety_alerts_channel_id"],
-      incidents_data: data["incidents_data"],
-      channels: (data["channels"] || []) |> Enum.map(&Channel.new/1),
-      members:
-        (data["members"] || [])
-        |> Enum.map(fn member ->
-          Lingo.Type.Member.new(Map.put(member, "guild_id", data["id"]))
-        end),
-      member_count: data["member_count"],
-      joined_at: data["joined_at"],
-      large: data["large"] || false,
-      unavailable: data["unavailable"] || false
-    }
+    guild = Parse.fields(__MODULE__, data)
+    put_guild = &Parse.put_guild_id(&1, data["id"])
+
+    struct(guild,
+      verification_level: code(data, :verification_level, guild),
+      default_message_notifications: code(data, :default_message_notifications, guild),
+      explicit_content_filter: code(data, :explicit_content_filter, guild),
+      mfa_level: code(data, :mfa_level, guild),
+      nsfw_level: code(data, :nsfw_level, guild),
+      premium_tier: code(data, :premium_tier, guild),
+      roles: Parse.list(data["roles"], &(&1 |> put_guild.() |> Role.new())),
+      members: Parse.list(data["members"], &(&1 |> put_guild.() |> Member.new())),
+      emojis: Parse.list(data["emojis"], &Emoji.new/1),
+      stickers: Parse.list(data["stickers"], &Sticker.new/1),
+      channels: Parse.list(data["channels"], &Channel.new/1),
+      joined_at: Parse.timestamp(data["joined_at"])
+    )
   end
+
+  # the struct already holds the default when Discord sent nothing
+  defp code(data, field, guild),
+    do: Codes.name(field, data[Atom.to_string(field)], Map.fetch!(guild, field))
 end

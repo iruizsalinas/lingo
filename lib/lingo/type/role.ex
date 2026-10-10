@@ -1,5 +1,5 @@
 defmodule Lingo.Type.Role do
-  @moduledoc false
+  @moduledoc "A guild role."
 
   @type t :: %__MODULE__{
           id: String.t(),
@@ -35,6 +35,7 @@ defmodule Lingo.Type.Role do
     flags: 0
   ]
 
+  @doc false
   def new(nil), do: nil
 
   def new(data) when is_map(data) do

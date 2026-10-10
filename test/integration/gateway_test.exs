@@ -7,12 +7,12 @@ defmodule Lingo.Integration.GatewayTest do
   # /gateway/bot has a tight rate limit, so ask once for the whole module
   setup_all do
     headers = [
-      {"authorization", "Bot #{Lingo.Config.token()}"},
+      {"authorization", "Bot #{Lingo.Instance.get(:token)}"},
       {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.3.0)"}
     ]
 
     {:ok, %{status: 200, body: body}} =
-      Lingo.Api.HTTP.request(:get, "https://discord.com/api/v10/gateway/bot", headers)
+      Lingo.Rest.HTTP.request(:get, "https://discord.com/api/v10/gateway/bot", headers)
 
     %{gateway_url: JSON.decode!(body)["url"]}
   end
@@ -75,7 +75,7 @@ defmodule Lingo.Integration.GatewayTest do
       {ws, [{:text, hello_json}]} = next_frames(ws)
       assert JSON.decode!(hello_json)["op"] == 10
 
-      identify = Payload.identify(Lingo.Config.token(), Intents.resolve([:guilds]), 0, 1)
+      identify = Payload.identify(Lingo.Instance.get(:token), Intents.resolve([:guilds]), 0, 1)
       :ok = WebSocket.send_frame(ws, {:text, JSON.encode!(identify)})
 
       ready = receive_dispatch(ws, "READY", System.monotonic_time(:millisecond) + 15_000)

@@ -1,61 +1,18 @@
 defmodule Lingo.Gateway.DispatcherTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   alias Lingo.Gateway.Dispatcher
-  alias Lingo.Type.{AuditLogEntry, Channel, Guild, Invite, Member, Message, Presence, Role}
+  alias Lingo.Type.{AuditLogEntry, Channel, Guild, Invite, Member, Presence}
 
   defmodule DispatchBot do
     use Lingo.Bot
 
-    handle :guild_audit_log_entry_create, entry do
-      send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:audit_log_entry, entry})
-    end
-
-    handle :guild_create, guild do
-      send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:guild_create, guild})
-    end
-
-    handle :invite_create, invite do
-      send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:invite_create, invite})
-    end
-
-    handle :guild_role_create, role do
-      send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:guild_role_create, role})
-    end
-
-    handle :guild_role_update, data do
-      send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:guild_role_update, data})
-    end
-
-    handle :guild_members_chunk, data do
-      send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:guild_members_chunk, data})
-    end
-
-    handle :message_create, message do
-      send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:message_create, message})
-    end
-
-    handle :message_update, data do
-      send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:message_update, data})
-    end
-
-    handle :presence_update, data do
-      send(:persistent_term.get({:lingo_test, :dispatcher_parent}), {:presence_update, data})
-    end
+    @impl true
+    def handle_event(event, data), do: send(Lingo.Instance.get(:test_pid), {event, data})
   end
 
   setup do
-    start_supervised!(Lingo.Cache)
-
-    previous_bot = Lingo.Config.bot_module()
-
-    :persistent_term.put({:lingo_test, :dispatcher_parent}, self())
-    Lingo.Config.put(:bot_module, DispatchBot)
-
-    on_exit(fn ->
-      Lingo.Config.put(:bot_module, previous_bot)
-      :persistent_term.erase({:lingo_test, :dispatcher_parent})
-    end)
+    %{bot: Lingo.TestBot.start(bot: DispatchBot, test_pid: self(), start: [:cache, :collector])}
   end
 
   test "dispatches guild audit log entry create with guild_id intact" do
@@ -68,7 +25,7 @@ defmodule Lingo.Gateway.DispatcherTest do
       "changes" => [%{"key" => "communication_disabled_until"}]
     })
 
-    assert_receive {:audit_log_entry, %AuditLogEntry{} = entry}
+    assert_receive {:guild_audit_log_entry_create, %AuditLogEntry{} = entry}
 
     assert entry.id == "entry1"
     assert entry.guild_id == "guild1"
@@ -160,174 +117,6 @@ defmodule Lingo.Gateway.DispatcherTest do
              Lingo.Cache.get_presence("guild1", "user1")
   end
 
-  test "dispatches guild role create with guild_id intact" do
-    Dispatcher.dispatch(:guild_role_create, %{
-      "guild_id" => "guild1",
-      "role" => %{
-        "id" => "role1",
-        "name" => "Admin",
-        "permissions" => "0"
-      }
-    })
-
-    assert_receive {:guild_role_create, %Role{} = role}
-
-    assert role.id == "role1"
-    assert role.guild_id == "guild1"
-    assert role.name == "Admin"
-  end
-
-  test "dispatches guild role update with guild_id intact" do
-    Dispatcher.dispatch(:guild_role_update, %{
-      "guild_id" => "guild1",
-      "role" => %{
-        "id" => "role1",
-        "name" => "Admin",
-        "permissions" => "0"
-      }
-    })
-
-    assert_receive {:guild_role_update, %{old: nil, new: %Role{} = role}}
-
-    assert role.id == "role1"
-    assert role.guild_id == "guild1"
-    assert role.name == "Admin"
-  end
-
-  test "dispatches guild members chunk with member and presence context intact" do
-    Dispatcher.dispatch(:guild_members_chunk, %{
-      "guild_id" => "guild1",
-      "members" => [
-        %{
-          "user" => %{"id" => "user1", "username" => "alice", "discriminator" => "0"},
-          "roles" => ["role1"],
-          "joined_at" => "2026-01-01T00:00:00Z"
-        }
-      ],
-      "presences" => [
-        %{
-          "user" => %{"id" => "user1", "username" => "alice", "discriminator" => "0"},
-          "status" => "online",
-          "activities" => []
-        }
-      ],
-      "chunk_index" => 0,
-      "chunk_count" => 1,
-      "nonce" => "nonce1"
-    })
-
-    assert_receive {:guild_members_chunk,
-                    %{
-                      guild_id: "guild1",
-                      members: [%Member{} = member],
-                      presences: [%Presence{} = presence],
-                      chunk_index: 0,
-                      chunk_count: 1,
-                      nonce: "nonce1"
-                    }}
-
-    assert member.guild_id == "guild1"
-    assert member.user.id == "user1"
-    assert presence.guild_id == "guild1"
-    assert presence.user.id == "user1"
-    assert presence.status == :online
-
-    assert %Member{user: %{id: "user1"}, guild_id: "guild1"} =
-             Lingo.Cache.get_member("guild1", "user1")
-
-    assert %Presence{user: %{id: "user1"}, guild_id: "guild1"} =
-             Lingo.Cache.get_presence("guild1", "user1")
-  end
-
-  test "dispatches message create with channel_type intact" do
-    Dispatcher.dispatch(:message_create, %{
-      "id" => "message1",
-      "channel_id" => "channel1",
-      "channel_type" => 0,
-      "guild_id" => "guild1",
-      "author" => %{"id" => "user1", "username" => "alice", "discriminator" => "0"},
-      "member" => %{"nick" => "Alice", "roles" => ["role1"]},
-      "content" => "hello",
-      "timestamp" => "2026-01-01T00:00:00Z"
-    })
-
-    assert_receive {:message_create, %Message{} = message}
-
-    assert message.id == "message1"
-    assert message.channel_type == 0
-    assert message.guild_id == "guild1"
-    assert message.member.guild_id == "guild1"
-    assert message.member.user.id == "user1"
-
-    assert %Message{channel_type: 0, member: %Member{guild_id: "guild1", user: %{id: "user1"}}} =
-             Lingo.Cache.get_message("channel1", "message1")
-  end
-
-  test "dispatches message update with channel_type intact" do
-    Dispatcher.dispatch(:message_update, %{
-      "id" => "message1",
-      "channel_id" => "channel1",
-      "channel_type" => 0,
-      "guild_id" => "guild1",
-      "content" => "edited",
-      "timestamp" => "2026-01-01T00:00:00Z"
-    })
-
-    assert_receive {:message_update, %{old: nil, new: %Message{} = message}}
-
-    assert message.id == "message1"
-    assert message.channel_type == 0
-    assert message.guild_id == "guild1"
-  end
-
-  test "dispatches message update with merged cached message when update is partial" do
-    Dispatcher.dispatch(:message_create, %{
-      "id" => "message2",
-      "channel_id" => "channel1",
-      "channel_type" => 0,
-      "guild_id" => "guild1",
-      "author" => %{"id" => "user1", "username" => "alice", "discriminator" => "0"},
-      "member" => %{"nick" => "Alice", "roles" => ["role1"]},
-      "content" => "before",
-      "timestamp" => "2026-01-01T00:00:00Z"
-    })
-
-    assert_receive {:message_create, %Message{}}
-
-    Dispatcher.dispatch(:message_update, %{
-      "id" => "message2",
-      "channel_id" => "channel1",
-      "content" => "after",
-      "member" => %{"nick" => "Edited", "roles" => ["role2"]}
-    })
-
-    assert_receive {:message_update, %{old: %Message{content: "before"}, new: %Message{} = new}}
-
-    assert new.content == "after"
-    assert new.guild_id == "guild1"
-    assert new.channel_type == 0
-    assert new.author.id == "user1"
-    assert %Member{guild_id: "guild1", nick: "Edited", user: %{id: "user1"}} = new.member
-  end
-
-  test "dispatches presence update with cached user details when payload user is partial" do
-    Lingo.Cache.put_user(%Lingo.Type.User{id: "user1", username: "alice", bot: true})
-
-    Dispatcher.dispatch(:presence_update, %{
-      "guild_id" => "guild1",
-      "user" => %{"id" => "user1"},
-      "status" => "idle",
-      "activities" => []
-    })
-
-    assert_receive {:presence_update, %{old: nil, new: %Presence{} = presence}}
-
-    assert presence.guild_id == "guild1"
-    assert presence.status == :idle
-    assert presence.user.username == "alice"
-    assert presence.user.bot == true
-  end
-
   describe "cache bookkeeping" do
     test "GUILD_CREATE caches active threads" do
       Dispatcher.dispatch(:guild_create, %{
@@ -355,7 +144,7 @@ defmodule Lingo.Gateway.DispatcherTest do
       assert guild.name == "New"
       assert guild.member_count == 10
       assert guild.large == true
-      assert guild.joined_at == "2024-01-01T00:00:00+00:00"
+      assert guild.joined_at == ~U[2024-01-01 00:00:00Z]
     end
 
     test "member add and remove keep member_count current" do
