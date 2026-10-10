@@ -40,7 +40,7 @@ defmodule Lingo.MixProject do
       licenses: ["MIT"],
       links: %{
         "GitHub" => @source_url,
-        "Docs" => "https://iruizsalinas.github.io/lingo/"
+        "Docs" => "https://hexdocs.pm/lingo/"
       },
       files: ~w(lib mix.exs README.md LICENSE .formatter.exs)
     ]

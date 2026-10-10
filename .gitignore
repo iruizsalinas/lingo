@@ -4,9 +4,5 @@ _build
 deps
 doc
 
-# Docs
-docs/node_modules
-docs/.vitepress/cache
-docs/.vitepress/dist
 # ExUnit tmp_dir
 /tmp

@@ -16,7 +16,7 @@ Currently covers:
 
 No runtime dependencies: just OTP and Elixir 1.18+.
 
-Check out the [docs](https://iruizsalinas.github.io/lingo/) for guides and the full API reference.
+Check out the [docs](https://hexdocs.pm/lingo/) for the API reference.
 
 ## Install
 
