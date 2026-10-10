@@ -30,9 +30,14 @@ defmodule Lingo.Bot.Compiler do
     # declared option names must exist as atoms when interactions are parsed
     option_names = commands |> Enum.flat_map(& &1.options) |> option_names() |> Enum.uniq()
 
+    rules = env.module |> Module.get_attribute(:lingo_command_rules) |> Map.new()
+
     quote do
       @doc false
       def __commands__, do: unquote(Macro.escape(commands))
+
+      @doc false
+      def __command_rules__, do: unquote(Macro.escape(rules))
 
       @doc false
       def __option_names__, do: unquote(Enum.map(option_names, &String.to_atom/1))

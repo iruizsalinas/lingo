@@ -58,11 +58,14 @@ defmodule Lingo.MixProject do
           Lingo.Bot.Options,
           Lingo.Context,
           Lingo.Collector,
-          Lingo.Error
+          Lingo.Error,
+          Lingo.CheckError,
+          Lingo.Testing
         ],
+        "HTTP and OAuth2": [Lingo.Endpoint, Lingo.OAuth2],
         "REST API": [Lingo.Api, ~r/^Lingo\.Api\./],
         Cache: [Lingo.Cache, ~r/^Lingo\.Cache\./],
-        Gateway: [Lingo.Gateway],
+        Gateway: [Lingo.Gateway, Lingo.Gateway.SessionStore, Lingo.Gateway.SessionStore.File],
         Voice: [~r/^Lingo\.Voice/],
         "Message content": [
           Lingo.Component,
@@ -75,7 +78,8 @@ defmodule Lingo.MixProject do
           Lingo.CDN,
           Lingo.Format,
           Lingo.Permissions,
-          Lingo.Snowflake
+          Lingo.Snowflake,
+          Lingo.Telemetry
         ],
         Types: [~r/^Lingo\.Type\./]
       ]

@@ -19,7 +19,9 @@ defmodule Lingo.Gateway.Shard do
        token: Keyword.fetch!(opts, :token),
        intents: Keyword.fetch!(opts, :intents),
        gateway_url: Keyword.get(opts, :gateway_url),
-       presence: Keyword.get(opts, :presence, [])}
+       presence: Keyword.get(opts, :presence, []),
+       encoding: Keyword.get(opts, :encoding, :json),
+       compression: Keyword.get(opts, :compression, :zlib)}
 
     Supervisor.init([connection], strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
   end

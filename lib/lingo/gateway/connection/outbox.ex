@@ -11,19 +11,19 @@ defmodule Lingo.Gateway.Connection.Outbox do
   defstruct queue: :queue.new(), count: 0, window_start: 0
 
   @type t :: %__MODULE__{
-          queue: :queue.queue(iodata()),
+          queue: :queue.queue(Lingo.Gateway.Codec.frame()),
           count: non_neg_integer(),
           window_start: integer()
         }
 
-  @spec push(t(), iodata()) :: t()
+  @spec push(t(), Lingo.Gateway.Codec.frame()) :: t()
   def push(%__MODULE__{} = outbox, data), do: %{outbox | queue: :queue.in(data, outbox.queue)}
 
   @doc """
   Takes the payloads that may be sent now, oldest first. When some must wait
   for the next window, also says how long, in ms.
   """
-  @spec take(t(), integer()) :: {[iodata()], t(), non_neg_integer() | nil}
+  @spec take(t(), integer()) :: {[Lingo.Gateway.Codec.frame()], t(), non_neg_integer() | nil}
   def take(%__MODULE__{} = outbox, now) do
     outbox =
       if now - outbox.window_start >= @window_ms,

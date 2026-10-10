@@ -53,4 +53,8 @@ defmodule Lingo.Type.Attachment do
       flags: data["flags"] || 0
     }
   end
+
+  @doc "Whether the attachment is marked as a spoiler."
+  @spec spoiler?(t()) :: boolean()
+  def spoiler?(%__MODULE__{flags: flags}), do: Bitwise.band(flags, Bitwise.bsl(1, 3)) != 0
 end

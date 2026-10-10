@@ -64,6 +64,7 @@ defmodule Lingo.Gateway.Heartbeat do
     if state.latency_table && state.last_sent && state.shard_id do
       ms = System.monotonic_time(:millisecond) - state.last_sent
       :ets.insert(state.latency_table, {state.shard_id, ms})
+      Lingo.Telemetry.execute([:shard, :heartbeat], %{latency: ms}, %{shard_id: state.shard_id})
     end
 
     {:noreply, %{state | ack_received: true}}

@@ -68,11 +68,22 @@ defmodule Lingo.Bot do
       `false`). `Lingo.register_commands/1` does it on demand.
     * `:cache` - which resources to cache and their policies; nothing is
       cached by default. See `Lingo.Cache`.
-    * `:sharding` - `:count` (default `:auto`) and `:ids`, the shards this
-      node runs (needs `:count`)
+    * `:sharding` - `:count` (default `:auto`); `:ids`, the shards this
+      node runs (needs `:count`); `:auto_reshard`, `true` (checks hourly) or
+      an interval in ms, to reshard when Discord recommends more shards;
+      `:session_store`, a `Lingo.Gateway.SessionStore` module or
+      `{module, opts}`. See `Lingo.Gateway`.
+    * `:endpoint` - receives interactions and webhook events over HTTP; see
+      `Lingo.Endpoint`
+    * `:gateway` - `false` to run without a gateway connection (see
+      `Lingo.Endpoint`), or `:encoding` (`:json`, the default, or `:etf`) and
+      `:compression` (`:zlib`, the default, `:zstd` on OTP 28+, or `:none`)
     * `:presence` - the initial `:status`, `:text` and `:activity`
     * `:rate_limit` - `:max_wait`, the longest an API call waits on rate
       limits in ms (default `:infinity`, see `Lingo.with_max_wait/2`)
+    * `:rest` - `:base_url`, to send API calls through a REST proxy that
+      handles rate limits for every node and process, such as
+      `"http://proxy.internal/api/v10"` (default Discord's API)
   """
 
   alias Lingo.Context
@@ -107,7 +118,26 @@ defmodule Lingo.Bot do
   """
   @callback handle_event(event :: atom(), payload :: term()) :: term()
 
+  @doc """
+  Handles a failure in one of the bot's callbacks: a crash, or a command that
+  didn't pass its checks or is on cooldown.
+
+  `source` is the `Lingo.Context` for interactions, and `{event, payload}`
+  for events. `error` is the exception (exits and throws arrive as
+  `ErlangError`), or a `Lingo.CheckError`. Crashes are logged either way;
+  for a failed check nothing is answered unless you do:
+
+      def handle_error(%Lingo.CheckError{message: message}, ctx), do: ephemeral(ctx, message)
+      def handle_error(_error, %Lingo.Context{} = ctx), do: ephemeral(ctx, "Something went wrong.")
+      def handle_error(_error, _event), do: :ok
+
+  Without it, a failed check gets the error's message as an ephemeral reply.
+  """
+  @callback handle_error(error :: Exception.t(), source :: Context.t() | {atom(), term()}) ::
+              term()
+
   @optional_callbacks handle_command: 2,
+                      handle_error: 2,
                       handle_component: 2,
                       handle_modal: 2,
                       handle_autocomplete: 2,
@@ -122,6 +152,7 @@ defmodule Lingo.Bot do
       import Lingo.Context, except: [new: 1, new: 2]
 
       Module.register_attribute(__MODULE__, :lingo_commands, accumulate: true)
+      Module.register_attribute(__MODULE__, :lingo_command_rules, accumulate: true)
 
       @doc false
       def child_spec(opts), do: Lingo.Supervisor.child_spec(__MODULE__, opts)

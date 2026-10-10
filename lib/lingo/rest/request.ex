@@ -9,9 +9,9 @@ defmodule Lingo.Rest.Request do
   @doc "Sends one request, returning the status, decoded body and headers."
   @spec send(atom(), String.t(), keyword()) :: {:ok, integer(), term(), list()} | {:error, term()}
   def send(method, path, opts) do
-    url = @base_url <> path <> query_string(opts[:params])
+    url = base_url() <> path <> query_string(opts[:params])
 
-    case http_request().(method, url, build_headers(opts[:reason]), encode_body(opts)) do
+    case http_request().(method, url, build_headers(opts), encode_body(opts)) do
       {:ok, %{status: status, headers: headers, body: body}} ->
         {:ok, status, decode_body(body, headers), headers}
 
@@ -19,6 +19,9 @@ defmodule Lingo.Rest.Request do
         {:error, reason}
     end
   end
+
+  # a REST proxy may stand in for Discord, shared by every node and process
+  defp base_url, do: Lingo.Instance.get(:rest_base_url) || @base_url
 
   # swappable so tests can stand in for Discord
   defp http_request, do: Lingo.Instance.get(:http_request) || (&Lingo.Rest.HTTP.request/4)
@@ -30,6 +33,7 @@ defmodule Lingo.Rest.Request do
     cond do
       parts = opts[:multipart] -> Lingo.Rest.Multipart.encode(parts)
       json = opts[:json] -> {"application/json", JSON.encode_to_iodata!(json)}
+      form = opts[:form] -> {"application/x-www-form-urlencoded", URI.encode_query(form)}
       true -> nil
     end
   end
@@ -43,14 +47,18 @@ defmodule Lingo.Rest.Request do
     end
   end
 
-  defp build_headers(reason) do
-    headers = [
-      {"authorization", "Bot #{Lingo.Instance.get(:token)}"},
-      {"user-agent", @user_agent}
-    ]
-
+  defp build_headers(opts) do
+    headers = [{"authorization", authorization(opts[:auth])}, {"user-agent", @user_agent}]
+    reason = opts[:reason]
     if reason, do: [{"x-audit-log-reason", URI.encode(reason)} | headers], else: headers
   end
+
+  # the bot's token, or an OAuth2 user's or app's credentials
+  defp authorization(nil), do: "Bot #{Lingo.Instance.get(:token)}"
+  defp authorization({:bearer, token}), do: "Bearer #{token}"
+
+  defp authorization({:basic, client_id, client_secret}),
+    do: "Basic " <> Base.encode64("#{client_id}:#{client_secret}")
 
   @doc "A response header, by lowercase name."
   @spec header(list(), String.t(), term()) :: term()

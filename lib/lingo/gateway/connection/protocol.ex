@@ -6,8 +6,10 @@ defmodule Lingo.Gateway.Connection.Protocol do
 
   require Logger
 
-  alias Lingo.Gateway.{Dispatcher, Events, Heartbeat, Payload, ShardManager}
+  alias Lingo.Gateway.{Connection, Dispatcher, Events, Heartbeat, Identify, Payload}
+  alias Lingo.Gateway.{Sessions, ShardManager}
   alias Lingo.Gateway.Connection.Transport
+  alias Lingo.Telemetry
 
   @fatal_codes [4004, 4010, 4011, 4012, 4013, 4014]
   @session_dead_codes [4003, 4005, 4007, 4008, 4009]
@@ -28,19 +30,21 @@ defmodule Lingo.Gateway.Connection.Protocol do
     state = %{state | heartbeat_pid: heartbeat}
 
     if state.session_id && state.seq do
-      resume = Payload.resume(state.token, state.session_id, state.seq)
-      Transport.send_frame(state, Payload.encode(resume))
+      Transport.send_frame(state, Payload.resume(state.token, state.session_id, state.seq))
       {:noreply, %{state | state: :resuming}}
     else
-      # wait for an identify slot without blocking, so heartbeats keep flowing
-      delay = ShardManager.reserve_identify(state.shard_id)
-      timer = Process.send_after(self(), :identify, delay)
-      {:noreply, %{state | state: :waiting_to_identify, identify_timer: timer}}
+      {:noreply, wait_to_identify(state)}
     end
   end
 
-  def handle(%{"op" => 0, "t" => type, "d" => data, "s" => seq}, state),
-    do: {:noreply, dispatch(type, data, %{state | seq: seq || state.seq})}
+  def handle(%{"op" => 0, "t" => type, "d" => data, "s" => seq}, state) do
+    state = %{state | seq: seq || state.seq}
+
+    if seq && state.session_id,
+      do: Sessions.seq(state.bot, state.shard_id, state.shard_count, seq)
+
+    {:noreply, dispatch(type, data, state)}
+  end
 
   # Heartbeat ACK
   def handle(%{"op" => 11}, state) do
@@ -50,7 +54,7 @@ defmodule Lingo.Gateway.Connection.Protocol do
 
   # Discord asks for a heartbeat now
   def handle(%{"op" => 1}, state) do
-    Transport.send_frame(state, Payload.encode(Payload.heartbeat(state.seq)))
+    Transport.send_frame(state, Payload.heartbeat(state.seq))
     {:noreply, state}
   end
 
@@ -68,20 +72,59 @@ defmodule Lingo.Gateway.Connection.Protocol do
 
   def handle(_payload, state), do: {:noreply, state}
 
+  @doc "Sends Identify, once the shard's slot has come."
+  def identify(state) do
+    identify =
+      Payload.identify(
+        state.token,
+        state.intents,
+        state.shard_id,
+        state.shard_count,
+        state.presence
+      )
+
+    Transport.send_frame(state, identify)
+    Telemetry.execute([:shard, :identify], %{wait: state.identify_wait}, meta(state))
+    %{state | state: :identifying}
+  end
+
+  # waits for an identify slot without blocking, so heartbeats keep flowing;
+  # with none to be had soon, disconnects and asks again later
+  defp wait_to_identify(state) do
+    case Identify.reserve(state.shard_id) do
+      {:ok, delay} ->
+        timer = Process.send_after(self(), :identify, delay)
+        %{state | state: :waiting_to_identify, identify_timer: timer, identify_wait: delay}
+
+      {:wait, ms} ->
+        Transport.reconnect(state, ms)
+    end
+  end
+
   def close(state, code) when code in @fatal_codes do
     Logger.error("Lingo shard #{state.shard_id} closed with fatal code #{code}, not reconnecting")
+    disconnected(state, code)
     Dispatcher.dispatch(:shard_error, %{shard_id: state.shard_id, code: code})
+    state = forget_session(state)
     {:stop, {:shutdown, {:fatal, code}}, %{Transport.close(state) | state: :disconnected}}
   end
 
   def close(state, code) when code in @session_dead_codes do
-    Dispatcher.dispatch(:shard_disconnect, %{shard_id: state.shard_id, code: code})
+    disconnected(state, code)
+    deliver(state, :shard_disconnect, %{shard_id: state.shard_id, code: code})
     {:noreply, Transport.reconnect(forget_session(state))}
   end
 
   def close(state, code) do
-    Dispatcher.dispatch(:shard_disconnect, %{shard_id: state.shard_id, code: code})
+    disconnected(state, code)
+    deliver(state, :shard_disconnect, %{shard_id: state.shard_id, code: code})
     {:noreply, Transport.reconnect(state)}
+  end
+
+  @doc "The socket went away without a close frame."
+  def dropped(state) do
+    disconnected(state, nil)
+    Transport.reconnect(state)
   end
 
   defp dispatch("READY", data, state) do
@@ -97,20 +140,65 @@ defmodule Lingo.Gateway.Connection.Protocol do
         state: :connected
     }
 
-    Dispatcher.dispatch(:shard_ready, Map.put(data, "shard_id", state.shard_id))
-    ShardManager.shard_ready(state.shard_id)
-    Transport.flush(state)
+    if state.session_id && state.resume_gateway_url do
+      Sessions.put(
+        state.bot,
+        state.shard_id,
+        state.shard_count,
+        state.session_id,
+        state.resume_gateway_url,
+        state.seq || 0
+      )
+    end
+
+    deliver(state, :shard_ready, Map.put(data, "shard_id", state.shard_id))
+    ready(state, false)
   end
 
   defp dispatch("RESUMED", _data, state) do
-    Dispatcher.dispatch(:shard_resumed, %{shard_id: state.shard_id})
-    Transport.flush(%{state | state: :connected})
+    ensure_user_id(state.bot)
+    deliver(state, :shard_resumed, %{shard_id: state.shard_id})
+    ready(%{state | state: :connected}, true)
   end
 
   defp dispatch(type, data, state) do
-    Dispatcher.dispatch(Events.name(type), data)
+    state = Connection.maybe_join(state)
+    deliver(state, Events.name(type), data)
     state
   end
 
-  defp forget_session(state), do: %{state | session_id: nil, seq: nil, resume_gateway_url: nil}
+  defp ready(state, resumed) do
+    ShardManager.shard_ready(state.shard_id, state.shard_count)
+    Telemetry.execute([:shard, :ready], %{}, Map.put(meta(state), :resumed, resumed))
+    Transport.flush(state)
+  end
+
+  # events reach the bot only from live shards
+  defp deliver(state, event, data) do
+    if Connection.live?(state), do: Dispatcher.dispatch(event, data)
+  end
+
+  # a session resumed after a full restart never saw READY, which names the bot
+  defp ensure_user_id(bot) do
+    if Lingo.Instance.get(bot, :user_id, nil) == nil do
+      Task.Supervisor.start_child(Lingo.Instance.process_name(bot, Lingo.TaskSupervisor), fn ->
+        Lingo.Instance.put_current(bot)
+
+        with {:ok, user} <- Lingo.Api.User.get_current(),
+             do: Lingo.Instance.put(bot, :user_id, user.id)
+      end)
+    end
+  catch
+    :exit, _no_task_supervisor -> :ok
+  end
+
+  defp disconnected(state, code),
+    do: Telemetry.execute([:shard, :disconnected], %{}, Map.put(meta(state), :code, code))
+
+  defp meta(state), do: %{shard_id: state.shard_id, shard_count: state.shard_count}
+
+  defp forget_session(state) do
+    Sessions.delete(state.bot, state.shard_id, state.shard_count)
+    %{state | session_id: nil, seq: nil, resume_gateway_url: nil}
+  end
 end

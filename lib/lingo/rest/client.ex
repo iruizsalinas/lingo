@@ -91,9 +91,10 @@ defmodule Lingo.Rest.Client do
   end
 
   defp send_request(method, path, opts, route_key, attempts, deadline) do
-    case Request.send(method, path, opts) do
+    case timed_send(method, path, opts) do
       {:ok, status, body, resp_headers} ->
         Lingo.Rest.Buckets.update(route_key, resp_headers)
+        Lingo.Rest.Shared.bucket(route_key, resp_headers)
         handle_status(method, path, opts, status, body, resp_headers, attempts, deadline)
 
       {:error, reason} ->
@@ -114,7 +115,10 @@ defmodule Lingo.Rest.Client do
 
     notify_rate_limit(method, path, retry_after, global)
 
-    if global, do: Lingo.Rest.GlobalLimit.pause(retry_after)
+    if global do
+      Lingo.Rest.GlobalLimit.pause(retry_after)
+      Lingo.Rest.Shared.pause(retry_after)
+    end
 
     # every 429 counts toward Discord's invalid request limit, so don't retry forever
     if attempts.rate_limits >= @max_rate_limit_retries or Deadline.past?(retry_after, deadline) do
@@ -138,7 +142,27 @@ defmodule Lingo.Rest.Client do
 
   defp rate_limited(ms), do: {:error, %Lingo.Error{reason: :rate_limited, retry_after: ms}}
 
+  defp timed_send(method, path, opts) do
+    start = System.monotonic_time()
+    result = Request.send(method, path, opts)
+    status = if match?({:ok, _, _, _}, result), do: elem(result, 1)
+
+    Lingo.Telemetry.execute(
+      [:rest, :request],
+      %{duration: System.monotonic_time() - start},
+      %{method: method, path: path, status: status}
+    )
+
+    result
+  end
+
   defp notify_rate_limit(method, path, retry_after, global) do
+    Lingo.Telemetry.execute(
+      [:rest, :rate_limited],
+      %{retry_after: retry_after},
+      %{method: method, path: path, global: global}
+    )
+
     Lingo.Bot.Runner.event(:rate_limit, %{
       method: method,
       path: path,

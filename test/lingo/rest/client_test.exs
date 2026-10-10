@@ -207,4 +207,12 @@ defmodule Lingo.Rest.ClientTest do
                Lingo.with_max_wait(100, fn -> Client.request(:get, "/webhooks/222222222222") end)
     end
   end
+
+  test "requests go to the configured REST proxy", %{bot: bot} do
+    capture()
+    Lingo.Instance.put(bot, :rest_base_url, "http://proxy.internal:8080/api/v10")
+
+    Client.request(:get, "/users/@me")
+    assert_received {:sent, :get, "http://proxy.internal:8080/api/v10/users/@me", _, _}
+  end
 end

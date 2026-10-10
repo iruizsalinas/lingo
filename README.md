@@ -7,7 +7,10 @@ Currently covers:
 - Slash commands, context menus, buttons, select menus, modals, and autocomplete
 - Components V2 including sections, containers, media galleries, and more
 - REST API with per-bucket rate limiting and automatic retries
-- Gateway with sharding, caching, and reconnection
+- Gateway with sharding, caching, and reconnection: resumable sessions, zero-downtime resharding, shards (and cache reads) across nodes, ETF and zstd
+- Interactions and webhook events over HTTP, with or without a gateway
+- Command checks, cooldowns and an error callback
+- OAuth2, and test helpers for bots
 - Voice: play and receive audio, with Discord's end-to-end encryption (DAVE)
 - Several bots in one VM, each with its own cache, rate limits and gateway
 - Collectors for awaiting button clicks and reactions
@@ -75,6 +78,10 @@ can also call `Lingo.register_commands/1` yourself.
 | `Lingo.Voice` | Joining voice channels, playing and receiving audio |
 | `Lingo.Component`, `Lingo.Embed` | Building message content |
 | `Lingo.Collector` | Awaiting clicks and reactions inline |
+| `Lingo.Endpoint` | Interactions and webhook events over HTTP |
+| `Lingo.OAuth2` | Authorizing users and calling the API as them |
+| `Lingo.Testing` | Testing a bot without Discord |
+| `Lingo.Telemetry` | Events for metrics |
 | `Lingo.Helper.*`, `Lingo.Permissions`, `Lingo.Format`, `Lingo.CDN` | Utilities |
 
 ## Commands with options

@@ -45,7 +45,10 @@ defmodule Lingo.Api.Interaction do
           [json: %{type: type, data: data}]
       end
 
-    Client.request(:post, path, [params: params] ++ body)
+    result = Client.request(:post, path, [params: params] ++ body)
+    # an interaction received over HTTP waits for this before answering 202
+    Lingo.Endpoint.Pending.answered(Lingo.Instance.current(), interaction_id)
+    result
   end
 
   @doc "Fetches the first response to an interaction."

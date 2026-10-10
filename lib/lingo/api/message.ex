@@ -52,7 +52,13 @@ defmodule Lingo.Api.Message do
     |> Client.into(&Message.new/1)
   end
 
-  @doc "Edits a message the bot sent."
+  @doc """
+  Edits a message the bot sent.
+
+  `:attachments` lists every attachment to keep, by `:id`, and may change
+  their `:description` or mark them `is_spoiler: true`; new `:files` are
+  added to them.
+  """
   @spec update(Api.id(), Api.id(), Api.content()) :: Api.result(Message.t())
   def update(channel_id, message_id, params) do
     Client.request(

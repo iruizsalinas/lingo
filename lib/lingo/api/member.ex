@@ -29,6 +29,21 @@ defmodule Lingo.Api.Member do
     end
   end
 
+  @doc """
+  Adds a user to a guild with their OAuth2 token (`guilds.join` scope, see
+  `Lingo.OAuth2`); the bot must be in the guild. Params: `:nick`, `:roles`,
+  `:mute`, `:deaf`. Returns the member, or `:ok` when they were already in.
+  """
+  @spec create(Api.id(), Api.id(), String.t(), Api.params()) :: Api.result(Member.t()) | :ok
+  def create(guild_id, user_id, access_token, params \\ []) do
+    body = params |> Map.new() |> Map.put(:access_token, access_token)
+
+    case Client.request(:put, "/guilds/#{guild_id}/members/#{user_id}", json: body) do
+      {:ok, data} -> {:ok, new_member(data, guild_id)}
+      other -> other
+    end
+  end
+
   @doc "Finds guild members whose username or nickname starts with `query`."
   @spec search(Api.id(), String.t(), keyword()) :: Api.result([Member.t()])
   def search(guild_id, query, opts \\ []) do
@@ -54,7 +69,10 @@ defmodule Lingo.Api.Member do
     end
   end
 
-  @doc "Edits the bot's own member in a guild, such as its nickname."
+  @doc """
+  Edits the bot's own profile in a guild: `:nick`, and `:avatar`, `:banner`
+  (images as data URIs) and `:bio`, shown in that guild only.
+  """
   @spec update_current(Api.id(), Api.params(), keyword()) :: Api.result(Member.t())
   def update_current(guild_id, params, opts \\ []) do
     with {:ok, data} <-

@@ -11,7 +11,9 @@ defmodule Lingo.Bot.Commands do
     :integration_types,
     :contexts,
     :name_localizations,
-    :description_localizations
+    :description_localizations,
+    :checks,
+    :cooldown
   ]
 
   @doc """
@@ -26,6 +28,23 @@ defmodule Lingo.Bot.Commands do
     * `:integration_types` - where it can be installed: `0` guild, `1` user
     * `:contexts` - where it can be used: `0` guild, `1` bot DM, `2` private channel
     * `:name_localizations`, `:description_localizations` - maps of locale to text
+    * `:checks` - what must hold for the command to run, checked before
+      `c:Lingo.Bot.handle_command/2`: `:guild_only`, `:dm_only`, `:nsfw`,
+      `:owner_only` (the app's owner or team), `{:permissions, perms}` (the
+      member's, in the channel), `{:bot_permissions, perms}`, or a function
+      like `&MyBot.allowed?/1` getting the context and returning `true`,
+      `false` or `{:error, message}`. See `Lingo.CheckError` for what
+      happens when one fails.
+    * `:cooldown` - `{uses, per_ms}` or `{uses, per_ms, scope}`: at most
+      `uses` per `per_ms` for each `:user` (the default), `:member`,
+      `:guild`, `:channel`, or `:global`ly
+
+  For example:
+
+      command "ban", "Bans a member",
+        options: [user(:member, "Who", required: true)],
+        checks: [:guild_only, {:permissions, [:ban_members]}, {:bot_permissions, [:ban_members]}],
+        cooldown: {1, 5_000}
   """
   defmacro command(name, description, opts \\ []) do
     check_no_body!(opts, __CALLER__)
@@ -44,6 +63,9 @@ defmodule Lingo.Bot.Commands do
         name_localizations: opts[:name_localizations],
         description_localizations: opts[:description_localizations]
       }
+
+      if rules = Lingo.Bot.Commands.__rules__(:chat_input, name, opts),
+        do: @lingo_command_rules(rules)
     end
   end
 
@@ -84,6 +106,9 @@ defmodule Lingo.Bot.Commands do
         contexts: opts[:contexts],
         name_localizations: opts[:name_localizations]
       }
+
+      if rules = Lingo.Bot.Commands.__rules__(type, name, opts),
+        do: @lingo_command_rules(rules)
     end
   end
 
@@ -99,6 +124,15 @@ defmodule Lingo.Bot.Commands do
             "    @impl true\n" <>
             "    def handle_command(\"ping\", ctx), do: reply!(ctx, \"Pong!\")"
     end
+  end
+
+  @doc false
+  def __rules__(type, name, opts) do
+    checks = Lingo.Bot.Checks.validate!(Keyword.get(opts, :checks, []))
+    cooldown = Lingo.Bot.Checks.validate_cooldown!(opts[:cooldown])
+
+    if checks != [] or cooldown,
+      do: {{type, to_string(name)}, %{checks: checks, cooldown: cooldown}}
   end
 
   @doc false

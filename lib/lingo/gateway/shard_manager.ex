@@ -1,13 +1,17 @@
 defmodule Lingo.Gateway.ShardManager do
   @moduledoc false
 
-  # Starts a bot's shards, restarts dead ones, routes payloads to the right
-  # shard, paces identifies and fires :ready once every shard is up.
+  # Starts a bot's shards on this node, restarts dead ones, routes payloads
+  # to the right shard (on whichever connected node runs it) and fires :ready
+  # once every shard here is up. Resharding is in Reshard; each generation of
+  # shards is a Pool.
 
-  use GenServer
+  # time for every shard to close before the session store saves
+  use GenServer, shutdown: 30_000
 
-  alias Lingo.Gateway.{Connection, Dispatcher, Intents, Shard, Sharding}
-  alias Lingo.Gateway.ShardManager.Pool
+  alias Lingo.Gateway.{Connection, Dispatcher, Groups, Intents, Sessions, Shard, Sharding}
+  alias Lingo.Gateway.ShardManager.{Pool, Reshard}
+  alias Lingo.Instance
 
   defstruct [
     :bot,
@@ -15,36 +19,34 @@ defmodule Lingo.Gateway.ShardManager do
     :intents,
     :shard_supervisor,
     :gateway_url,
-    shard_count: 0,
+    :auto_reshard,
+    :reshard_started,
+    :reshard_timer,
+    :next,
     configured_count: :auto,
     configured_ids: :all,
+    encoding: :json,
+    compression: :zlib,
     presence: [],
-    shards: %{},
-    shard_refs: %{},
-    ready_shards: %{},
-    ready_fired: false,
-    expected_shard_count: 0,
-    max_concurrency: 1,
-    identify_slots: %{}
+    current: %Pool{},
+    ready_fired: false
   ]
-
-  # Discord allows max_concurrency identifies per 5 seconds, one per bucket
-  @identify_interval_ms 5_500
 
   def start_link(opts) do
     bot = Keyword.fetch!(opts, :bot)
-    GenServer.start_link(__MODULE__, opts, name: Lingo.Instance.process_name(bot, __MODULE__))
+    GenServer.start_link(__MODULE__, opts, name: Instance.process_name(bot, __MODULE__))
   end
 
-  defp server, do: Lingo.Instance.process_name(__MODULE__)
+  defp server, do: Instance.process_name(__MODULE__)
 
-  def broadcast(payload), do: GenServer.cast(server(), {:broadcast, payload})
+  # broadcasts and presence reach every node's shards
+  def broadcast(payload), do: cluster_cast({:broadcast, payload})
+  def update_presence(presence), do: cluster_cast({:update_presence, presence})
 
   def send_to_guild_shard(guild_id, payload),
     do: GenServer.cast(server(), {:send_to_guild_shard, guild_id, payload})
 
-  def update_presence(presence), do: GenServer.cast(server(), {:update_presence, presence})
-  def shard_ready(shard_id), do: GenServer.cast(server(), {:shard_ready, shard_id})
+  def shard_ready(shard_id, count), do: GenServer.cast(server(), {:shard_ready, shard_id, count})
   def reshard, do: GenServer.cast(server(), :reshard)
   def shard_for_guild(guild_id), do: GenServer.call(server(), {:shard_for_guild, guild_id})
   def shard_count, do: GenServer.call(server(), :shard_count)
@@ -52,22 +54,25 @@ defmodule Lingo.Gateway.ShardManager do
   def shard_statuses, do: GenServer.call(server(), :shard_statuses)
   def restart_shard(shard_id), do: GenServer.call(server(), {:restart_shard, shard_id}, 30_000)
 
-  # Reserves the next identify slot for this shard's rate limit bucket and
-  # returns how long to wait, in ms, before sending Identify.
-  def reserve_identify(shard_id) do
-    GenServer.call(server(), {:reserve_identify, shard_id}, 10_000)
-  catch
-    :exit, _ -> 0
+  defp cluster_cast(message) do
+    case Groups.managers(Instance.current()) do
+      [] -> GenServer.cast(server(), message)
+      managers -> Enum.each(managers, &GenServer.cast(&1, message))
+    end
   end
 
   @impl true
   def init(opts) do
+    # stops the shards in terminate/2, before the session store saves
+    Process.flag(:trap_exit, true)
     bot = Keyword.fetch!(opts, :bot)
-    Lingo.Instance.put_current(bot)
-    Lingo.Instance.put(bot, :latency_table, :ets.new(:latency, [:public, :set]))
+    Instance.put_current(bot)
+    Instance.put(bot, :latency_table, :ets.new(:latency, [:public, :set]))
+    Groups.join_manager(bot)
 
     {:ok, shard_supervisor} = DynamicSupervisor.start_link(strategy: :one_for_one)
     sharding = opts[:sharding] || []
+    gateway = opts[:gateway] || []
 
     send(self(), :start_shards)
 
@@ -79,21 +84,30 @@ defmodule Lingo.Gateway.ShardManager do
        shard_supervisor: shard_supervisor,
        configured_count: Keyword.get(sharding, :count, :auto),
        configured_ids: Keyword.get(sharding, :ids, :all),
+       auto_reshard: sharding[:auto_reshard] || nil,
+       encoding: Keyword.get(gateway, :encoding, :json),
+       compression: Keyword.get(gateway, :compression, :zlib),
        presence: opts[:presence] || []
      }}
   end
 
   @impl true
+  def terminate(_reason, state) do
+    DynamicSupervisor.stop(state.shard_supervisor, :shutdown)
+  catch
+    :exit, _already_stopped -> :ok
+  end
+
+  @impl true
   def handle_info(:start_shards, state) do
     case Sharding.fetch() do
-      {:ok, %{remaining: remaining, recommended: recommended} = plan}
-      when remaining < recommended ->
-        Process.send_after(self(), :start_shards, plan.reset_after + 1_000)
-        {:noreply, state}
-
       {:ok, plan} ->
         count = Sharding.count(state.configured_count, plan.recommended)
-        {:noreply, Pool.start_all(state, plan, count)}
+        Instance.put(state.bot, :shard_count, count)
+        state = %{state | gateway_url: plan.url}
+        ids = Sharding.ids(state.configured_ids, count)
+        Reshard.schedule(state)
+        {:noreply, %{state | current: Pool.start_all(%Pool{count: count}, ids, state)}}
 
       {:error, _reason} ->
         Process.send_after(self(), :start_shards, 5_000)
@@ -102,143 +116,132 @@ defmodule Lingo.Gateway.ShardManager do
   end
 
   def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
-    case Map.pop(state.shard_refs, ref) do
-      {nil, _refs} ->
-        {:noreply, state}
+    {state, count, shard_id} = pop_ref(state, ref)
+    if shard_id, do: Process.send_after(self(), {:restart_dead_shard, count, shard_id}, 5_000)
+    {:noreply, state}
+  end
 
-      {shard_id, refs} ->
-        Process.send_after(self(), {:restart_dead_shard, shard_id}, 5_000)
-        {:noreply, %{Pool.forget(state, shard_id) | shard_refs: refs}}
+  def handle_info({:restart_dead_shard, count, shard_id}, state) do
+    with {key, pool} <- pool(state, count),
+         false <- Map.has_key?(pool.shards, shard_id) do
+      case Pool.start(pool, shard_id, state) do
+        {:ok, pool} ->
+          {:noreply, Map.put(state, key, pool)}
+
+        {:error, _reason} ->
+          Process.send_after(self(), {:restart_dead_shard, count, shard_id}, 10_000)
+          {:noreply, state}
+      end
+    else
+      _gone_or_running -> {:noreply, state}
     end
   end
 
-  def handle_info({:restart_dead_shard, shard_id}, state) do
-    cond do
-      Map.has_key?(state.shards, shard_id) ->
-        {:noreply, state}
+  def handle_info(:check_reshard, state), do: {:noreply, Reshard.check(state)}
+  def handle_info({:reshard_timeout, count}, state), do: {:noreply, Reshard.abort(state, count)}
 
-      true ->
-        case Pool.start(state, shard_id) do
-          {:ok, state} ->
-            {:noreply, state}
-
-          {:error, _reason} ->
-            Process.send_after(self(), {:restart_dead_shard, shard_id}, 10_000)
-            {:noreply, state}
-        end
-    end
-  end
+  def handle_info({:EXIT, pid, reason}, %{shard_supervisor: pid} = state),
+    do: {:stop, reason, state}
 
   def handle_info(_message, state), do: {:noreply, state}
 
   @impl true
   def handle_cast({:broadcast, payload}, state) do
-    Enum.each(state.shards, fn {_id, shard} -> Shard.send_payload(shard, payload) end)
+    Enum.each(state.current.shards, fn {_id, shard} -> Shard.send_payload(shard, payload) end)
     {:noreply, state}
   end
 
-  def handle_cast({:send_to_shard, shard_id, payload}, state) do
-    if shard = state.shards[shard_id], do: Shard.send_payload(shard, payload)
-    {:noreply, state}
-  end
+  # the shard may run on another node
+  def handle_cast({:send_to_guild_shard, guild_id, payload}, %{current: pool} = state) do
+    shard_id = Sharding.shard_for(guild_id, pool.count)
 
-  def handle_cast({:send_to_guild_shard, guild_id, payload}, state) do
-    handle_cast({:send_to_shard, Sharding.shard_for(guild_id, state.shard_count), payload}, state)
+    cond do
+      shard = pool.shards[shard_id] -> Shard.send_payload(shard, payload)
+      pid = Groups.shard(state.bot, shard_id, pool.count) -> Connection.send_payload(pid, payload)
+      true -> :ok
+    end
+
+    {:noreply, state}
   end
 
   # shards started later identify with the latest presence
   def handle_cast({:update_presence, presence}, state) do
-    for {_id, shard} <- state.shards,
+    for pool <- [state.current, state.next],
+        pool != nil,
+        {_id, shard} <- pool.shards,
         pid = Shard.connection(shard),
         do: Connection.update_presence(pid, presence)
 
     {:noreply, %{state | presence: presence}}
   end
 
-  def handle_cast({:shard_ready, shard_id}, state) do
-    state = %{state | ready_shards: Map.put(state.ready_shards, shard_id, true)}
+  def handle_cast({:shard_ready, shard_id, count}, state) do
+    case pool(state, count) do
+      {:current, pool} ->
+        {:noreply, maybe_fire_ready(%{state | current: Pool.ready(pool, shard_id)})}
 
-    if not state.ready_fired and map_size(state.ready_shards) == state.expected_shard_count do
-      Dispatcher.dispatch(:ready, %{shard_count: state.shard_count})
-      {:noreply, %{state | ready_fired: true}}
-    else
-      {:noreply, state}
-    end
-  end
+      {:next, pool} ->
+        {:noreply, maybe_switch(%{state | next: Pool.ready(pool, shard_id)})}
 
-  def handle_cast(:reshard, %{configured_count: count} = state) when is_integer(count),
-    do: {:noreply, state}
-
-  def handle_cast(:reshard, state) do
-    case Sharding.fetch() do
-      {:ok, %{remaining: remaining, recommended: recommended} = plan}
-      when remaining >= recommended ->
-        fresh = %{state | shards: %{}, shard_refs: %{}, ready_shards: %{}, ready_fired: false}
-        new_state = Pool.start_all(fresh, plan, recommended)
-
-        for {_id, old} <- state.shards,
-            do: DynamicSupervisor.terminate_child(state.shard_supervisor, old)
-
-        {:noreply, new_state}
-
-      _not_now ->
+      nil ->
         {:noreply, state}
     end
   end
 
+  def handle_cast(:reshard, state), do: {:noreply, Reshard.begin(state)}
+
   @impl true
-  def handle_call({:reserve_identify, shard_id}, _from, state) do
-    now = System.monotonic_time(:millisecond)
-    bucket = rem(shard_id, max(state.max_concurrency, 1))
-    slot = max(now, Map.get(state.identify_slots, bucket, now))
-    slots = Map.put(state.identify_slots, bucket, slot + @identify_interval_ms)
-
-    {:reply, slot - now, %{state | identify_slots: slots}}
-  end
-
   def handle_call({:shard_for_guild, guild_id}, _from, state),
-    do: {:reply, Sharding.shard_for(guild_id, state.shard_count), state}
+    do: {:reply, Sharding.shard_for(guild_id, state.current.count), state}
 
-  def handle_call(:shard_count, _from, state), do: {:reply, state.shard_count, state}
+  def handle_call(:shard_count, _from, state), do: {:reply, state.current.count, state}
 
   def handle_call({:shard_status, shard_id}, _from, state) do
-    status = if shard = state.shards[shard_id], do: Shard.status(shard), else: :dead
+    status = if shard = state.current.shards[shard_id], do: Shard.status(shard), else: :dead
     {:reply, status, state}
   end
 
-  def handle_call(:shard_statuses, _from, state) do
-    statuses =
-      state.shards
-      |> Task.async_stream(fn {id, shard} -> {id, Shard.status(shard)} end,
-        timeout: 6_000,
-        ordered: false
-      )
-      |> Enum.reduce(%{}, fn
-        {:ok, {id, status}}, acc -> Map.put(acc, id, status)
-        _timed_out, acc -> acc
-      end)
+  def handle_call(:shard_statuses, _from, state),
+    do: {:reply, Pool.statuses(state.current), state}
 
-    {:reply, statuses, state}
+  # from scratch: the shard identifies again
+  def handle_call({:restart_shard, shard_id}, _from, %{current: pool} = state) do
+    if Map.has_key?(pool.shards, shard_id) do
+      Sessions.delete(state.bot, shard_id, pool.count)
+      {reply, pool} = Pool.restart(pool, shard_id, state)
+      {:reply, reply, %{state | current: pool}}
+    else
+      {:reply, {:error, :not_found}, state}
+    end
   end
 
-  def handle_call({:restart_shard, shard_id}, _from, state) do
-    case state.shards[shard_id] do
-      nil ->
-        {:reply, {:error, :not_found}, state}
-
-      old ->
-        # demonitor the old shard so its :DOWN doesn't restart it a second time
-        {refs, others} = Map.split_with(state.shard_refs, fn {_ref, id} -> id == shard_id end)
-        Enum.each(refs, fn {ref, _id} -> Process.demonitor(ref, [:flush]) end)
-        DynamicSupervisor.terminate_child(state.shard_supervisor, old)
-
-        case Pool.start(%{Pool.forget(state, shard_id) | shard_refs: others}, shard_id) do
-          {:ok, state} ->
-            {:reply, :ok, state}
-
-          {:error, reason} ->
-            {:reply, {:error, reason}, %{Pool.forget(state, shard_id) | shard_refs: others}}
-        end
+  defp maybe_fire_ready(%{ready_fired: false, current: pool} = state) do
+    if Pool.all_ready?(pool) do
+      Dispatcher.dispatch(:ready, %{shard_count: pool.count})
+      %{state | ready_fired: true}
+    else
+      state
     end
+  end
+
+  defp maybe_fire_ready(state), do: state
+
+  defp maybe_switch(%{next: next} = state),
+    do: if(Pool.all_ready?(next), do: Reshard.switch(state), else: state)
+
+  # the generation with this shard count
+  defp pool(%{current: %Pool{count: count} = pool}, count), do: {:current, pool}
+  defp pool(%{next: %Pool{count: count} = pool}, count), do: {:next, pool}
+  defp pool(_state, _count), do: nil
+
+  defp pop_ref(state, ref) do
+    Enum.find_value([:current, :next], {state, nil, nil}, fn key ->
+      with %Pool{} = pool <- Map.get(state, key),
+           {shard_id, pool} when shard_id != nil <- Pool.pop_ref(pool, ref) do
+        {Map.put(state, key, pool), pool.count, shard_id}
+      else
+        _ -> nil
+      end
+    end)
   end
 end

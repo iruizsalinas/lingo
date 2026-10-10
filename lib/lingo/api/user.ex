@@ -28,7 +28,11 @@ defmodule Lingo.Api.User do
     Client.request(:patch, "/users/@me", json: params) |> Client.into(&User.new/1)
   end
 
-  @doc "Lists the guilds the bot is in, 200 at a time."
+  @doc """
+  Lists the guilds the bot is in, 200 at a time. Options: `:before`,
+  `:after`, `:limit`, `:with_counts`, and `:shard`, which bots on large bot
+  sharding must give (one call per shard from `0` to `max_concurrency - 1`).
+  """
   @spec list_guilds(keyword()) :: Api.result([map()])
   def list_guilds(opts \\ []) do
     params =

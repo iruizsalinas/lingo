@@ -5,9 +5,32 @@ defmodule Lingo.Gateway do
 
   Answers to gateway requests arrive later, as events for
   `c:Lingo.Bot.handle_event/2`.
+
+  ## Large bots
+
+    * **Resuming.** A shard that crashes or restarts resumes its session
+      instead of identifying again, so no events are lost and no identify is
+      spent. To carry sessions over a full restart (a redeploy), give a
+      `Lingo.Gateway.SessionStore`.
+    * **Identify limits.** Shards identify in their `max_concurrency` bucket
+      order, and never past the daily limit (going over it resets the token):
+      once it's spent they wait for it to reset.
+    * **Resharding without downtime.** `reshard/0`, or `auto_reshard: true`
+      under `:sharding`, brings up the new shards next to the running ones,
+      and switches over once all are ready.
+    * **Several nodes.** Run one bot on connected nodes by giving each the
+      same `:name` and `:count`, and its own `:ids`. The nodes share the
+      identify limits, and gateway requests reach the node that runs the
+      guild's shard; `update_presence/2` reaches every node. Shard statuses
+      and latencies are this node's.
+    * **Encoding and compression.** `gateway: [encoding: :etf]` receives
+      Erlang terms instead of JSON. `compression: :zstd` (OTP 28 or later)
+      uses less CPU than the default `:zlib`; `:none` turns it off.
+
+  `Lingo.Telemetry` lists the events to watch all this with.
   """
 
-  alias Lingo.Gateway.{Heartbeat, Payload, ShardManager}
+  alias Lingo.Gateway.{Heartbeat, Payload, Sessions, ShardManager}
 
   @doc """
   Sets the bot's status (`:online`, `:idle`, `:dnd` or `:invisible`) on every
@@ -52,16 +75,30 @@ defmodule Lingo.Gateway do
   @spec shard_statuses() :: %{non_neg_integer() => atom()}
   defdelegate shard_statuses, to: ShardManager
 
-  @doc "Reconnects a shard from scratch."
+  @doc "Reconnects a shard from scratch, identifying again."
   @spec restart_shard(non_neg_integer()) :: :ok | {:error, term()}
   defdelegate restart_shard(shard_id), to: ShardManager
 
   @doc """
-  Asks Discord for the recommended shard count and restarts every shard with
-  it. Does nothing when the count is fixed.
+  Asks Discord for the recommended shard count and, when it differs, moves
+  to it without downtime: the new shards connect next to the running ones,
+  delivering nothing, and take over once all are ready (events at the very
+  moment of the switch may arrive twice or not at all). The old shards then
+  close. `:ready` doesn't fire again.
+
+  Does nothing when the count or the ids are fixed, while a reshard is under
+  way, or when the day's identifies wouldn't cover the new shards. A reshard
+  whose shards don't all get ready in time is abandoned.
   """
   @spec reshard() :: :ok
   defdelegate reshard, to: ShardManager
+
+  @doc """
+  The sessions of the shards on this node, as a `Lingo.Gateway.SessionStore`
+  saves them.
+  """
+  @spec sessions() :: [Lingo.Gateway.SessionStore.session()]
+  def sessions, do: Sessions.list(Lingo.Instance.current())
 
   @doc "A shard's last heartbeat round trip in ms, or `nil`."
   @spec latency(non_neg_integer()) :: non_neg_integer() | nil

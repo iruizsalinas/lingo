@@ -96,4 +96,32 @@ defmodule Lingo.Gateway.CompressionTest do
       assert Compression.close(ctx) == :ok
     end
   end
+
+  if Compression.zstd_available?() do
+    describe "zstd-stream" do
+      test "decompresses each message as it arrives" do
+        ctx = Compression.new(:zstd)
+        msg1 = ~s({"op":11})
+        msg2 = ~s({"op":0,"t":"READY","d":{}})
+
+        {ctx, result1} = Compression.push(ctx, IO.iodata_to_binary(:zstd.compress(msg1)))
+        {ctx, result2} = Compression.push(ctx, IO.iodata_to_binary(:zstd.compress(msg2)))
+
+        assert {result1, result2} == {msg1, msg2}
+        assert Compression.close(ctx) == :ok
+      end
+
+      test "decompresses payloads larger than one output chunk" do
+        payload = JSON.encode!(%{"d" => Base.encode64(:crypto.strong_rand_bytes(1_000_000))})
+        ctx = Compression.new(:zstd)
+
+        assert {_ctx, ^payload} =
+                 Compression.push(ctx, IO.iodata_to_binary(:zstd.compress(payload)))
+      end
+
+      test "raises on data that isn't zstd" do
+        assert_raise ErlangError, fn -> Compression.push(Compression.new(:zstd), "garbage") end
+      end
+    end
+  end
 end

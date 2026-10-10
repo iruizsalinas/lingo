@@ -11,7 +11,6 @@ defmodule Lingo.Instance do
   use GenServer
 
   @current {Lingo, :current_bot}
-  @running {Lingo, :running_bots}
 
   def start_link(opts) do
     name = Keyword.fetch!(opts, :name)
@@ -61,8 +60,9 @@ defmodule Lingo.Instance do
     end
   end
 
+  # the bots whose config is up: no shared list to keep in step
   @spec running() :: [term()]
-  def running, do: :persistent_term.get(@running, [])
+  def running, do: for({{Lingo, :bot, name}, _config} <- :persistent_term.get(), do: name)
 
   defp default do
     case running() do
@@ -92,16 +92,13 @@ defmodule Lingo.Instance do
     end
   end
 
+  # writes go through the bot's Instance, one at a time, so none is lost to
+  # another (shards start concurrently, and READY writes too)
   @spec put(term(), atom(), term()) :: :ok
   def put(name, key, value) do
-    locked(fn ->
-      config = :persistent_term.get({Lingo, :bot, name}, %{})
-
-      unless Map.get(config, key) == value,
-        do: :persistent_term.put({Lingo, :bot, name}, Map.put(config, key, value))
-    end)
-
-    :ok
+    if Map.get(:persistent_term.get({Lingo, :bot, name}, %{}), key) == value,
+      do: :ok,
+      else: GenServer.call(process_name(name, __MODULE__), {:put, key, value})
   end
 
   @doc "The application id, from READY or fetched once when READY hasn't arrived yet."
@@ -132,20 +129,20 @@ defmodule Lingo.Instance do
 
     config = opts |> Keyword.delete(:name) |> Map.new() |> Map.put(:name, name)
     :persistent_term.put({Lingo, :bot, name}, config)
-    update_running(&[name | List.delete(&1, name)])
 
     {:ok, name}
   end
 
   @impl true
-  def terminate(_reason, name) do
-    update_running(&List.delete(&1, name))
-    :persistent_term.erase({Lingo, :bot, name})
+  def handle_call({:put, key, value}, _from, name) do
+    config = :persistent_term.get({Lingo, :bot, name}, %{})
+
+    unless Map.get(config, key) == value,
+      do: :persistent_term.put({Lingo, :bot, name}, Map.put(config, key, value))
+
+    {:reply, :ok, name}
   end
 
-  defp update_running(fun), do: locked(fn -> :persistent_term.put(@running, fun.(running())) end)
-
-  # shards and bots start concurrently, so read-modify-writes of the shared
-  # terms are serialized (writes are rare: startup and READY)
-  defp locked(fun), do: :global.trans({__MODULE__, self()}, fun, [node()])
+  @impl true
+  def terminate(_reason, name), do: :persistent_term.erase({Lingo, :bot, name})
 end

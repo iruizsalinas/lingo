@@ -8,7 +8,7 @@ defmodule Lingo.TestBot do
 
   alias Lingo.Instance
 
-  @services [:cache, :rate_limiter, :collector]
+  @services [:cache, :rate_limiter, :collector, :identify, :sessions, :pending, :cooldowns]
 
   @doc """
   Options: `:bot` (module), `:token`, `:http_request`, `:application_id`,
@@ -44,4 +44,14 @@ defmodule Lingo.TestBot do
 
   defp child_spec(:collector, name, _opts),
     do: {Registry, keys: :duplicate, name: Instance.process_name(name, Lingo.Collector.Registry)}
+
+  # identifies are always available right away
+  defp child_spec(:identify, name, _opts),
+    do:
+      {Lingo.Gateway.Identify,
+       bot: name, plan: %{max_concurrency: 16, remaining: 1_000, reset_after: 0}}
+
+  defp child_spec(:sessions, name, _opts), do: {Lingo.Gateway.Sessions, bot: name}
+  defp child_spec(:pending, name, _opts), do: {Lingo.Endpoint.Pending, bot: name}
+  defp child_spec(:cooldowns, name, _opts), do: {Lingo.Bot.Cooldowns, bot: name}
 end

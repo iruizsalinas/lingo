@@ -13,7 +13,12 @@ defmodule Lingo.Gateway.Connection.TransportTest do
   end
 
   setup do
-    bot = Lingo.TestBot.start(bot: EventBot, test_pid: self(), start: [:cache, :collector])
+    bot =
+      Lingo.TestBot.start(
+        bot: EventBot,
+        test_pid: self(),
+        start: [:cache, :collector, :identify, :sessions]
+      )
 
     {ws, server} = Server.connect()
     :ok = WebSocket.activate(ws)

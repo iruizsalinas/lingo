@@ -1,6 +1,7 @@
 defmodule Lingo.Gateway.ConnectionTest do
   use ExUnit.Case, async: true
 
+  import Bitwise
   import ExUnit.CaptureLog
 
   alias Lingo.Gateway.{Connection, WebSocket}
@@ -15,7 +16,12 @@ defmodule Lingo.Gateway.ConnectionTest do
   end
 
   setup do
-    bot = Lingo.TestBot.start(bot: EventBot, test_pid: self(), start: [:cache, :collector])
+    bot =
+      Lingo.TestBot.start(
+        bot: EventBot,
+        test_pid: self(),
+        start: [:cache, :collector, :identify, :sessions]
+      )
 
     {ws, server} = Server.connect()
     :ok = WebSocket.activate(ws)
@@ -115,7 +121,7 @@ defmodule Lingo.Gateway.ConnectionTest do
 
       {first, second} = :erlang.split_binary(compressed, div(byte_size(compressed), 2))
 
-      state = %{state | zlib: Lingo.Gateway.Compression.new()}
+      state = %{state | inflate: Lingo.Gateway.Compression.new()}
       {:noreply, state} = deliver(state, server, frame(:binary, first))
       assert state.seq == nil
 
@@ -124,7 +130,7 @@ defmodule Lingo.Gateway.ConnectionTest do
     end
 
     test "reconnects on data that doesn't inflate", %{state: state, server: server} do
-      state = %{state | zlib: Lingo.Gateway.Compression.new()}
+      state = %{state | inflate: Lingo.Gateway.Compression.new()}
 
       {:noreply, state} =
         deliver(state, server, frame(:binary, <<"garbage", 0, 0, 0xFF, 0xFF>>))
@@ -199,6 +205,71 @@ defmodule Lingo.Gateway.ConnectionTest do
         end)
 
       assert log =~ "fatal code 4004"
+    end
+  end
+
+  describe "encodings" do
+    test "decodes ETF frames", %{state: state, server: server} do
+      payload = %{
+        op: 0,
+        t: :RATE_LIMITED,
+        s: 3,
+        d: %{opcode: 8, retry_after: 1.5, meta: %{guild_id: 1 <<< 40}}
+      }
+
+      state = %{state | encoding: :etf}
+
+      {:noreply, state} = deliver(state, server, frame(:binary, :erlang.term_to_binary(payload)))
+
+      assert state.seq == 3
+      guild_id = Integer.to_string(1 <<< 40)
+      assert_receive {:rate_limited, %{"opcode" => 8, "meta" => %{"guild_id" => ^guild_id}}}
+    end
+  end
+
+  describe "sessions" do
+    test "a restarted connection picks up its stored session", %{state: state} do
+      Lingo.Gateway.Sessions.put(state.bot, 0, 1, "s1", "wss://resume", 41)
+
+      {:ok, restored} =
+        Connection.init(bot: state.bot, shard_id: 0, shard_count: 1, token: "t", intents: 1)
+
+      assert {restored.session_id, restored.resume_gateway_url, restored.seq} ==
+               {"s1", "wss://resume", 41}
+
+      assert_receive :connect
+    end
+
+    test "READY stores the session and dispatches move its seq", %{state: state, server: server} do
+      ready = %{
+        "op" => 0,
+        "t" => "READY",
+        "s" => 1,
+        "d" => %{"session_id" => "s1", "resume_gateway_url" => "wss://resume"}
+      }
+
+      {:noreply, state} = deliver_json(%{state | state: :identifying}, server, ready)
+      assert Lingo.Gateway.Sessions.fetch(state.bot, 0, 1) == {"s1", "wss://resume", 1}
+
+      typing = %{"op" => 0, "t" => "TYPING_START", "s" => 2, "d" => %{}}
+      {:noreply, state} = deliver_json(state, server, typing)
+      assert Lingo.Gateway.Sessions.fetch(state.bot, 0, 1) == {"s1", "wss://resume", 2}
+
+      {:noreply, _state} = deliver_json(state, server, %{"op" => 9, "d" => false})
+      assert Lingo.Gateway.Sessions.fetch(state.bot, 0, 1) == nil
+    end
+
+    test "a shard whose count isn't the live one delivers nothing", %{
+      state: state,
+      server: server
+    } do
+      Lingo.Instance.put(state.bot, :shard_count, 2)
+      payload = %{"op" => 0, "t" => "RATE_LIMITED", "s" => 1, "d" => %{"opcode" => 8}}
+
+      {:noreply, state} = deliver_json(state, server, payload)
+      assert state.seq == 1
+      refute state.joined
+      refute_receive {:rate_limited, _}, 100
     end
   end
 end
