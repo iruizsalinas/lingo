@@ -36,18 +36,43 @@ defmodule Lingo.Bot do
 
   `use Lingo.Bot` imports the declaration macros from `Lingo.Bot.Commands`,
   the option builders from `Lingo.Bot.Options` and the functions of
-  `Lingo.Context`.
+  `Lingo.Context`. If your module calls a function of its own with the same
+  name, such as `get_user/2`, leave that one out:
+
+      use Lingo.Bot
+      import Lingo.Context, except: [get_user: 2]
 
   You only write the clauses you care about: anything that matches none of
   them is ignored (an unknown command is logged). When you don't implement
   `c:handle_component/2` or `c:handle_modal/2` at all, those interactions
   reach `c:handle_event/2` as `:interaction_create` instead.
 
-  ## Registering commands
+  ## Starting
 
-  Declared commands are sent to Discord with `Lingo.register_commands/1`, or
-  automatically once the bot is ready if it was started with the
-  `:register_commands` option (see `Lingo.start_link/1`).
+  `use Lingo.Bot` gives your module `child_spec/1` and `start_link/1`, so it
+  goes straight into a supervision tree:
+
+      children = [
+        {MyBot, token: System.fetch_env!("BOT_TOKEN"), intents: [:guilds, :guild_messages]}
+      ]
+
+  Options:
+
+    * `:token` (required) - the bot token
+    * `:name` - names this bot, for `Lingo.with_bot/2`; defaults to the module.
+      Lets one module run as several bots.
+    * `:intents` - gateway intents, as atoms or a bitfield
+      (default `[:guilds, :guild_messages]`)
+    * `:register_commands` - registers the declared commands once all shards
+      are ready: `:global`, `{:guild, id}` or `{:guilds, ids}` (default
+      `false`). `Lingo.register_commands/1` does it on demand.
+    * `:cache` - which resources to cache and their policies; nothing is
+      cached by default. See `Lingo.Cache`.
+    * `:sharding` - `:count` (default `:auto`) and `:ids`, the shards this
+      node runs (needs `:count`)
+    * `:presence` - the initial `:status`, `:text` and `:activity`
+    * `:rate_limit` - `:max_wait`, the longest an API call waits on rate
+      limits in ms (default `:infinity`, see `Lingo.with_max_wait/2`)
   """
 
   alias Lingo.Context
@@ -97,6 +122,14 @@ defmodule Lingo.Bot do
       import Lingo.Context, except: [new: 1, new: 2]
 
       Module.register_attribute(__MODULE__, :lingo_commands, accumulate: true)
+
+      @doc false
+      def child_spec(opts), do: Lingo.Supervisor.child_spec(__MODULE__, opts)
+
+      @doc false
+      def start_link(opts), do: Lingo.Supervisor.start_link(__MODULE__, opts)
+
+      defoverridable child_spec: 1, start_link: 1
 
       @before_compile Lingo.Bot.Compiler
     end

@@ -2,11 +2,11 @@ defmodule Lingo do
   @moduledoc """
   A Discord library: the gateway, the REST API, interactions and voice.
 
-  Write a bot module with `Lingo.Bot`, then add Lingo to your supervision tree:
+  Write a bot module with `Lingo.Bot`, then add it to your supervision tree
+  (the options are listed in `Lingo.Bot`):
 
       children = [
-        {Lingo,
-         bot: MyBot,
+        {MyBot,
          token: System.fetch_env!("BOT_TOKEN"),
          intents: [:guilds, :guild_messages, :message_content],
          register_commands: :global}
@@ -45,43 +45,6 @@ defmodule Lingo do
   A `Lingo.Context` carries its bot, so an interaction can be answered from
   any process.
   """
-
-  @doc """
-  Starts a bot. Usually called through a child spec, `{Lingo, opts}`.
-
-  Options:
-
-    * `:bot` (required) - the module that uses `Lingo.Bot`
-    * `:token` (required) - the bot token
-    * `:name` - names this bot, for `with_bot/2`; defaults to `:bot`
-    * `:intents` - gateway intents, as atoms or a bitfield
-      (default `[:guilds, :guild_messages]`)
-    * `:register_commands` - registers the bot's commands once all shards are
-      ready: `:global`, `{:guild, id}` or `{:guilds, ids}` (default `false`)
-    * `:cache` - `false` or keyword policies for limits, TTL, filtering, `:keep`,
-      and global/per-resource storage settings. `:only` selects resources.
-      All resource caches are disabled by default; enable only what you need.
-      See `Lingo.Cache`.
-    * `:sharding` - `:count` (default `:auto`) and `:ids`, the shards this
-      node runs (needs `:count`)
-    * `:presence` - the initial `:status`, `:text` and `:activity`
-    * `:rate_limit` - `:max_wait`, the longest an API call waits on rate
-      limits in ms (default `:infinity`, see `with_max_wait/2`)
-  """
-  @spec start_link(keyword()) :: Supervisor.on_start()
-  def start_link(opts), do: opts |> Lingo.Config.validate!() |> Lingo.Supervisor.start_link()
-
-  @doc "A child spec for starting a bot under a supervisor. See `start_link/1`."
-  @spec child_spec(keyword()) :: Supervisor.child_spec()
-  def child_spec(opts) do
-    opts = Lingo.Config.validate!(opts)
-
-    %{
-      id: {__MODULE__, opts[:name]},
-      start: {Lingo.Supervisor, :start_link, [opts]},
-      type: :supervisor
-    }
-  end
 
   @doc """
   Runs `fun` with calls going to the bot named `name`. Only needed when

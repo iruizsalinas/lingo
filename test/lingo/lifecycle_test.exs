@@ -64,32 +64,33 @@ defmodule Lingo.LifecycleTest do
   end
 
   describe "starting" do
-    test "requires a bot and a token" do
-      assert_raise ArgumentError, ~r/:token/, fn -> Lingo.child_spec(bot: AlphaBot) end
-      assert_raise ArgumentError, ~r/:bot/, fn -> Lingo.child_spec(token: "t") end
+    test "requires a token" do
+      assert_raise ArgumentError, ~r/:token/, fn -> AlphaBot.child_spec([]) end
     end
 
     test "rejects unknown and invalid options" do
-      assert_raise ArgumentError, fn ->
-        Lingo.child_spec(bot: AlphaBot, token: "t", intent: [])
-      end
+      assert_raise ArgumentError, fn -> AlphaBot.child_spec(token: "t", intent: []) end
 
       assert_raise ArgumentError, ~r/register_commands/, fn ->
-        Lingo.child_spec(bot: AlphaBot, token: "t", register_commands: :everywhere)
+        AlphaBot.child_spec(token: "t", register_commands: :everywhere)
       end
 
       assert_raise ArgumentError, ~r/max_wait/, fn ->
-        Lingo.child_spec(bot: AlphaBot, token: "t", rate_limit: [max_wait: -1])
+        AlphaBot.child_spec(token: "t", rate_limit: [max_wait: -1])
       end
 
       assert_raise ArgumentError, ~r/:count/, fn ->
-        Lingo.child_spec(bot: AlphaBot, token: "t", sharding: [ids: [0]])
+        AlphaBot.child_spec(token: "t", sharding: [ids: [0]])
       end
     end
 
-    test "child specs are per bot, so several fit in one supervisor" do
-      assert Lingo.child_spec(bot: AlphaBot, token: "t").id == {Lingo, AlphaBot}
-      assert Lingo.child_spec(bot: AlphaBot, token: "t", name: :alpha2).id == {Lingo, :alpha2}
+    test "a bot module is its own child spec, one per name" do
+      assert %{id: AlphaBot, start: {Lingo.Supervisor, :start_link, [opts]}, type: :supervisor} =
+               AlphaBot.child_spec(token: "t")
+
+      assert opts[:bot] == AlphaBot and opts[:name] == AlphaBot
+      assert AlphaBot.child_spec(token: "t", name: :alpha2).id == :alpha2
+      assert Supervisor.child_spec({AlphaBot, token: "t"}, []).id == AlphaBot
     end
 
     test "a restarted Instance restarts the processes that read its config" do

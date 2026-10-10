@@ -15,7 +15,7 @@ defmodule Lingo.Cache do
   ## Enabling
 
   Caching is opt-in: omitting `:cache`, `cache: []` and `cache: false` cache
-  nothing. Enable resources with the `:cache` option of `Lingo.start_link/1`,
+  nothing. Enable resources with the `:cache` option your bot starts with (see `Lingo.Bot`),
   each as `true` (its defaults), `false` or a keyword policy:
 
       cache: [

@@ -5,6 +5,15 @@ defmodule Lingo.Supervisor do
 
   alias Lingo.Instance
 
+  # what a bot module's generated child_spec/1 and start_link/1 call
+  def child_spec(bot, opts) do
+    opts = Lingo.Config.validate!(Keyword.put(opts, :bot, bot))
+    %{id: opts[:name], start: {__MODULE__, :start_link, [opts]}, type: :supervisor}
+  end
+
+  def start_link(bot, opts),
+    do: opts |> Keyword.put(:bot, bot) |> Lingo.Config.validate!() |> start_link()
+
   def start_link(opts) do
     name = Keyword.fetch!(opts, :name)
     Supervisor.start_link(__MODULE__, opts, name: Instance.process_name(name, __MODULE__))

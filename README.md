@@ -49,8 +49,7 @@ Add it to your supervision tree:
 
 ```elixir
 children = [
-  {Lingo,
-   bot: MyBot,
+  {MyBot,
    token: System.fetch_env!("BOT_TOKEN"),
    intents: [:guilds, :guild_messages, :message_content],
    register_commands: :global}
