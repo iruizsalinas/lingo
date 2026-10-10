@@ -4,7 +4,19 @@ defmodule Lingo.Helper.ChannelTest do
   alias Lingo.Type.{Channel, Guild, Member, Message, Role, User}
 
   setup do
-    Lingo.TestBot.start(start: [:cache])
+    Lingo.TestBot.start(
+      start: [:cache],
+      cache: [
+        guilds: true,
+        channels: true,
+        roles: true,
+        users: true,
+        members: true,
+        messages: true,
+        presences: true,
+        voice_states: true
+      ]
+    )
 
     # seed a guild
     Lingo.Cache.Store.put_guild(%Guild{

@@ -5,8 +5,8 @@ defmodule Lingo.Cache.StoreTest do
   alias Lingo.Type.{Channel, Guild, Member, Message, Presence, Role, User}
 
   test "member and presence users survive independent user eviction or disabling" do
-    for users <- [false, [max_entries: 1]] do
-      Lingo.TestBot.start(start: [:cache], cache: [users: users])
+    for users <- [false, [max_entries: 1, filter: :all, keep: :none]] do
+      Lingo.TestBot.start(start: [:cache], cache: [users: users, members: true, presences: true])
       user = %User{id: "u", username: "alice", bot: true}
       Store.put_member("g", %Member{guild_id: "g", user: user})
       Store.put_presence("g", %Presence{guild_id: "g", user: user})
@@ -20,7 +20,11 @@ defmodule Lingo.Cache.StoreTest do
   end
 
   test "deletion cleans children with guild and channel caches disabled" do
-    Lingo.TestBot.start(start: [:cache], cache: [guilds: false, channels: false])
+    Lingo.TestBot.start(
+      start: [:cache],
+      cache: [guilds: false, channels: false, members: true, roles: true, messages: true]
+    )
+
     Store.put_member("g", %Member{user: %User{id: "u"}})
     Store.put_role("g", %Role{id: "r"})
     Store.put_message(%Message{id: "m", channel_id: "c", guild_id: "g"})
@@ -34,7 +38,7 @@ defmodule Lingo.Cache.StoreTest do
   end
 
   test "resource eviction and clearing do not cascade into other resources" do
-    Lingo.TestBot.start(start: [:cache], cache: [channels: [max_entries: 1]])
+    Lingo.TestBot.start(start: [:cache], cache: [channels: [max_entries: 1], messages: true])
     Store.put_channel(%Channel{id: "c", guild_id: "g"})
     Store.put_message(%Message{id: "m", channel_id: "c", guild_id: "g"})
     Store.put_channel(%Channel{id: "d", guild_id: "g"})
@@ -45,7 +49,7 @@ defmodule Lingo.Cache.StoreTest do
   end
 
   test "guild deletion also removes messages without a guild ID in known channels" do
-    Lingo.TestBot.start(start: [:cache])
+    Lingo.TestBot.start(start: [:cache], cache: [channels: true, messages: true])
     Store.put_channel(%Channel{id: "c", guild_id: "g"})
     Store.put_message(%Message{id: "m", channel_id: "c"})
     Store.delete_guild("g")

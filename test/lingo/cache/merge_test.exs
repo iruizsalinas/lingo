@@ -5,7 +5,22 @@ defmodule Lingo.Cache.MergeTest do
   alias Lingo.Type.{Attachment, Embed, Member, Message, Presence, User}
 
   setup do
-    %{bot: Lingo.TestBot.start(start: [:cache])}
+    %{
+      bot:
+        Lingo.TestBot.start(
+          start: [:cache],
+          cache: [
+            guilds: true,
+            channels: true,
+            roles: true,
+            users: true,
+            members: true,
+            messages: true,
+            presences: true,
+            voice_states: true
+          ]
+        )
+    }
   end
 
   describe "message cache" do

@@ -56,7 +56,7 @@ defmodule Lingo.Cache.Statistics do
 
     bytes =
       Enum.reduce(
-        [state.table, state.meta, state.order, state.expiry],
+        Enum.reject([state.table, state.meta, state.order, state.expiry], &is_nil/1),
         0,
         &(:ets.info(&1, :memory) + &2)
       ) * :erlang.system_info(:wordsize)

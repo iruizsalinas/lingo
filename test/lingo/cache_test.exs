@@ -5,7 +5,22 @@ defmodule Lingo.CacheTest do
   alias Lingo.Type.{Channel, Guild, Member, Role, User}
 
   setup do
-    %{bot: Lingo.TestBot.start(start: [:cache])}
+    %{
+      bot:
+        Lingo.TestBot.start(
+          start: [:cache],
+          cache: [
+            guilds: true,
+            channels: true,
+            roles: true,
+            users: true,
+            members: true,
+            messages: true,
+            presences: true,
+            voice_states: true
+          ]
+        )
+    }
   end
 
   describe "guild cache" do

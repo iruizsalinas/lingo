@@ -38,7 +38,15 @@ defmodule Lingo.Gateway.Dispatcher.CacheTest do
   end
 
   test "every resource can be disabled without suppressing typed events" do
-    configs = [false | Enum.map(Lingo.Cache.Policy.resources(), &[{&1, false}])]
+    resources = Lingo.Cache.Policy.resources()
+
+    configs = [
+      false,
+      []
+      | Enum.map(resources, fn disabled ->
+          Enum.map(resources, &{&1, &1 != disabled})
+        end)
+    ]
 
     for config <- configs do
       start(config)
@@ -137,8 +145,8 @@ defmodule Lingo.Gateway.Dispatcher.CacheTest do
     assert Cache.get_guild("g") == nil
   end
 
-  test "permission preset retains self and permissions without caching other members" do
-    start(:permissions)
+  test "explicit permission caches retain self without caching other members" do
+    start(guilds: true, channels: true, roles: true, users: :self, members: :self)
     Dispatcher.dispatch(:shard_ready, %{"user" => %{"id" => "me", "username" => "bot"}})
     assert_receive {:shard_ready, _}
     Dispatcher.dispatch(:guild_create, guild())

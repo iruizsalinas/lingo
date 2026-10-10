@@ -3,7 +3,8 @@ defmodule Lingo.Helper.Member do
   What the bot can do to a member, and how members are shown.
 
   Answered from the cache, so the guilds, roles, members and channels
-  involved must be cached (the default); anything missing gives `false` or
+  involved must be explicitly enabled in the cache configuration. Caching is
+  off by default. Anything missing gives `false` or
   `nil`.
   """
 

@@ -1,30 +1,27 @@
 defmodule Lingo.Cache.Policy do
   @moduledoc false
 
-  @resources [:guilds, :channels, :users, :members, :presences, :roles, :voice_states, :messages]
-  @base %{
-    max_entries: :infinity,
-    scope_limit: :infinity,
-    ttl: :infinity,
-    filter: :all,
-    keep: :none
-  }
+  alias Lingo.Cache.Policy.Options
 
+  @resources [:guilds, :channels, :users, :members, :presences, :roles, :voice_states, :messages]
   def resources, do: @resources
   def normalize(false), do: %{}
   def normalize(nil), do: normalize([])
 
+  # Retained for callers of the earlier API as an explicit opt-in.
   def normalize(:permissions),
-    do:
-      normalize(
-        only: [:guilds, :channels, :roles, :users, :members],
-        users: :self,
-        members: :self
-      )
+    do: normalize(guilds: true, channels: true, roles: true, users: :self, members: :self)
 
   def normalize(opts) when is_list(opts) do
     unless Keyword.keyword?(opts), do: invalid!("must be false, :permissions or a keyword list")
-    opts = Keyword.validate!(opts, @resources ++ [:only, :enabled, :max_messages_per_channel])
+
+    opts =
+      Keyword.validate!(
+        opts,
+        @resources ++ [:only, :enabled, :max_messages_per_channel, :compact, :compressed]
+      )
+
+    Options.validate_storage(opts)
 
     if Keyword.has_key?(opts, :only) and Keyword.has_key?(opts, :enabled),
       do: invalid!("cannot combine :only and legacy :enabled")
@@ -35,12 +32,13 @@ defmodule Lingo.Cache.Policy do
       do: invalid!(":only/:enabled must be a list of #{inspect(@resources)}")
 
     if Keyword.has_key?(opts, :max_messages_per_channel),
-      do: limit!(opts[:max_messages_per_channel], :max_messages_per_channel)
+      do: Options.validate_legacy(opts[:max_messages_per_channel])
 
     # Validate explicit policies even when excluded by :only.
     policies =
       Map.new(@resources, fn resource ->
-        {resource, resource_policy(resource, Keyword.get(opts, resource, true), opts)}
+        fallback = default(resource, opts)
+        {resource, resource_policy(resource, Keyword.get(opts, resource, fallback), opts)}
       end)
 
     Map.filter(policies, fn {resource, policy} -> resource in only and policy != false end)
@@ -48,51 +46,22 @@ defmodule Lingo.Cache.Policy do
 
   def normalize(_), do: invalid!("must be false, :permissions or a keyword list")
 
+  defp default(resource, opts) do
+    selected? = Keyword.has_key?(opts, :only) or Keyword.has_key?(opts, :enabled)
+    legacy_messages? = resource == :messages and Keyword.has_key?(opts, :max_messages_per_channel)
+    selected? or legacy_messages?
+  end
+
   defp resource_policy(_, false, _), do: false
 
   defp resource_policy(resource, :self, opts) when resource in [:users, :members],
-    do: resource_policy(resource, [filter: :self, keep: :self], opts)
+    do: Options.build(resource, [filter: :self, keep: :self], opts)
 
-  defp resource_policy(resource, true, opts), do: resource_policy(resource, [], opts)
+  defp resource_policy(resource, true, opts), do: Options.build(resource, [], opts)
 
   defp resource_policy(resource, options, opts) when is_list(options) do
     unless Keyword.keyword?(options), do: invalid!("#{resource} must be a keyword list")
-
-    scope_key =
-      if resource == :messages, do: :max_entries_per_channel, else: :max_entries_per_guild
-
-    scoped? = resource in [:channels, :members, :presences, :roles, :voice_states, :messages]
-    allowed = [:max_entries, :ttl, :filter, :keep] ++ if(scoped?, do: [scope_key], else: [])
-    options = Keyword.validate!(options, allowed)
-
-    default_scope =
-      if resource == :messages,
-        do: Keyword.get(opts, :max_messages_per_channel, 200),
-        else: :infinity
-
-    policy =
-      Map.merge(@base, Map.new(Keyword.take(options, [:max_entries, :ttl, :filter, :keep])))
-
-    policy = Map.put(policy, :scope_limit, Keyword.get(options, scope_key, default_scope))
-
-    for key <- [:max_entries, :scope_limit, :ttl], do: limit!(policy[key], key)
-
-    for key <- [:filter, :keep] do
-      value = policy[key]
-
-      unless value in [:all, :none] or (value == :self and resource in [:users, :members]) or
-               is_function(value, 2),
-             do:
-               invalid!(
-                 "#{resource} #{key} must be :all, :none, :self (users/members), or a function of arity 2"
-               )
-    end
-
-    if (policy.max_entries == 0 or policy.scope_limit == 0 or policy.ttl == 0 or
-          policy.filter == :none) and
-         policy.keep == :none,
-       do: false,
-       else: policy
+    Options.build(resource, options, opts)
   end
 
   defp resource_policy(resource, _, _), do: invalid!("invalid policy for #{resource}")
@@ -130,13 +99,8 @@ defmodule Lingo.Cache.Policy do
   def scope(resource, {guild_id, _}, _)
       when resource in [:members, :roles, :presences, :voice_states], do: guild_id
 
-  def scope(:channels, _, value), do: value.guild_id
+  def scope(:channels, _, value), do: Map.get(value, :guild_id)
   def scope(_, _, _), do: nil
-
-  defp limit!(value, key) do
-    unless value == :infinity or (is_integer(value) and value >= 0),
-      do: invalid!("#{key} must be :infinity or a non-negative integer")
-  end
 
   defp invalid!(message), do: raise(ArgumentError, ":cache #{message}")
 end

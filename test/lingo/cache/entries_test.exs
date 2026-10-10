@@ -30,7 +30,10 @@ defmodule Lingo.Cache.EntriesTest do
   end
 
   test "members are bounded per guild, with an independent global budget" do
-    start(only: [:members], members: [max_entries: 3, max_entries_per_guild: 2])
+    start(
+      only: [:members],
+      members: [max_entries: 3, max_entries_per_guild: 2, filter: :all, keep: :none]
+    )
 
     for {guild, id} <- [{"a", "1"}, {"a", "2"}, {"a", "3"}, {"b", "4"}, {"b", "5"}] do
       Store.put_member(guild, %Member{guild_id: guild, user: %User{id: id}})
@@ -89,7 +92,7 @@ defmodule Lingo.Cache.EntriesTest do
   end
 
   test "TTL is refreshed by writes and not by reads" do
-    start(only: [:users], users: [ttl: 100])
+    start(only: [:users], users: [ttl: 100, filter: :all, keep: :none])
     Store.put_user(%User{id: "u", username: "first"})
     Process.sleep(60)
     Store.put_user(%User{id: "u", username: "second"})

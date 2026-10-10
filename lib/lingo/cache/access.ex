@@ -1,6 +1,6 @@
 defmodule Lingo.Cache.Access do
   @moduledoc false
-  alias Lingo.Cache.{Entries, Policy}
+  alias Lingo.Cache.{Entries, Policy, Selection, Storage}
 
   def resource(name), do: get_in(Lingo.Instance.get(:cache, %{}), [:resources, name])
 
@@ -17,7 +17,7 @@ defmodule Lingo.Cache.Access do
     with state when state != nil <- resource(name),
          [{^key, value}] <- :ets.lookup(state.table, key),
          true <- live?(state, key) do
-      value
+      Storage.decode(value, state.policy)
     else
       _ -> nil
     end
@@ -26,7 +26,7 @@ defmodule Lingo.Cache.Access do
   defp live?(%{policy: %{ttl: :infinity}}, _), do: true
   defp live?(state, key), do: Entries.live?(state, key)
 
-  def insert(name, {key, value} = entry) do
+  def insert(name, {key, value}) do
     if state = resource(name) do
       context =
         if state.policy.filter == :all and state.policy.keep == :none,
@@ -35,7 +35,8 @@ defmodule Lingo.Cache.Access do
 
       case decide(state.policy, value, context) do
         {true, kept?} ->
-          mutate(state, {:put, name, entry, kept?}, fn -> :ets.insert(state.table, entry) end)
+          stored = {key, Storage.encode(value, state.policy)}
+          mutate(state, {:put, name, stored, kept?}, fn -> :ets.insert(state.table, stored) end)
 
         {false, _} ->
           delete(name, key)
@@ -78,21 +79,20 @@ defmodule Lingo.Cache.Access do
   end
 
   def select(name, spec) do
-    if state = resource(name) do
-      if state.policy.ttl == :infinity do
-        :ets.select(state.table, spec)
-      else
-        live = state.table |> :ets.tab2list() |> Enum.filter(fn {key, _} -> live?(state, key) end)
-        :ets.match_spec_run(live, :ets.match_spec_compile(spec))
-      end
-    else
-      []
-    end
+    if state = resource(name), do: Selection.select(state, spec), else: []
   end
 
   def select_delete(name, spec) do
     if state = resource(name) do
-      mutate(state, {:select_delete, name, spec}, fn -> :ets.select_delete(state.table, spec) end)
+      mutate(state, {:select_delete, name, spec}, fn ->
+        if state.policy.compact do
+          {count, _} = Selection.delete(state, spec)
+
+          count
+        else
+          :ets.select_delete(state.table, spec)
+        end
+      end)
     else
       0
     end

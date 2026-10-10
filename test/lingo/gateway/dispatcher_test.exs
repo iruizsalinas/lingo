@@ -12,7 +12,23 @@ defmodule Lingo.Gateway.DispatcherTest do
   end
 
   setup do
-    %{bot: Lingo.TestBot.start(bot: DispatchBot, test_pid: self(), start: [:cache, :collector])}
+    %{
+      bot:
+        Lingo.TestBot.start(
+          bot: DispatchBot,
+          test_pid: self(),
+          start: [:cache, :collector],
+          cache: [
+            guilds: true,
+            channels: true,
+            roles: true,
+            users: true,
+            members: true,
+            messages: true,
+            presences: true
+          ]
+        )
+    }
   end
 
   test "dispatches guild audit log entry create with guild_id intact" do

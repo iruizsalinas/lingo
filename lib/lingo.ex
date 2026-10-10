@@ -57,9 +57,10 @@ defmodule Lingo do
       (default `[:guilds, :guild_messages]`)
     * `:register_commands` - registers the bot's commands once all shards are
       ready: `:global`, `{:guild, id}` or `{:guilds, ids}` (default `false`)
-    * `:cache` - `false`, `:permissions`, or per-resource policies for limits,
-      TTL, filtering and `:keep`. `:only` selects resources. See `Lingo.Cache`
-      (default all resources, with 200 messages per channel)
+    * `:cache` - `false` or keyword policies for limits, TTL, filtering, `:keep`,
+      and global/per-resource storage settings. `:only` selects resources.
+      All resource caches are disabled by default; enable only what you need.
+      See `Lingo.Cache`.
     * `:sharding` - `:count` (default `:auto`) and `:ids`, the shards this
       node runs (needs `:count`)
     * `:presence` - the initial `:status`, `:text` and `:activity`

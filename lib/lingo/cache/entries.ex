@@ -1,58 +1,78 @@
 defmodule Lingo.Cache.Entries do
   @moduledoc false
 
-  # Managed mutations are serialized by Tables. Reads remain ETS lookups.
-  # Only ordinary entries enter the eviction/expiration indexes.
-  alias Lingo.Cache.Policy
+  # One owner serializes managed writes. Only configured policies allocate
+  # indexes, and only ordinary entries enter eviction/expiration indexes.
+  alias Lingo.Cache.{Policy, Storage}
 
   def new(policy) do
+    ttl? = policy.ttl != :infinity
+    bounded? = policy.max_entries != :infinity or policy.scope_limit != :infinity
+
     %{
-      table: table(:set),
-      meta: table(:set),
-      order: table(:ordered_set),
-      expiry: table(:ordered_set),
+      table: Storage.table(policy, true),
+      meta: table(:set, if(ttl?, do: :protected, else: :private), ttl?),
+      order: if(bounded?, do: table(:ordered_set, :private, false)),
+      expiry: if(ttl?, do: table(:ordered_set, :private, false)),
       counts: %{},
       policy: policy
     }
   end
 
-  defp table(type), do: :ets.new(__MODULE__, [type, :public, read_concurrency: true])
+  defp table(type, access, reads?),
+    do: :ets.new(__MODULE__, [type, access, read_concurrency: reads?])
 
   def put(state, resource, {key, value}, kept?) do
     state = state |> sweep() |> delete(key)
-    seq = System.unique_integer([:monotonic, :positive])
-    scope = Policy.scope(resource, key, value)
-    ttl = state.policy.ttl
-    expires = if kept? or ttl == :infinity, do: :infinity, else: now() + ttl
+
+    seq =
+      if state.order || state.expiry, do: System.unique_integer([:monotonic, :positive]), else: 0
+
+    scope = if state.policy.scope_limit != :infinity, do: Policy.scope(resource, key, value)
+    expires = if kept? or state.expiry == nil, do: :infinity, else: now() + state.policy.ttl
     :ets.insert(state.meta, {key, seq, scope, expires, kept?})
     :ets.insert(state.table, {key, value})
 
     unless kept? do
-      :ets.insert(state.order, [{{:all, seq}, key}, {{{:scope, scope}, seq}, key}])
+      for index <- indexes(state, seq, scope), do: :ets.insert(state.order, {index, key})
       if expires != :infinity, do: :ets.insert(state.expiry, {{expires, seq}, key})
     end
 
-    state = %{state | counts: Map.update(state.counts, scope, 1, &(&1 + 1))}
+    state = count(state, scope, 1)
 
     state
     |> enforce({:scope, scope}, state.policy.scope_limit)
     |> enforce(:all, state.policy.max_entries)
   end
 
+  defp indexes(state, seq, scope) do
+    global = if state.policy.max_entries == :infinity, do: [], else: [{:all, seq}]
+    if state.policy.scope_limit == :infinity, do: global, else: [{{:scope, scope}, seq} | global]
+  end
+
   def delete(state, key) do
     case :ets.take(state.meta, key) do
-      [{^key, seq, scope, expires, _}] ->
+      [{^key, seq, scope, expires, kept?}] ->
         :ets.delete(state.table, key)
-        :ets.delete(state.order, {:all, seq})
-        :ets.delete(state.order, {{:scope, scope}, seq})
+
+        unless kept? do
+          for index <- indexes(state, seq, scope), do: :ets.delete(state.order, index)
+        end
+
         if expires != :infinity, do: :ets.delete(state.expiry, {expires, seq})
-        counts = Map.update!(state.counts, scope, &(&1 - 1))
-        counts = if counts[scope] == 0, do: Map.delete(counts, scope), else: counts
-        %{state | counts: counts}
+        count(state, scope, -1)
 
       [] ->
         state
     end
+  end
+
+  defp count(%{policy: %{scope_limit: :infinity}} = state, _, _), do: state
+
+  defp count(state, scope, delta) do
+    counts = Map.update(state.counts, scope, delta, &(&1 + delta))
+    counts = if counts[scope] == 0, do: Map.delete(counts, scope), else: counts
+    %{state | counts: counts}
   end
 
   defp enforce(state, _, :infinity), do: state
@@ -85,7 +105,10 @@ defmodule Lingo.Cache.Entries do
     end
   end
 
-  def sweep(state, budget \\ 100) do
+  def sweep(state, budget \\ 100)
+  def sweep(%{expiry: nil} = state, _), do: state
+
+  def sweep(state, budget) do
     case :ets.first(state.expiry) do
       {expires, _} = index when budget > 0 ->
         if expires <= now() do
@@ -102,6 +125,7 @@ defmodule Lingo.Cache.Entries do
 
   def clear(state) do
     for table <- [state.table, state.meta, state.order, state.expiry],
+        table != nil,
         do: :ets.delete_all_objects(table)
 
     %{state | counts: %{}}

@@ -2,7 +2,7 @@ defmodule Lingo.Cache.Tables do
   @moduledoc false
   use GenServer
 
-  alias Lingo.Cache.{Entries, Policy}
+  alias Lingo.Cache.{Entries, Policy, Selection, Storage}
 
   def start_link(opts) do
     bot = Keyword.fetch!(opts, :bot)
@@ -21,7 +21,7 @@ defmodule Lingo.Cache.Tables do
           if Policy.managed?(policy),
             do: Entries.new(policy),
             else: %{
-              table: :ets.new(resource, [:set, :public, read_concurrency: true]),
+              table: Storage.table(policy),
               policy: policy
             }
 
@@ -66,14 +66,8 @@ defmodule Lingo.Cache.Tables do
   def handle_call({:select_delete, name, spec}, _, states) do
     state = states[name]
 
-    keys =
-      :ets.select(
-        state.table,
-        Enum.map(spec, fn {head, guards, _} -> {head, guards, [{:element, 1, :"$_"}]} end)
-      )
-
-    state = Enum.reduce(keys, state, &Entries.delete(&2, &1))
-    {:reply, length(keys), Map.put(states, name, state)}
+    {count, state} = Selection.delete(state, spec)
+    {:reply, count, Map.put(states, name, state)}
   end
 
   @impl true

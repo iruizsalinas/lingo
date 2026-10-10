@@ -93,7 +93,7 @@ defmodule Lingo.LifecycleTest do
     end
 
     test "a restarted Instance restarts the processes that read its config" do
-      start_bot(AlphaBot, "token-a")
+      start_bot(AlphaBot, "token-a", cache: [guilds: true])
       instance = Process.whereis(Lingo.Instance.process_name(AlphaBot, Lingo.Instance))
       tables = Process.whereis(Lingo.Instance.process_name(AlphaBot, Lingo.Cache.Tables))
 
@@ -129,8 +129,8 @@ defmodule Lingo.LifecycleTest do
 
   describe "several bots" do
     test "each has its own config and cache" do
-      start_bot(AlphaBot, "token-a")
-      start_bot(BetaBot, "token-b")
+      start_bot(AlphaBot, "token-a", cache: [guilds: true])
+      start_bot(BetaBot, "token-b", cache: [guilds: true])
 
       assert Enum.sort(Lingo.bots()) == [AlphaBot, BetaBot]
 

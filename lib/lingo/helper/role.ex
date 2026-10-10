@@ -3,7 +3,8 @@ defmodule Lingo.Helper.Role do
   Whether the bot can manage a role, and how roles rank.
 
   Answered from the cache, so the guilds, roles, members and channels
-  involved must be cached (the default); anything missing gives `false` or
+  involved must be explicitly enabled in the cache configuration. Caching is
+  off by default. Anything missing gives `false` or
   `nil`.
   """
 

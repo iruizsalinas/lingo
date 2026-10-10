@@ -8,23 +8,37 @@ defmodule Lingo.Cache do
   option of `Lingo.start_link/1`:
 
       cache: [
-        guilds: true,
-        channels: true,
-        roles: true,
-        users: [max_entries: 20_000, keep: :self],
-        members: [max_entries_per_guild: 500, keep: :self],
+        compact: true,
+        compressed: false,
+        users: true,
+        members: [filter: :all, max_entries_per_guild: 500, keep: :self],
         messages: [max_entries: 10_000, max_entries_per_channel: 100,
-                   ttl: :timer.minutes(15)],
-        presences: false
+                   ttl: :timer.minutes(15), compressed: true]
       ]
 
   Resources are `:guilds`, `:channels` (including threads), `:users`, `:members`,
   `:roles`, `:presences`, `:voice_states` and `:messages`. Each accepts `false`,
   `true` for its defaults, or a keyword policy. Users and members also accept
   `:self`, retaining only the bot itself. `cache: false` disables all resource
-  caches. `:only` provides an allowlist; omitted resources otherwise use defaults.
-  By default everything is cached, with 200 messages per channel; other limits
-  and TTLs default to `:infinity`.
+  caches. Omitting `:cache`, or passing `cache: []`, disables all resource caches.
+  Only explicitly enabled resources are retained; no preset name is needed.
+
+  Keyword policies enable their resource with normal policy defaults
+  (`filter: :all`, `keep: :none`). Use `:self` for users or members when only
+  the bot's own entry is needed.
+  For example, `messages: [ttl: 60_000]` enables messages with a 60-second TTL
+  and the normal 200-per-channel limit. Other limits and TTLs default to
+  `:infinity`. With `:only`, listed resources are enabled unless explicitly
+  disabled, and all other resources are excluded. For example,
+  `cache: [only: [:messages]]` caches messages alone.
+
+  `:compact` and `:compressed` also accept global settings inside `:cache`:
+
+      cache: [compressed: true, messages: true, roles: [compressed: false]]
+
+  Storage precedence is library defaults, then global settings, then resource
+  overrides. Global storage settings never enable disabled resources. Limits,
+  TTLs and predicates are per resource.
 
   Policies:
 
@@ -42,6 +56,14 @@ defmodule Lingo.Cache do
       are always admitted and exempt from TTL and capacity eviction. They count
       toward limits but may exceed them. Zero limits with `keep: :self` retain
       only self; zero limits without `:keep` disable the resource.
+    * `:compact` defaults to `true`. Storage omits default-valued fields of known
+      Discord structs, including nested values. Reads reconstruct complete structs;
+      predicates and events receive complete structs too. Set `false` to avoid
+      this encoding/decoding work at the cost of larger stored values.
+    * `:compressed` defaults to `false`. Set `true` to enable OTP's ETS compression
+      for that resource, for example `messages: [compressed: true]`. Compression
+      can reduce memory further but makes reads and scans more expensive. It can
+      be combined with either compact setting; measure with your own workload.
 
   Predicate context contains `:bot` (instance name), `:user_id` (bot ID, possibly
   nil before READY), `:resource` and `:key`. Keys match the resource's lookup:
@@ -54,9 +76,12 @@ defmodule Lingo.Cache do
   and clearing a parent resource do not delete other resource caches. Members
   and presences retain user data even when the user cache is disabled or bounded.
 
-  `cache: :permissions` retains guilds, channels, roles and only the bot's user
-  and member. It supports the bot's own permission checks when that data has
-  arrived; checks involving another member still need that member. Detailed
+  To support the bot's own permission checks, explicitly enable the required caches:
+
+      cache: [guilds: true, channels: true, roles: true, users: :self, members: :self]
+
+  Checks require the data to have arrived; checks involving another member
+  still need that member to be cached. Detailed
   helpers `Lingo.Helper.Member.fetch_permissions/2` and
   `Lingo.Helper.Channel.fetch_permissions_for/2` report missing data explicitly.
   The single current-user identity record is internal bot state and survives
@@ -70,10 +95,20 @@ defmodule Lingo.Cache do
   serialize writes per bot for consistent limits across shards. Reads use ETS.
   TTL maintenance exists only when configured.
 
+  Eviction indexes exist only for configured global or scoped limits, and an
+  expiration index exists only for TTL. Scans requiring expiration checks or
+  reconstruction copy candidates in bounded batches. Returned lists still use
+  memory proportional to the result. ETS tables and their representation are
+  internal; use this module's reads rather than accessing raw table contents.
+
   Enable the corresponding gateway intents for updates; in particular, member
   departure cleanup needs `:guild_members`. TTL bounds retention, not freshness.
   Legacy `:enabled` and `:max_messages_per_channel` remain accepted; use `:only`
   and `messages: [max_entries_per_channel: ...]` in new configurations.
+  The legacy `:permissions` value explicitly enables guilds, channels, roles
+  and the bot's own user/member.
+  Legacy `:max_messages_per_channel` implicitly enables messages unless they
+  are explicitly disabled or excluded by `:only`/`:enabled`.
   """
 
   alias Lingo.Cache.Tables
@@ -102,7 +137,7 @@ defmodule Lingo.Cache do
   @doc "A guild member, with their user."
   @spec get_member(String.t(), String.t()) :: Member.t() | nil
   def get_member(guild_id, user_id) do
-    # users are stored once, in their own table
+    # Prefer the latest independently cached user over the retained fallback.
     case Tables.get(:members, {guild_id, user_id}) do
       nil -> nil
       member -> %{member | user: get_user(user_id) || member.user}
@@ -139,6 +174,9 @@ defmodule Lingo.Cache do
   entry counts (expired entries await cleanup), kept entries, ETS memory in bytes
   including indexes, and global/scoped capacity overflow caused by kept entries.
   The single current-user identity record is internal state and is excluded.
+  ETS memory is not total VM memory: it excludes owner-process state and shared
+  reference-counted binary payloads. Use VM/process measurements alongside these
+  statistics when comparing storage policies.
   """
   @spec stats() :: map()
   def stats, do: Tables.stats()
