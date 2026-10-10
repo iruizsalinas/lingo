@@ -19,8 +19,7 @@ defmodule Lingo.Gateway.Dispatcher.Message do
 
   def parse(:message_update, data) do
     old = Cache.get_message(data["channel_id"], data["id"])
-    Store.merge_message(data["channel_id"], data)
-    new = Cache.get_message(data["channel_id"], data["id"]) || Message.new(data)
+    new = Store.update_message(old, data)
     %{old: old, new: new}
   end
 
@@ -36,7 +35,7 @@ defmodule Lingo.Gateway.Dispatcher.Message do
 
   def parse(:message_delete_bulk, data) do
     ids = data["ids"] || []
-    Enum.each(ids, fn id -> Store.delete_message(data["channel_id"], id) end)
+    Store.put_all(:messages, ids, fn id -> Store.delete_message(data["channel_id"], id) end)
     %{ids: ids, channel_id: data["channel_id"], guild_id: data["guild_id"]}
   end
 

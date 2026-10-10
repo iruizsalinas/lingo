@@ -9,33 +9,20 @@ defmodule Lingo.Helper.Channel do
 
   alias Lingo.{Cache, Permissions}
 
-  @doc "A member's effective permissions bitfield in a channel, with overwrites applied, or `nil`."
+  @doc "A member's channel permissions, or `0` when required data is missing."
   def permissions_for(channel_id, user_id) do
-    channel = Cache.get_channel(channel_id)
-
-    if channel && channel.guild_id do
-      guild = Cache.get_guild(channel.guild_id)
-      member = Cache.get_member(channel.guild_id, user_id)
-
-      cond do
-        is_nil(guild) or is_nil(member) ->
-          0
-
-        guild.owner_id == user_id ->
-          Permissions.resolve(Permissions.all_permissions())
-
-        true ->
-          roles = Cache.list_roles(channel.guild_id)
-          everyone = Enum.find(roles, fn r -> r.id == channel.guild_id end)
-          everyone_perms = if everyone, do: everyone.permissions, else: "0"
-          overwrites = channel.permission_overwrites || []
-
-          Permissions.compute(everyone_perms, member.roles, roles, overwrites, user_id)
-      end
-    else
-      0
+    case fetch_permissions_for(channel_id, user_id) do
+      {:ok, permissions} -> permissions
+      {:error, _} -> 0
     end
   end
+
+  @doc "Channel permissions, or `{:error, {:missing_cache, resource}}` if required data is unavailable."
+  @spec fetch_permissions_for(String.t(), String.t()) ::
+          {:ok, non_neg_integer()} | {:error, {:missing_cache, atom()}}
+  defdelegate fetch_permissions_for(channel_id, user_id),
+    to: Lingo.Helper.PermissionData,
+    as: :channel
 
   @doc "Whether the bot can see a channel."
   def viewable?(channel_id) do

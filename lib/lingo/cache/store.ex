@@ -1,24 +1,35 @@
 defmodule Lingo.Cache.Store do
   @moduledoc false
 
-  # Writes to the cache, from gateway events. Members, presences, roles and
-  # voice states are keyed {guild_id, id}, messages {channel_id, id} in an
-  # ordered set; users are stored once and joined back in on reads.
-
   alias Lingo.Cache
   alias Lingo.Cache.{Merge, Tables}
 
-  def put_guild(%{id: id} = guild), do: Tables.insert(:guilds, {id, guild})
+  def put_all(resources, entries, fun) do
+    if Tables.enabled?(resources), do: Enum.each(entries, fun), else: :ok
+  end
 
-  # a guild takes everything in it along
+  def put_guild(guild) do
+    if Tables.enabled?(:guilds),
+      do: Tables.insert(:guilds, {guild.id, %{guild | channels: [], members: [], roles: []}}),
+      else: :ok
+  end
+
+  # A Discord deletion invalidates descendants even when parent caching is off.
   def delete_guild(id) do
     Tables.delete(:guilds, id)
 
     for resource <- [:members, :roles, :presences, :voice_states],
-        do: delete_by_guild(resource, id)
+        do: Tables.select_delete(resource, [{{{id, :_}, :_}, [], [true]}])
 
-    channel_ids = Tables.select(:channels, [{{:"$1", %{guild_id: id}}, [], [:"$1"]}])
-    Enum.each(channel_ids, &delete_channel/1)
+    # Payloads may lack guild_id; a known channel still identifies their guild.
+    if Tables.enabled?(:messages) do
+      :channels
+      |> Tables.select([{{:"$1", %{guild_id: id}}, [], [:"$1"]}])
+      |> Enum.each(&delete_channel/1)
+    end
+
+    Tables.select_delete(:channels, [{{:_, %{guild_id: id}}, [], [true]}])
+    Tables.select_delete(:messages, [{{:_, %{guild_id: id}}, [], [true]}])
   end
 
   def put_channel(%{id: id} = channel), do: Tables.insert(:channels, {id, channel})
@@ -29,79 +40,100 @@ defmodule Lingo.Cache.Store do
   end
 
   def put_user(%{id: id} = user), do: Tables.insert(:users, {id, user})
-  def put_current_user(user), do: Tables.insert(:users, {:me, user})
+  def put_current_user(user), do: Tables.put_current_user(user)
 
+  # Retain an embedded user fallback: the independent user cache may be disabled,
+  # filtered, expired, or evicted. Reads prefer its latest version when available.
   def put_member(guild_id, %{user: %{id: user_id}} = member) do
-    put_user(member.user)
-    Tables.insert(:members, {{guild_id, user_id}, %{member | user: nil}})
+    if Tables.wants?(:users, user_id), do: put_user(member.user)
+
+    if Tables.wants?(:members, user_id),
+      do: Tables.insert(:members, {{guild_id, user_id}, member}),
+      else: :ok
   end
 
-  def put_member(_guild_id, _member), do: :ok
+  def put_member(_, _), do: :ok
 
   def delete_member(guild_id, user_id) do
     for resource <- [:members, :presences, :voice_states],
         do: Tables.delete(resource, {guild_id, user_id})
   end
 
-  def put_role(guild_id, %{id: role_id} = role),
-    do: Tables.insert(:roles, {{guild_id, role_id}, role})
-
-  def delete_role(guild_id, role_id), do: Tables.delete(:roles, {guild_id, role_id})
+  def put_role(guild_id, %{id: id} = role), do: Tables.insert(:roles, {{guild_id, id}, role})
+  def delete_role(guild_id, id), do: Tables.delete(:roles, {guild_id, id})
 
   def put_message(%{id: id, channel_id: channel_id, author: author} = message) do
-    if author, do: put_user(author)
+    if author && Tables.wants?(:users, author.id), do: put_user(author)
     Tables.insert(:messages, {{channel_id, id}, message})
-    evict_messages(channel_id)
   end
 
-  def delete_message(channel_id, message_id),
-    do: Tables.delete(:messages, {channel_id, message_id})
+  def delete_message(channel_id, id), do: Tables.delete(:messages, {channel_id, id})
 
-  # MESSAGE_UPDATE can be partial
   def merge_message(channel_id, data) do
-    case Cache.get_message(channel_id, data["id"] || data[:id]) do
-      nil ->
-        put_message(Lingo.Type.Message.new(data))
-
-      existing ->
-        Tables.insert(:messages, {{channel_id, existing.id}, Merge.message(existing, data)})
+    if Tables.enabled?(:messages) do
+      update_message(
+        Cache.get_message(channel_id, data["id"]),
+        Map.put_new(data, "channel_id", channel_id)
+      )
+    else
+      :ok
     end
+  end
+
+  # Dispatch reuses the old value it already read and returns the parsed value
+  # even if policy rejects/evicts it. Cache policy never controls event delivery.
+  def update_message(old, data) do
+    message = if old, do: Merge.message(old, data), else: Lingo.Type.Message.new(data)
+    put_message(message)
+    message
   end
 
   def put_presence(guild_id, %{user: %{id: user_id} = user} = presence) do
-    case Cache.get_user(user_id) do
-      nil -> if is_binary(Map.get(user, :username)), do: put_user(user)
-      existing -> put_user(Merge.user(existing, user))
-    end
-
-    Tables.insert(:presences, {{guild_id, user_id}, %{presence | user: nil}})
-  end
-
-  def put_presence(_guild_id, _presence), do: :ok
-
-  def put_voice_state(guild_id, %{user_id: user_id, channel_id: nil}),
-    do: Tables.delete(:voice_states, {guild_id, user_id})
-
-  def put_voice_state(guild_id, %{user_id: user_id} = voice_state),
-    do: Tables.insert(:voice_states, {{guild_id, user_id}, voice_state})
-
-  def put_voice_state(_guild_id, _voice_state), do: :ok
-
-  # keeps the newest messages of each channel
-  defp evict_messages(channel_id) do
-    if table = Tables.table(:messages) do
-      max = Tables.max_messages()
-      count = :ets.select_count(table, [{{{channel_id, :_}, :_}, [], [true]}])
-
-      if count > max do
-        table
-        |> :ets.select([{{{channel_id, :"$1"}, :_}, [], [:"$1"]}], count - max)
-        |> elem(0)
-        |> Enum.each(&:ets.delete(table, {channel_id, &1}))
-      end
+    if Tables.enabled?([:users, :presences]) do
+      existing = Cache.get_user(user_id) || presence_user(guild_id, user_id)
+      user = if existing, do: Merge.user(existing, user), else: user
+      if Tables.wants?(:users, user_id) and is_binary(user.username), do: put_user(user)
+      Tables.insert(:presences, {{guild_id, user_id}, %{presence | user: user}})
+    else
+      :ok
     end
   end
 
-  defp delete_by_guild(resource, guild_id),
-    do: Tables.select_delete(resource, [{{{guild_id, :_}, :_}, [], [true]}])
+  def put_presence(_, _), do: :ok
+
+  # GUILD_CREATE presences are absent from the callback payload, so avoid their
+  # full parsing when only the user cache needs them.
+  def put_raw_presence(guild_id, data) do
+    id = get_in(data, ["user", "id"])
+
+    cond do
+      Tables.enabled?(:presences) ->
+        put_presence(guild_id, Lingo.Type.Presence.new(Map.put(data, "guild_id", guild_id)))
+
+      Tables.wants?(:users, id) ->
+        user = Lingo.Type.User.new(data["user"])
+
+        if old = Cache.get_user(id),
+          do: put_user(Merge.user(old, user)),
+          else: if(is_binary(user.username), do: put_user(user))
+
+      true ->
+        :ok
+    end
+  end
+
+  defp presence_user(guild_id, user_id) do
+    case Tables.get(:presences, {guild_id, user_id}) do
+      nil -> nil
+      presence -> presence.user
+    end
+  end
+
+  def put_voice_state(guild_id, %{user_id: id, channel_id: nil}),
+    do: Tables.delete(:voice_states, {guild_id, id})
+
+  def put_voice_state(guild_id, %{user_id: id} = state),
+    do: Tables.insert(:voice_states, {{guild_id, id}, state})
+
+  def put_voice_state(_, _), do: :ok
 end

@@ -7,36 +7,38 @@ defmodule Lingo.Gateway.Dispatcher.Guild do
   alias Lingo.Cache
   alias Lingo.Cache.Store
 
-  alias Lingo.Type.{Channel, Guild, Presence, User}
+  alias Lingo.Type.{Channel, Guild, User}
 
   def parse(:guild_create, data) do
     guild = Guild.new(data)
 
-    Enum.each(guild.channels, fn ch ->
+    Store.put_all(:channels, guild.channels, fn ch ->
       Store.put_channel(%{ch | guild_id: guild.id})
     end)
 
     # active threads arrive separately from channels
-    Enum.each(data["threads"] || [], fn thread ->
+    Store.put_all(:channels, data["threads"] || [], fn thread ->
       Store.put_channel(Channel.new(Map.put(thread, "guild_id", guild.id)))
     end)
 
-    Enum.each(guild.members, fn m -> Store.put_member(guild.id, m) end)
-    Enum.each(guild.roles, fn r -> Store.put_role(guild.id, %{r | guild_id: guild.id}) end)
+    Store.put_all([:members, :users], guild.members, fn m -> Store.put_member(guild.id, m) end)
+    Store.put_all(:roles, guild.roles, fn r -> Store.put_role(guild.id, r) end)
 
-    Enum.each(data["voice_states"] || [], fn vs ->
+    Store.put_all(:voice_states, data["voice_states"] || [], fn vs ->
       Store.put_voice_state(
         guild.id,
         Lingo.Type.VoiceState.new(Map.put(vs, "guild_id", guild.id))
       )
     end)
 
-    Enum.each(data["presences"] || [], fn p ->
-      Store.put_presence(guild.id, Presence.new(Map.put(p, "guild_id", guild.id)))
-    end)
+    Store.put_all(
+      [:presences, :users],
+      data["presences"] || [],
+      &Store.put_raw_presence(guild.id, &1)
+    )
 
     # strip nested collections before caching - they live in their own tables
-    Store.put_guild(%{guild | channels: [], members: [], roles: []})
+    Store.put_guild(guild)
 
     guild
   end
@@ -44,8 +46,8 @@ defmodule Lingo.Gateway.Dispatcher.Guild do
   def parse(:guild_update, data) do
     old = Cache.get_guild(data["id"])
     guild = data |> Guild.new() |> keep_guild_create_fields(old)
-    Enum.each(guild.roles, fn r -> Store.put_role(guild.id, %{r | guild_id: guild.id}) end)
-    Store.put_guild(%{guild | channels: [], members: [], roles: []})
+    Store.put_all(:roles, guild.roles, fn r -> Store.put_role(guild.id, r) end)
+    Store.put_guild(guild)
     %{old: old, new: guild}
   end
 

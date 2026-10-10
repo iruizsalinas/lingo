@@ -44,8 +44,8 @@ defmodule Lingo.Gateway.Dispatcher.Member do
         Presence.new(Map.put(presence, "guild_id", guild_id))
       end)
 
-    Enum.each(members, fn m -> Store.put_member(guild_id, m) end)
-    Enum.each(presences, fn p -> Store.put_presence(guild_id, p) end)
+    Store.put_all([:members, :users], members, fn m -> Store.put_member(guild_id, m) end)
+    Store.put_all([:presences, :users], presences, fn p -> Store.put_presence(guild_id, p) end)
 
     %{
       guild_id: guild_id,

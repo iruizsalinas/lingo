@@ -1,13 +1,8 @@
 defmodule Lingo.Cache.Tables do
   @moduledoc false
-
-  # Owns a bot's cache tables: unnamed public ETS tables, one per resource,
-  # whose ids live in the bot's config.
-
   use GenServer
 
-  @resources [:guilds, :channels, :users, :members, :presences, :roles, :voice_states, :messages]
-  @defaults [max_messages_per_channel: 200, enabled: @resources]
+  alias Lingo.Cache.{Entries, Policy}
 
   def start_link(opts) do
     bot = Keyword.fetch!(opts, :bot)
@@ -18,69 +13,78 @@ defmodule Lingo.Cache.Tables do
   def init(opts) do
     bot = Keyword.fetch!(opts, :bot)
     Lingo.Instance.put_current(bot)
+    policies = Policy.normalize(opts[:config])
 
-    config =
-      case Keyword.get(opts, :config) do
-        false -> [enabled: []]
-        nil -> []
-        config -> config
-      end
+    resources =
+      Map.new(policies, fn {resource, policy} ->
+        state =
+          if Policy.managed?(policy),
+            do: Entries.new(policy),
+            else: %{
+              table: :ets.new(resource, [:set, :public, read_concurrency: true]),
+              policy: policy
+            }
 
-    config = Keyword.merge(@defaults, config)
+        {resource, state}
+      end)
 
-    tables =
-      for resource <- List.wrap(config[:enabled]), resource in @resources, into: %{} do
-        type = if resource == :messages, do: :ordered_set, else: :set
-        {resource, :ets.new(resource, [type, :public, {:read_concurrency, true}])}
-      end
-
-    Lingo.Instance.put(bot, :cache, %{
-      tables: tables,
-      max_messages: config[:max_messages_per_channel]
-    })
-
-    {:ok, bot}
+    # One current-user record is bot identity, independent of optional resource caches.
+    identity = :ets.new(:identity, [:set, :public, read_concurrency: true])
+    Lingo.Instance.put(bot, :cache, %{resources: resources, identity: identity})
+    ttl? = Enum.any?(policies, fn {_, policy} -> policy.ttl != :infinity end)
+    if ttl?, do: Process.send_after(self(), :sweep, 1_000)
+    {:ok, resources}
   end
 
-  @doc "The current bot's table for a resource, or nil when it isn't cached."
-  @spec table(atom()) :: :ets.tid() | nil
-  def table(resource) do
-    case Lingo.Instance.get(:cache) do
-      %{tables: %{^resource => table}} -> table
-      _ -> nil
-    end
+  defdelegate resource(name), to: Lingo.Cache.Access
+  defdelegate table(name), to: Lingo.Cache.Access
+  defdelegate enabled?(names), to: Lingo.Cache.Access
+  defdelegate wants?(name, id), to: Lingo.Cache.Access
+  defdelegate get(name, key), to: Lingo.Cache.Access
+  defdelegate insert(name, entry), to: Lingo.Cache.Access
+  defdelegate delete(name, key), to: Lingo.Cache.Access
+  defdelegate select(name, spec), to: Lingo.Cache.Access
+  defdelegate select_delete(name, spec), to: Lingo.Cache.Access
+  defdelegate clear(name), to: Lingo.Cache.Access
+  defdelegate stats(), to: Lingo.Cache.Statistics
+  defdelegate current_user(), to: Lingo.Cache.Identity
+  defdelegate put_current_user(user), to: Lingo.Cache.Identity
+
+  @impl true
+  def handle_call({:put, name, entry, kept?}, _, states),
+    do: {:reply, true, Map.update!(states, name, &Entries.put(&1, name, entry, kept?))}
+
+  def handle_call({:delete, name, key}, _, states),
+    do: {:reply, true, Map.update!(states, name, &Entries.delete(&1, key))}
+
+  def handle_call({:clear, name}, _, states),
+    do: {:reply, true, Map.update!(states, name, &Entries.clear/1)}
+
+  def handle_call({:stats, name}, _, states),
+    do: {:reply, Lingo.Cache.Statistics.entries(states[name]), states}
+
+  def handle_call({:select_delete, name, spec}, _, states) do
+    state = states[name]
+
+    keys =
+      :ets.select(
+        state.table,
+        Enum.map(spec, fn {head, guards, _} -> {head, guards, [{:element, 1, :"$_"}]} end)
+      )
+
+    state = Enum.reduce(keys, state, &Entries.delete(&2, &1))
+    {:reply, length(keys), Map.put(states, name, state)}
   end
 
-  @spec max_messages() :: non_neg_integer()
-  def max_messages, do: Lingo.Instance.get(:cache).max_messages
+  @impl true
+  def handle_info(:sweep, states) do
+    states =
+      Map.new(states, fn
+        {name, %{meta: _} = state} -> {name, Entries.sweep(state)}
+        pair -> pair
+      end)
 
-  @spec get(atom(), term()) :: term()
-  def get(resource, key) do
-    with table when table != nil <- table(resource),
-         [{^key, value}] <- :ets.lookup(table, key) do
-      value
-    else
-      _ -> nil
-    end
-  end
-
-  @spec insert(atom(), tuple()) :: true | :ok
-  def insert(resource, entry) do
-    if table = table(resource), do: :ets.insert(table, entry), else: :ok
-  end
-
-  @spec delete(atom(), term()) :: true | :ok
-  def delete(resource, key) do
-    if table = table(resource), do: :ets.delete(table, key), else: :ok
-  end
-
-  @spec select(atom(), :ets.match_spec()) :: [term()]
-  def select(resource, spec) do
-    if table = table(resource), do: :ets.select(table, spec), else: []
-  end
-
-  @spec select_delete(atom(), :ets.match_spec()) :: non_neg_integer()
-  def select_delete(resource, spec) do
-    if table = table(resource), do: :ets.select_delete(table, spec), else: 0
+    Process.send_after(self(), :sweep, 1_000)
+    {:noreply, states}
   end
 end

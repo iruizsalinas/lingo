@@ -51,25 +51,18 @@ defmodule Lingo.Helper.Member do
     manageable?(guild_id, user_id) and bot_has_permission?(guild_id, :ban_members)
   end
 
-  @doc "A member's guild-wide permissions bitfield, or `nil`."
+  @doc "A member's guild-wide permissions bitfield, or `0` when required data is missing."
   def permissions(guild_id, user_id) do
-    guild = Cache.get_guild(guild_id)
-    member = Cache.get_member(guild_id, user_id)
-
-    cond do
-      is_nil(guild) or is_nil(member) ->
-        0
-
-      guild.owner_id == user_id ->
-        Permissions.resolve(Permissions.all_permissions())
-
-      true ->
-        roles = Cache.list_roles(guild_id)
-        everyone = Enum.find(roles, fn r -> r.id == guild_id end)
-        everyone_perms = if everyone, do: everyone.permissions, else: "0"
-        Permissions.compute(everyone_perms, member.roles, roles)
+    case fetch_permissions(guild_id, user_id) do
+      {:ok, permissions} -> permissions
+      {:error, _} -> 0
     end
   end
+
+  @doc "Guild permissions, or `{:error, {:missing_cache, resource}}` if required data is unavailable."
+  @spec fetch_permissions(String.t(), String.t()) ::
+          {:ok, non_neg_integer()} | {:error, {:missing_cache, atom()}}
+  defdelegate fetch_permissions(guild_id, user_id), to: Lingo.Helper.PermissionData, as: :guild
 
   @doc "The name a member is shown with: nickname, then global name, then username."
   def display_name(guild_id, user_id) do

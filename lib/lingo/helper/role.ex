@@ -46,6 +46,8 @@ defmodule Lingo.Helper.Role do
   end
 
   @doc false
+  def highest_role_position(_guild_id, nil), do: 0
+
   def highest_role_position(guild_id, member) do
     roles = Cache.list_roles(guild_id)
     role_ids = role_id_map(member.roles)

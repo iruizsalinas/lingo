@@ -50,8 +50,13 @@ defmodule Lingo.Gateway.Dispatcher.Channel do
   end
 
   def parse(:thread_list_sync, data) do
-    threads = Enum.map(data["threads"] || [], &Channel.new/1)
-    Enum.each(threads, &Store.put_channel/1)
+    threads =
+      Enum.map(
+        data["threads"] || [],
+        &(Map.put(&1, "guild_id", data["guild_id"]) |> Channel.new())
+      )
+
+    Store.put_all(:channels, threads, &Store.put_channel/1)
 
     %{
       guild_id: data["guild_id"],

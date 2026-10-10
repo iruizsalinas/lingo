@@ -28,6 +28,7 @@ defmodule Lingo.Config do
     validate_max_wait!(get_in(opts, [:rate_limit, :max_wait]))
     validate_sharding!(opts[:sharding] || [])
     validate_register_commands!(opts[:register_commands])
+    Lingo.Cache.Policy.normalize(opts[:cache])
 
     Keyword.put(opts, :name, opts[:name] || opts[:bot])
   end
