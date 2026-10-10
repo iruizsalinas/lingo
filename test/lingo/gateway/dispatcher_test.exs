@@ -52,7 +52,7 @@ defmodule Lingo.Gateway.DispatcherTest do
     assert entry.guild_id == "guild1"
     assert entry.target_id == "target1"
     assert entry.user_id == "user1"
-    assert entry.action_type == 22
+    assert entry.action_type == :member_ban_add
     assert entry.changes == [%{"key" => "communication_disabled_until"}]
   end
 

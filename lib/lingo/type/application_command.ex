@@ -89,7 +89,8 @@ defmodule Lingo.Type.ApplicationCommand do
     |> put_if("contexts", cmd.contexts)
   end
 
-  defp maybe_put_command_body(payload, %{type: :chat_input} = cmd) do
+  defp maybe_put_command_body(payload, %{type: type} = cmd)
+       when type in [:chat_input, :primary_entry_point] do
     payload
     |> put_if("description", cmd.description)
     |> put_if("options", non_empty_map(cmd.options, &Lingo.Type.CommandOption.to_payload/1))

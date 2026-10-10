@@ -16,7 +16,10 @@ defmodule Lingo.Bot.Compiler do
           Module.defines?(env.module, {callback, 2}),
           do: callback
 
-    if commands != [] and :handle_command not in defined do
+    # Discord answers entry point commands with its own handler (2) itself
+    handled = Enum.reject(commands, &(&1.type == :primary_entry_point and &1.handler == 2))
+
+    if handled != [] and :handle_command not in defined do
       IO.warn("#{inspect(env.module)} declares commands but doesn't define handle_command/2", env)
     end
 
@@ -81,6 +84,13 @@ defmodule Lingo.Bot.Compiler do
         file: env.file,
         line: env.line,
         description: "#{inspect(env.module)} declares the #{type} command #{inspect(name)} twice"
+    end
+
+    if Enum.count(commands, &(&1.type == :primary_entry_point)) > 1 do
+      raise CompileError,
+        file: env.file,
+        line: env.line,
+        description: "#{inspect(env.module)} declares more than one entry point command"
     end
   end
 

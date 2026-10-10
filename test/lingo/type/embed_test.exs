@@ -11,6 +11,14 @@ defmodule Lingo.Type.EmbedTest do
       assert map.color == 0xFF0000
       refute Map.has_key?(map, :url)
       refute Map.has_key?(map, :timestamp)
+      refute Map.has_key?(map, :components)
+    end
+
+    test "component embeds keep their components and flags" do
+      container = %{"type" => 17, "components" => [%{"type" => 10, "content" => "Hi"}]}
+      embed = Embed.new(%{"type" => "components", "components" => [container], "flags" => 32})
+      assert embed.components == [container]
+      assert embed.flags == 32
     end
   end
 end

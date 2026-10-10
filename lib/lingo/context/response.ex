@@ -62,12 +62,34 @@ defmodule Lingo.Context.Response do
   def autocomplete_result(ctx, choices) when is_list(choices),
     do: respond(ctx, :autocomplete, %{choices: Enum.map(choices, &Map.new/1)})
 
+  @spec launch_activity(Context.t()) :: result()
+  def launch_activity(ctx), do: respond(ctx, :launch_activity, nil)
+
+  @spec get_reply(Context.t()) :: {:ok, Lingo.Type.Message.t()} | {:error, Lingo.Error.t()}
+  def get_reply(ctx), do: in_bot(ctx, fn -> Api.get_original_response(ctx.interaction_token) end)
+
+  @spec update_reply(Context.t(), content()) :: result()
+  def update_reply(ctx, content) do
+    in_bot(ctx, fn ->
+      Api.update_original_response(ctx.interaction_token, drop_ephemeral(data(content)))
+    end)
+    |> answered(%{ctx | deferred: false, replied: true})
+  end
+
+  @spec delete_reply(Context.t()) :: result()
+  def delete_reply(ctx),
+    do:
+      in_bot(ctx, fn -> Api.delete_original_response(ctx.interaction_token) end) |> answered(ctx)
+
   def reply!(ctx, content), do: ctx |> reply(content) |> unwrap!()
   def ephemeral!(ctx, content), do: ctx |> ephemeral(content) |> unwrap!()
   def update!(ctx, content), do: ctx |> update(content) |> unwrap!()
   def defer!(ctx, opts \\ []), do: ctx |> defer(opts) |> unwrap!()
   def show_modal!(ctx, modal), do: ctx |> show_modal(modal) |> unwrap!()
   def autocomplete_result!(ctx, choices), do: ctx |> autocomplete_result(choices) |> unwrap!()
+  def launch_activity!(ctx), do: ctx |> launch_activity() |> unwrap!()
+  def update_reply!(ctx, content), do: ctx |> update_reply(content) |> unwrap!()
+  def delete_reply!(ctx), do: ctx |> delete_reply() |> unwrap!()
 
   defp respond(ctx, type, data) do
     in_bot(ctx, fn ->

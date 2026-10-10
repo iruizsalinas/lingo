@@ -14,8 +14,8 @@ Currently covers:
 - Voice: play and receive audio, with Discord's end-to-end encryption (DAVE)
 - Several bots in one VM, each with its own cache, rate limits and gateway
 - Collectors for awaiting button clicks and reactions
-- Permission and role hierarchy helpers
-- Embed builder, CDN helpers, and component builders
+- Permission, flag and role hierarchy helpers
+- Embed, poll and component builders, CDN and Markdown helpers
 
 No required dependencies: just OTP and Elixir 1.18+. Metrics go through
 [`:telemetry`](https://hex.pm/packages/telemetry) when your app has it.
@@ -77,13 +77,13 @@ can also call `Lingo.register_commands/1` yourself.
 | `Lingo.Cache.*` | What the gateway and REST API have told the bot, one module per resource (`Lingo.Cache.Role.list/1`...); opt-in, configured in `Lingo.Cache` |
 | `Lingo.Gateway` | Presence, shards and gateway requests |
 | `Lingo.Voice` | Joining voice channels, playing and receiving audio |
-| `Lingo.Component`, `Lingo.Embed` | Building message content |
+| `Lingo.Component`, `Lingo.Embed`, `Lingo.Poll` | Building message content |
 | `Lingo.Collector` | Awaiting clicks and reactions inline |
 | `Lingo.Endpoint` | Interactions and webhook events over HTTP |
 | `Lingo.OAuth2` | Authorizing users and calling the API as them |
 | `Lingo.Testing` | Testing a bot without Discord |
 | `Lingo.Telemetry` | Events for metrics |
-| `Lingo.Helper.*`, `Lingo.Permissions`, `Lingo.Format`, `Lingo.CDN` | Utilities |
+| `Lingo.Helper.*`, `Lingo.Permissions`, `Lingo.Flags`, `Lingo.Format`, `Lingo.CDN` | Utilities |
 
 ## Commands with options
 

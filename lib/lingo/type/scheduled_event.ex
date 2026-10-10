@@ -23,7 +23,8 @@ defmodule Lingo.Type.ScheduledEvent do
           entity_metadata: map() | nil,
           creator: User.t() | nil,
           user_count: integer() | nil,
-          image: String.t() | nil
+          image: String.t() | nil,
+          recurrence_rule: map() | nil
         }
 
   defstruct [
@@ -40,6 +41,7 @@ defmodule Lingo.Type.ScheduledEvent do
     :creator,
     :user_count,
     :image,
+    :recurrence_rule,
     privacy_level: :guild_only,
     status: :scheduled,
     entity_type: :external
@@ -68,7 +70,8 @@ defmodule Lingo.Type.ScheduledEvent do
       entity_metadata: data["entity_metadata"],
       creator: User.new(data["creator"]),
       user_count: data["user_count"],
-      image: data["image"]
+      image: data["image"],
+      recurrence_rule: data["recurrence_rule"]
     }
   end
 end

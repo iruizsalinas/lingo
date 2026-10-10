@@ -59,17 +59,7 @@ defmodule Lingo.Bot.Commands do
     quote bind_quoted: [name: name, description: description, opts: opts, keys: @command_opts] do
       Lingo.Bot.Commands.__validate_opts__!(opts, keys, :command)
 
-      @lingo_commands %Lingo.Type.ApplicationCommand{
-        name: to_string(name),
-        description: description,
-        options: Keyword.get(opts, :options, []),
-        default_member_permissions: opts[:default_member_permissions],
-        nsfw: Keyword.get(opts, :nsfw, false),
-        integration_types: opts[:integration_types],
-        contexts: opts[:contexts],
-        name_localizations: opts[:name_localizations],
-        description_localizations: opts[:description_localizations]
-      }
+      @lingo_commands Lingo.Bot.Commands.__command__(:chat_input, name, description, opts)
 
       if rules = Lingo.Bot.Commands.__rules__(:chat_input, name, opts),
         do: @lingo_command_rules(rules)
@@ -102,19 +92,43 @@ defmodule Lingo.Bot.Commands do
     quote bind_quoted: [type: type, name: name, opts: opts, keys: keys] do
       Lingo.Bot.Commands.__validate_opts__!(opts, keys, type)
 
-      @lingo_commands %Lingo.Type.ApplicationCommand{
-        name: to_string(name),
-        description: "",
-        type: type,
-        options: [],
-        default_member_permissions: opts[:default_member_permissions],
-        nsfw: Keyword.get(opts, :nsfw, false),
-        integration_types: opts[:integration_types],
-        contexts: opts[:contexts],
-        name_localizations: opts[:name_localizations]
-      }
+      @lingo_commands Lingo.Bot.Commands.__command__(type, name, "", opts)
 
       if rules = Lingo.Bot.Commands.__rules__(type, name, opts),
+        do: @lingo_command_rules(rules)
+    end
+  end
+
+  @doc """
+  Declares the app's entry point command, which opens its Activity from the
+  App Launcher. An app has at most one, and it's always global, so
+  registering for guilds leaves it out.
+
+  Enabling Activities makes Discord create one named "Launch", and
+  registering keeps that one while the bot declares none: declare it only to
+  change it.
+
+  Takes the options of `command/3` except `:options`, plus `:handler`:
+  `:discord_launch_activity` (the default) has Discord launch the Activity
+  itself, and `:app_handler` sends the command to
+  `c:Lingo.Bot.handle_command/2`, to answer with
+  `Lingo.Context.launch_activity/1` or anything else.
+  """
+  defmacro entry_point_command(name, description, opts \\ []) do
+    check_no_body!(opts, __CALLER__)
+    keys = [:handler | @command_opts -- [:options]]
+
+    quote bind_quoted: [name: name, description: description, opts: opts, keys: keys] do
+      Lingo.Bot.Commands.__validate_opts__!(opts, keys, :entry_point_command)
+
+      @lingo_commands Lingo.Bot.Commands.__command__(
+                        :primary_entry_point,
+                        name,
+                        description,
+                        opts
+                      )
+
+      if rules = Lingo.Bot.Commands.__rules__(:primary_entry_point, name, opts),
         do: @lingo_command_rules(rules)
     end
   end
@@ -132,6 +146,35 @@ defmodule Lingo.Bot.Commands do
             "    def handle_command(\"ping\", ctx), do: reply!(ctx, \"Pong!\")"
     end
   end
+
+  @handlers %{app_handler: 1, discord_launch_activity: 2}
+
+  @doc false
+  def __command__(type, name, description, opts) do
+    %Lingo.Type.ApplicationCommand{
+      name: to_string(name),
+      description: description,
+      type: type,
+      options: Keyword.get(opts, :options, []),
+      default_member_permissions: opts[:default_member_permissions],
+      nsfw: Keyword.get(opts, :nsfw, false),
+      integration_types: opts[:integration_types],
+      contexts: opts[:contexts],
+      name_localizations: opts[:name_localizations],
+      description_localizations: opts[:description_localizations],
+      handler: handler(type, opts[:handler])
+    }
+  end
+
+  defp handler(:primary_entry_point, nil), do: @handlers.discord_launch_activity
+
+  defp handler(:primary_entry_point, handler) do
+    Map.get(@handlers, handler) ||
+      raise ArgumentError,
+            ":handler must be :app_handler or :discord_launch_activity, got: #{inspect(handler)}"
+  end
+
+  defp handler(_type, _handler), do: nil
 
   @doc false
   def __rules__(type, name, opts) do

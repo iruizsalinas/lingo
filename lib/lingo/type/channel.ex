@@ -6,8 +6,6 @@ defmodule Lingo.Type.Channel do
   number for types Lingo doesn't know yet.
   """
 
-  import Bitwise
-
   alias Lingo.Type.{Codes, Message, Overwrite, Parse, ThreadMember, User}
 
   @type channel_type ::
@@ -105,13 +103,10 @@ defmodule Lingo.Type.Channel do
     applied_tags: []
   ]
 
-  @channel_obfuscated 1 <<< 17
-
   @doc "Returns whether Discord has hidden this channel's sensitive metadata."
   @spec obfuscated?(t()) :: boolean()
-  def obfuscated?(%__MODULE__{flags: flags}) when is_integer(flags) do
-    band(flags, @channel_obfuscated) == @channel_obfuscated
-  end
+  def obfuscated?(%__MODULE__{flags: flags}),
+    do: Lingo.Flags.has?(:channel, flags, :channel_obfuscated)
 
   @doc false
   def new(nil), do: nil

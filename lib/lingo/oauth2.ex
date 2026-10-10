@@ -1,8 +1,8 @@
 defmodule Lingo.OAuth2 do
   @moduledoc """
   OAuth2: sending users to authorize the app, trading the code for their
-  token, and calling the API as them (their profile, guilds, connections and
-  linked role data).
+  token, and calling the API as them (their profile, guilds and guild
+  memberships, connections and linked role data).
 
       url = Lingo.OAuth2.authorize_url(client_id: "123", scopes: ["identify", "role_connections.write"],
               redirect_uri: "https://example.com/callback", state: state)
@@ -23,7 +23,7 @@ defmodule Lingo.OAuth2 do
 
   alias Lingo.Api
   alias Lingo.OAuth2.HTTP
-  alias Lingo.Type.{AccessToken, Connection, Guild, User}
+  alias Lingo.Type.{AccessToken, Connection, Guild, Member, User}
 
   @authorize "https://discord.com/oauth2/authorize"
 
@@ -164,6 +164,20 @@ defmodule Lingo.OAuth2 do
       json: Map.new(params)
     )
     |> into(&role_connection/1)
+  end
+
+  @doc "Removes the user's linked role data for an app (`role_connections.write` scope)."
+  @spec delete_role_connection(token(), Api.id()) :: Api.result()
+  def delete_role_connection(token, application_id) do
+    path = "/users/@me/applications/#{application_id}/role-connection"
+    with {:ok, _body} <- HTTP.as_user(token, :delete, path), do: :ok
+  end
+
+  @doc "The user's membership in a guild (`guilds.members.read` scope)."
+  @spec get_guild_member(token(), Api.id()) :: Api.result(Member.t())
+  def get_guild_member(token, guild_id) do
+    HTTP.as_user(token, :get, "/users/@me/guilds/#{guild_id}/member")
+    |> into(&Member.new(Map.put(&1, "guild_id", guild_id)))
   end
 
   @typedoc "A user's linked role data for an app."

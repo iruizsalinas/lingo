@@ -16,5 +16,14 @@ defmodule Lingo.Type.AuditLogEntryTest do
 
       assert entry.guild_id == "guild1"
     end
+
+    test "names action types, passing unknown ones through" do
+      assert AuditLogEntry.new(%{"action_type" => 22}).action_type == :member_ban_add
+
+      assert AuditLogEntry.new(%{"action_type" => 192}).action_type ==
+               :voice_channel_status_create
+
+      assert AuditLogEntry.new(%{"action_type" => 9999}).action_type == 9999
+    end
   end
 end

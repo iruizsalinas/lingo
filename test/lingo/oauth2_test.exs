@@ -219,6 +219,23 @@ defmodule Lingo.OAuth2Test do
              }
     end
 
+    test "removing linked role data, and reading a guild membership" do
+      respond(204, nil)
+      assert :ok = OAuth2.delete_role_connection("t", "200")
+
+      assert_received {:request, :delete,
+                       "https://discord.com/api/v10/users/@me/applications/200/role-connection",
+                       _, nil}
+
+      respond(200, %{"user" => %{"id" => "42"}, "roles" => ["r1"], "nick" => "N"})
+
+      assert {:ok, %Lingo.Type.Member{guild_id: "9", nick: "N", roles: ["r1"]}} =
+               OAuth2.get_guild_member("t", "9")
+
+      assert_received {:request, :get, "https://discord.com/api/v10/users/@me/guilds/9/member", _,
+                       nil}
+    end
+
     test "adding a user to a guild uses the bot's token and theirs" do
       respond(201, %{"user" => %{"id" => "42"}, "roles" => []})
 

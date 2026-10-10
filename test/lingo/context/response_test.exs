@@ -64,6 +64,23 @@ defmodule Lingo.Context.ResponseTest do
     assert body == %{"content" => "hi"}
   end
 
+  test "get_reply, update_reply and delete_reply act on the response message", %{ctx: ctx} do
+    assert {:ok, %Lingo.Type.Message{id: "m1"}} = Lingo.Context.get_reply(ctx)
+    assert_receive {:request, :get, "/api/v10/webhooks/app/tok/messages/@original", nil}
+
+    assert %Context{replied: true} = Lingo.Context.update_reply!(ctx, %{content: "x", flags: 64})
+    assert_receive {:request, :patch, "/api/v10/webhooks/app/tok/messages/@original", body}
+    assert body == %{"content" => "x"}
+
+    assert %Context{} = Lingo.Context.delete_reply!(ctx)
+    assert_receive {:request, :delete, "/api/v10/webhooks/app/tok/messages/@original", nil}
+  end
+
+  test "launch_activity answers with LAUNCH_ACTIVITY", %{ctx: ctx} do
+    assert %Context{replied: true} = Lingo.Context.launch_activity!(ctx)
+    assert_receive {:request, :post, "/api/v10/interactions/i1/tok/callback", %{"type" => 12}}
+  end
+
   test "defer, show_modal and autocomplete_result return the context", %{ctx: ctx} do
     assert %Context{deferred: true} = Lingo.Context.defer!(ctx, ephemeral: true)
     assert_receive {:request, :post, _path, %{"type" => 5, "data" => %{"flags" => 64}}}

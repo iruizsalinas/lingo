@@ -1,6 +1,6 @@
 defmodule Lingo.Api.Application do
   @moduledoc """
-  The bot's application and its role connection metadata.
+  The bot's application, its Activity instances and its role connection metadata.
 
   Every function returns `{:ok, result}`, `:ok` when Discord sends no body, or
   `{:error, %Lingo.Error{}}`. Calls go to the current bot (see `Lingo.with_bot/2`).
@@ -19,6 +19,17 @@ defmodule Lingo.Api.Application do
   @spec update_current(Api.params()) :: Api.result(map())
   def update_current(params) do
     Client.request(:patch, "/applications/@me", json: params)
+  end
+
+  @doc """
+  Fetches a running instance of the app's Activity, with its `"location"`
+  (guild and channel) and the `"users"` in it. Ended instances are 404s.
+  """
+  @spec get_activity_instance(String.t()) :: Api.result(map())
+  def get_activity_instance(instance_id) do
+    Client.app(fn application_id ->
+      Client.request(:get, "/applications/#{application_id}/activity-instances/#{instance_id}")
+    end)
   end
 
   @doc "Fetches the application's role connection metadata."

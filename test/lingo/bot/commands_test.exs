@@ -64,6 +64,15 @@ defmodule Lingo.Bot.CommandsTest do
     def handle_command("Bookmark", ctx), do: {:bookmarked, ctx.target_id}
   end
 
+  defmodule LaunchBot do
+    use Lingo.Bot
+
+    entry_point_command("launch", "Play with friends", handler: :app_handler)
+
+    @impl true
+    def handle_command("launch", ctx), do: launch_activity!(ctx)
+  end
+
   describe "command declarations" do
     test "single command bot" do
       assert [command] = PingBot.__commands__()
@@ -123,6 +132,50 @@ defmodule Lingo.Bot.CommandsTest do
       bookmark = Enum.find(commands, &(&1.name == "Bookmark"))
       assert bookmark.description == ""
       assert bookmark.nsfw == true
+    end
+
+    test "entry point commands" do
+      [launch] = LaunchBot.__commands__()
+      assert launch.type == :primary_entry_point
+
+      assert Lingo.Type.ApplicationCommand.to_payload(launch) == %{
+               "name" => "launch",
+               "description" => "Play with friends",
+               "type" => 4,
+               "handler" => 1
+             }
+
+      warning =
+        capture_io(:stderr, fn ->
+          Code.compile_string("""
+          defmodule Lingo.BotTest.DiscordLaunches do
+            use Lingo.Bot
+            entry_point_command "launch", "Play"
+          end
+          """)
+        end)
+
+      refute warning =~ "handle_command/2"
+      assert [%{handler: 2}] = Lingo.BotTest.DiscordLaunches.__commands__()
+
+      assert_raise CompileError, ~r/more than one entry point/, fn ->
+        Code.compile_string("""
+        defmodule Lingo.BotTest.TwoLaunches do
+          use Lingo.Bot
+          entry_point_command "launch", "Play"
+          entry_point_command "start", "Play too"
+        end
+        """)
+      end
+
+      assert_raise ArgumentError, ~r/:handler/, fn ->
+        Code.compile_string("""
+        defmodule Lingo.BotTest.BadHandler do
+          use Lingo.Bot
+          entry_point_command "launch", "Play", handler: :me
+        end
+        """)
+      end
     end
 
     test "empty bot" do

@@ -11,7 +11,7 @@ defmodule Lingo.CDNTest do
 
     test "builds URL for animated avatar" do
       url = CDN.user_avatar(%{id: "123", avatar: "a_abc"})
-      assert url == "https://cdn.discordapp.com/avatars/123/a_abc.gif"
+      assert url == "https://cdn.discordapp.com/avatars/123/a_abc.webp?animated=true"
     end
 
     test "falls back to default avatar when nil" do
@@ -64,9 +64,12 @@ defmodule Lingo.CDNTest do
       assert url == "https://cdn.discordapp.com/icons/1/iconhash.webp"
     end
 
-    test "animated icon uses gif" do
+    test "animated icon uses animated webp, or the format asked for" do
       url = CDN.guild_icon(%{id: "1", icon: "a_animated"})
-      assert url == "https://cdn.discordapp.com/icons/1/a_animated.gif"
+      assert url == "https://cdn.discordapp.com/icons/1/a_animated.webp?animated=true"
+
+      assert CDN.guild_icon(%{id: "1", icon: "a_animated"}, format: :gif, size: 64) ==
+               "https://cdn.discordapp.com/icons/1/a_animated.gif?size=64"
     end
   end
 
@@ -94,11 +97,11 @@ defmodule Lingo.CDNTest do
 
   describe "emoji/2" do
     test "static emoji" do
-      assert CDN.emoji("123") == "https://cdn.discordapp.com/emojis/123.png"
+      assert CDN.emoji("123") == "https://cdn.discordapp.com/emojis/123.webp"
     end
 
     test "animated emoji" do
-      assert CDN.emoji("123", true) == "https://cdn.discordapp.com/emojis/123.gif"
+      assert CDN.emoji("123", true) == "https://cdn.discordapp.com/emojis/123.webp?animated=true"
     end
   end
 
@@ -122,12 +125,56 @@ defmodule Lingo.CDNTest do
                "https://cdn.discordapp.com/role-icons/r1/h.webp"
 
       assert CDN.scheduled_event_cover(%{id: "e1", image: "a_h"}) ==
-               "https://cdn.discordapp.com/guild-events/e1/a_h.gif"
+               "https://cdn.discordapp.com/guild-events/e1/a_h.webp?animated=true"
     end
 
     test "return nil without an image" do
       assert CDN.role_icon(%{id: "r1", icon: nil}) == nil
       assert CDN.scheduled_event_cover(%{id: "e1", image: nil}) == nil
+    end
+  end
+
+  describe "options" do
+    test "size and format apply to any image" do
+      assert CDN.user_avatar(%{id: "1", avatar: "h"}, size: 256, format: :png) ==
+               "https://cdn.discordapp.com/avatars/1/h.png?size=256"
+    end
+  end
+
+  describe "member images" do
+    test "avatar and banner use the member's guild" do
+      member = %{guild_id: "g", user: %{id: "u"}, avatar: "a", banner: "a_b"}
+
+      assert CDN.member_avatar(member) ==
+               "https://cdn.discordapp.com/guilds/g/users/u/avatars/a.webp"
+
+      assert CDN.member_banner(member) ==
+               "https://cdn.discordapp.com/guilds/g/users/u/banners/a_b.webp?animated=true"
+    end
+
+    test "nil without a hash, user or guild" do
+      assert CDN.member_banner(%{guild_id: "g", user: %{id: "u"}, banner: nil}) == nil
+      assert CDN.member_avatar(%{guild_id: "g", user: nil, avatar: "a"}) == nil
+      assert CDN.member_avatar(%{guild_id: nil, user: %{id: "u"}, avatar: "a"}) == nil
+    end
+  end
+
+  describe "decorations, tags and sounds" do
+    test "avatar decoration" do
+      assert CDN.avatar_decoration(%{avatar_decoration_data: %{"asset" => "x", "sku_id" => "1"}}) ==
+               "https://cdn.discordapp.com/avatar-decoration-presets/x.png"
+
+      assert CDN.avatar_decoration(%{avatar_decoration_data: nil}) == nil
+    end
+
+    test "guild tag badge" do
+      user = %{primary_guild: %{"identity_guild_id" => "g", "badge" => "b", "tag" => "LING"}}
+      assert CDN.guild_tag_badge(user) == "https://cdn.discordapp.com/guild-tag-badges/g/b.png"
+      assert CDN.guild_tag_badge(%{primary_guild: nil}) == nil
+    end
+
+    test "soundboard sound" do
+      assert CDN.soundboard_sound("s1") == "https://cdn.discordapp.com/soundboard-sounds/s1"
     end
   end
 end

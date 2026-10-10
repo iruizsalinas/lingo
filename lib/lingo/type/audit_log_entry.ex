@@ -1,5 +1,10 @@
 defmodule Lingo.Type.AuditLogEntry do
-  @moduledoc "One audit log entry. Also the payload of `:guild_audit_log_entry_create` events."
+  @moduledoc """
+  One audit log entry. Also the payload of `:guild_audit_log_entry_create` events.
+
+  `action_type` is Discord's audit log event, lowercased (`:member_ban_add`,
+  `:message_delete`, ...); types newer than Lingo stay integers.
+  """
 
   @type t :: %__MODULE__{
           id: String.t(),
@@ -7,7 +12,7 @@ defmodule Lingo.Type.AuditLogEntry do
           changes: [map()],
           guild_id: String.t() | nil,
           user_id: String.t() | nil,
-          action_type: integer(),
+          action_type: atom() | integer(),
           options: map() | nil,
           reason: String.t() | nil
         }
@@ -24,7 +29,7 @@ defmodule Lingo.Type.AuditLogEntry do
       guild_id: data["guild_id"],
       changes: data["changes"] || [],
       user_id: data["user_id"],
-      action_type: data["action_type"],
+      action_type: Lingo.Type.Codes.name(:audit_log_event, data["action_type"]),
       options: data["options"],
       reason: data["reason"]
     }

@@ -1,6 +1,6 @@
 defmodule Lingo.Api.Message do
   @moduledoc """
-  Messages: sending, editing, deleting, bulk deletion and search.
+  Messages: sending, forwarding, editing, deleting, bulk deletion and search.
 
   Every function returns `{:ok, result}`, `:ok` when Discord sends no body, or
   `{:error, %Lingo.Error{}}`. Calls go to the current bot (see `Lingo.with_bot/2`).
@@ -106,6 +106,16 @@ defmodule Lingo.Api.Message do
   def crosspost(channel_id, message_id) do
     Client.request(:post, "/channels/#{channel_id}/messages/#{message_id}/crosspost")
     |> Client.into(&Message.new/1)
+  end
+
+  @doc """
+  Forwards a message into `channel_id`. The bot must be able to read the
+  message's content (Discord answers code 160014 otherwise).
+  """
+  @spec forward(Api.id(), Api.id(), Api.id()) :: Api.result(Message.t())
+  def forward(channel_id, from_channel_id, message_id) do
+    reference = %{type: 1, channel_id: from_channel_id, message_id: message_id}
+    create(channel_id, %{message_reference: reference})
   end
 
   @doc "Searches a guild's messages. Retries while Discord is still indexing the guild."

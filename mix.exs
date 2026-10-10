@@ -76,11 +76,13 @@ defmodule Lingo.MixProject do
           Lingo.Component,
           Lingo.Component.Layout,
           Lingo.Component.Modal,
-          Lingo.Embed
+          Lingo.Embed,
+          Lingo.Poll
         ],
         Utilities: [
           ~r/^Lingo.Helper./,
           Lingo.CDN,
+          Lingo.Flags,
           Lingo.Format,
           Lingo.Permissions,
           Lingo.Snowflake,

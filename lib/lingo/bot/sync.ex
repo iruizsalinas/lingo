@@ -11,11 +11,17 @@ defmodule Lingo.Bot.Sync do
 
   @spec register(scope()) :: {:ok, [map()]} | {:error, Lingo.Error.t()}
   def register(scope \\ :global) do
-    payloads = Enum.map(commands(), &ApplicationCommand.to_payload/1)
+    commands = commands()
+
+    # entry point commands are global only
+    payloads =
+      for command <- commands,
+          scope == :global or command.type != :primary_entry_point,
+          do: ApplicationCommand.to_payload(command)
 
     case scope do
       :global ->
-        Command.bulk_overwrite_global(payloads)
+        overwrite_global(payloads)
 
       {:guild, guild_id} ->
         Command.bulk_overwrite_guild(guild_id, payloads)
@@ -53,6 +59,24 @@ defmodule Lingo.Bot.Sync do
         end)
 
         :ok
+    end
+  end
+
+  # Discord gives an app with Activities an entry point command and refuses
+  # (code 50240) an overwrite that would remove it: keep the one it has
+  defp overwrite_global(payloads) do
+    case Command.bulk_overwrite_global(payloads) do
+      {:error, %Lingo.Error{code: 50240}} ->
+        with {:ok, existing} <- Command.list_global() do
+          kept =
+            for %{type: :primary_entry_point} = command <- existing,
+                do: ApplicationCommand.to_payload(command)
+
+          Command.bulk_overwrite_global(payloads ++ kept)
+        end
+
+      result ->
+        result
     end
   end
 

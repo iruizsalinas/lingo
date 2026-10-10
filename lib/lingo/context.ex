@@ -120,6 +120,19 @@ defmodule Lingo.Context do
   @doc "Answers autocomplete with up to 25 choices, maps or keyword lists with `:name` and `:value`."
   defdelegate autocomplete_result(ctx, choices), to: Response
 
+  @doc "Launches the app's Activity, for entry point commands with the `:app_handler` handler."
+  defdelegate launch_activity(ctx), to: Response
+
+  @doc """
+  Fetches the response message: the first `reply/2` or its edits, not
+  follow-ups. Use its `id` with `Lingo.Collector.await_component/2`.
+  """
+  defdelegate get_reply(ctx), to: Response
+  @doc "Edits the response message. Ephemerality can't change after the first response."
+  defdelegate update_reply(ctx, content), to: Response
+  @doc "Deletes the response message."
+  defdelegate delete_reply(ctx), to: Response
+
   @doc "Like `reply/2`, but returns the context or raises `Lingo.Error`."
   defdelegate reply!(ctx, content), to: Response
   @doc "Like `ephemeral/2`, but returns the context or raises `Lingo.Error`."
@@ -132,6 +145,12 @@ defmodule Lingo.Context do
   defdelegate show_modal!(ctx, modal), to: Response
   @doc "Like `autocomplete_result/2`, but returns the context or raises `Lingo.Error`."
   defdelegate autocomplete_result!(ctx, choices), to: Response
+  @doc "Like `launch_activity/1`, but returns the context or raises `Lingo.Error`."
+  defdelegate launch_activity!(ctx), to: Response
+  @doc "Like `update_reply/2`, but returns the context or raises `Lingo.Error`."
+  defdelegate update_reply!(ctx, content), to: Response
+  @doc "Like `delete_reply/1`, but returns the context or raises `Lingo.Error`."
+  defdelegate delete_reply!(ctx), to: Response
 
   ## Reading input
 

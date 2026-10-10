@@ -1,5 +1,10 @@
 defmodule Lingo.Type.Embed do
-  @moduledoc "A message embed. Build one with `Lingo.Embed.build/1`."
+  @moduledoc """
+  A message embed. Build one with `Lingo.Embed.build/1`.
+
+  Link previews a website built from components (`type` `"components"`)
+  hold them in `components`: a single Container, display only.
+  """
 
   @type t :: %__MODULE__{
           title: String.t() | nil,
@@ -14,7 +19,9 @@ defmodule Lingo.Type.Embed do
           video: map() | nil,
           provider: map() | nil,
           author: map() | nil,
-          fields: [map()]
+          fields: [map()],
+          components: [map()] | nil,
+          flags: integer() | nil
         }
 
   defstruct [
@@ -30,6 +37,8 @@ defmodule Lingo.Type.Embed do
     :video,
     :provider,
     :author,
+    :components,
+    :flags,
     fields: []
   ]
 
@@ -50,7 +59,9 @@ defmodule Lingo.Type.Embed do
       video: data["video"],
       provider: data["provider"],
       author: data["author"],
-      fields: data["fields"] || []
+      fields: data["fields"] || [],
+      components: data["components"],
+      flags: data["flags"]
     }
   end
 
