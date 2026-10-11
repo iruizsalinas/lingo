@@ -8,7 +8,7 @@ defmodule Lingo.Integration.GatewayTest do
   setup_all do
     headers = [
       {"authorization", "Bot #{Lingo.Instance.get(:token)}"},
-      {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.3.0)"}
+      {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.4.0)"}
     ]
 
     {:ok, %{status: 200, body: body}} =
