@@ -8,7 +8,14 @@ defmodule Lingo.Api.ScheduledEvent do
 
   alias Lingo.Api
   alias Lingo.Rest.Client
-  alias Lingo.Type.ScheduledEvent
+  alias Lingo.Type.{Member, ScheduledEvent, User}
+
+  @typedoc "A user interested in a scheduled event, with their guild member when asked for."
+  @type event_user :: %{
+          guild_scheduled_event_id: Api.id(),
+          user: User.t(),
+          member: Member.t() | nil
+        }
 
   @doc "Lists a guild's scheduled events."
   @spec list(Api.id(), keyword()) :: Api.result([ScheduledEvent.t()])
@@ -54,12 +61,24 @@ defmodule Lingo.Api.ScheduledEvent do
     Client.request(:delete, "/guilds/#{guild_id}/scheduled-events/#{event_id}")
   end
 
-  @doc "Lists the users interested in a scheduled event."
-  @spec list_users(Api.id(), Api.id(), keyword()) :: Api.result([map()])
+  @doc """
+  Lists the users interested in a scheduled event, in user id order. Options:
+  `:limit`, `:with_member` (include their guild `member`), `:before` and
+  `:after`.
+  """
+  @spec list_users(Api.id(), Api.id(), keyword()) :: Api.result([event_user()])
   def list_users(guild_id, event_id, opts \\ []) do
-    params =
-      Client.params(opts)
+    Client.request(:get, "/guilds/#{guild_id}/scheduled-events/#{event_id}/users",
+      params: Client.params(opts)
+    )
+    |> Client.into(&event_user(&1, guild_id))
+  end
 
-    Client.request(:get, "/guilds/#{guild_id}/scheduled-events/#{event_id}/users", params: params)
+  defp event_user(data, guild_id) do
+    %{
+      guild_scheduled_event_id: data["guild_scheduled_event_id"],
+      user: User.new(data["user"]),
+      member: data["member"] && Member.new(Map.put(data["member"], "guild_id", guild_id))
+    }
   end
 end

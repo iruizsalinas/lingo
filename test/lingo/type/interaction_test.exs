@@ -63,5 +63,44 @@ defmodule Lingo.Type.InteractionTest do
 
       assert interaction.attachment_size_limit == 26_214_400
     end
+
+    test "parses the partial guild and channel and the entitlements" do
+      interaction =
+        Interaction.new(%{
+          "id" => "1",
+          "application_id" => "2",
+          "type" => 2,
+          "token" => "t",
+          "guild_id" => "60",
+          "guild" => %{"id" => "60", "locale" => "fr", "features" => ["COMMUNITY"]},
+          "channel" => %{"id" => "50", "type" => 0, "nsfw" => true, "name" => "general"},
+          "entitlements" => [%{"id" => "e1", "sku_id" => "s1", "type" => 8}]
+        })
+
+      assert %Lingo.Type.Guild{id: "60", preferred_locale: "fr", features: ["COMMUNITY"]} =
+               interaction.guild
+
+      assert %Lingo.Type.Channel{id: "50", guild_id: "60", type: :guild_text, nsfw: true} =
+               interaction.channel
+
+      assert [%Lingo.Type.Entitlement{id: "e1", type: :application_subscription}] =
+               interaction.entitlements
+
+      assert interaction.channel_id == "50"
+    end
+
+    test "a DM has no guild, and its channel no guild id" do
+      interaction =
+        Interaction.new(%{
+          "id" => "1",
+          "type" => 2,
+          "token" => "t",
+          "channel" => %{"id" => "50", "type" => 1}
+        })
+
+      assert interaction.guild == nil
+      assert %Lingo.Type.Channel{type: :dm, guild_id: nil} = interaction.channel
+      assert interaction.entitlements == []
+    end
   end
 end

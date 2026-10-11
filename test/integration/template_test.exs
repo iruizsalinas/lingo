@@ -54,7 +54,8 @@ defmodule Lingo.Integration.TemplateTest do
           assert synced.code == code
 
           # delete
-          assert {:ok, _deleted} = Lingo.Api.Template.delete(guild_id, code)
+          assert {:ok, %Lingo.Type.GuildTemplate{code: ^code}} =
+                   Lingo.Api.Template.delete(guild_id, code)
 
           # verify deletion
           assert {:error, _} = Lingo.Api.Template.get(code)

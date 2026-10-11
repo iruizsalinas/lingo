@@ -97,7 +97,14 @@ defmodule Lingo.Api.InviteTest do
 
     capture(200, JSON.encode!(response))
 
-    assert {:ok, ^response} = Lingo.Api.Guild.update_incident_actions(@guild_id, params)
+    assert {:ok,
+            %Lingo.Type.IncidentsData{
+              invites_disabled_until: ~U[2026-10-09 13:00:00Z],
+              dms_disabled_until: nil,
+              dm_spam_detected_at: ~U[2026-10-09 11:00:00Z],
+              raid_detected_at: ~U[2026-10-09 11:30:00Z]
+            }} = Lingo.Api.Guild.update_incident_actions(@guild_id, params)
+
     assert_received {:request, :put, url, headers, {"application/json", body}}
     assert url == @base_url <> "/guilds/#{@guild_id}/incident-actions"
 
@@ -112,7 +119,7 @@ defmodule Lingo.Api.InviteTest do
   test "incident actions accept keywords and leave omitted fields out of the request" do
     capture(200, ~s({"dms_disabled_until":null}))
 
-    assert {:ok, %{"dms_disabled_until" => nil}} =
+    assert {:ok, %Lingo.Type.IncidentsData{dms_disabled_until: nil}} =
              Lingo.Api.Guild.update_incident_actions(@guild_id, dms_disabled_until: nil)
 
     assert_received {:request, :put, _, _, {"application/json", body}}
@@ -123,7 +130,9 @@ defmodule Lingo.Api.InviteTest do
     params = %{"invites_disabled_until" => "2026-10-09T14:00:00+02:00"}
     capture(200, JSON.encode!(params))
 
-    assert {:ok, ^params} = Lingo.Api.Guild.update_incident_actions(@guild_id, params)
+    assert {:ok, %Lingo.Type.IncidentsData{invites_disabled_until: ~U[2026-10-09 12:00:00Z]}} =
+             Lingo.Api.Guild.update_incident_actions(@guild_id, params)
+
     assert_received {:request, :put, _, _, {"application/json", body}}
     assert JSON.decode!(IO.iodata_to_binary(body)) == params
   end
@@ -168,5 +177,33 @@ defmodule Lingo.Api.InviteTest do
     assert_received {:request, :post, _, _, {"application/json", body}}
     assert JSON.decode!(IO.iodata_to_binary(body)) == %{"user_ids" => user_ids}
     refute_received {:request, _, _, _, _}
+  end
+
+  test "target users job status comes back parsed" do
+    # Discord's example response
+    capture(
+      200,
+      JSON.encode!(%{
+        "status" => 3,
+        "total_users" => 100,
+        "processed_users" => 41,
+        "created_at" => "2025-01-08T12:00:00.000000+00:00",
+        "completed_at" => nil,
+        "error_message" => "Failed to parse CSV file"
+      })
+    )
+
+    assert {:ok,
+            %{
+              status: :failed,
+              total_users: 100,
+              processed_users: 41,
+              created_at: ~U[2025-01-08 12:00:00.000000Z],
+              completed_at: nil,
+              error_message: "Failed to parse CSV file"
+            }} = Lingo.Api.Invite.get_target_users_status("test-invite")
+
+    assert_received {:request, :get, url, _, nil}
+    assert url == @base_url <> "/invites/test-invite/target-users/job-status"
   end
 end

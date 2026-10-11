@@ -1,7 +1,13 @@
 defmodule Lingo.Type.Interaction do
-  @moduledoc "A raw interaction. Bot callbacks get a `Lingo.Context` instead, which wraps it."
+  @moduledoc """
+  A raw interaction. Bot callbacks get a `Lingo.Context` instead, which wraps it.
 
-  alias Lingo.Type.{Member, Message, User}
+  `guild` and `channel` are partial: Discord sends a guild's id, features
+  and locale (here `preferred_locale`). `data` is Discord's raw interaction
+  data, which `Lingo.Context` parses.
+  """
+
+  alias Lingo.Type.{Channel, Entitlement, Guild, Member, Message, Parse, User}
 
   @type interaction_type ::
           :ping | :application_command | :message_component | :autocomplete | :modal_submit
@@ -11,9 +17,9 @@ defmodule Lingo.Type.Interaction do
           application_id: String.t(),
           type: interaction_type(),
           data: map() | nil,
-          guild: map() | nil,
+          guild: Guild.t() | nil,
           guild_id: String.t() | nil,
-          channel: map() | nil,
+          channel: Channel.t() | nil,
           channel_id: String.t() | nil,
           member: Member.t() | nil,
           user: User.t() | nil,
@@ -23,7 +29,7 @@ defmodule Lingo.Type.Interaction do
           app_permissions: String.t() | nil,
           locale: String.t() | nil,
           guild_locale: String.t() | nil,
-          entitlements: [map()],
+          entitlements: [Entitlement.t()],
           authorizing_integration_owners: map() | nil,
           context: integer() | nil,
           attachment_size_limit: integer() | nil
@@ -52,14 +58,6 @@ defmodule Lingo.Type.Interaction do
     entitlements: []
   ]
 
-  @interaction_types %{
-    1 => :ping,
-    2 => :application_command,
-    3 => :message_component,
-    4 => :autocomplete,
-    5 => :modal_submit
-  }
-
   @doc false
   def new(nil), do: nil
 
@@ -67,11 +65,11 @@ defmodule Lingo.Type.Interaction do
     %__MODULE__{
       id: data["id"],
       application_id: data["application_id"],
-      type: Map.get(@interaction_types, data["type"], data["type"]),
+      type: Lingo.Type.Codes.name(:interaction_type, data["type"]),
       data: data["data"],
-      guild: data["guild"],
+      guild: parse_guild(data["guild"]),
       guild_id: data["guild_id"] || get_in(data, ["guild", "id"]),
-      channel: data["channel"],
+      channel: parse_channel(data["channel"], data["guild_id"]),
       channel_id: data["channel_id"] || get_in(data, ["channel", "id"]),
       member: parse_member(data["member"], data["guild_id"]),
       user: User.new(data["user"]),
@@ -81,7 +79,7 @@ defmodule Lingo.Type.Interaction do
       app_permissions: data["app_permissions"],
       locale: data["locale"],
       guild_locale: data["guild_locale"],
-      entitlements: data["entitlements"] || [],
+      entitlements: Parse.list(data["entitlements"], &Entitlement.new/1),
       authorizing_integration_owners: data["authorizing_integration_owners"],
       context: data["context"],
       attachment_size_limit: data["attachment_size_limit"]
@@ -102,6 +100,15 @@ defmodule Lingo.Type.Interaction do
     |> Map.put("guild_id", guild_id)
     |> Member.new()
   end
+
+  defp parse_guild(nil), do: nil
+
+  # the partial guild names its preferred locale `locale`
+  defp parse_guild(data),
+    do: data |> Map.put_new("preferred_locale", data["locale"]) |> Guild.new()
+
+  defp parse_channel(nil, _guild_id), do: nil
+  defp parse_channel(data, guild_id), do: data |> Parse.put_guild_id(guild_id) |> Channel.new()
 
   defp parse_message(nil, _guild_id), do: nil
 

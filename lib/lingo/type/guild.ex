@@ -1,7 +1,17 @@
 defmodule Lingo.Type.Guild do
   @moduledoc "A guild (server)."
 
-  alias Lingo.Type.{Channel, Codes, Emoji, Member, Parse, Role, Sticker}
+  alias Lingo.Type.{
+    Channel,
+    Codes,
+    Emoji,
+    IncidentsData,
+    Member,
+    Parse,
+    Role,
+    Sticker,
+    WelcomeScreen
+  }
 
   @type verification_level :: :none | :low | :medium | :high | :very_high
   @type notification_level :: :all_messages | :only_mentions
@@ -47,12 +57,12 @@ defmodule Lingo.Type.Guild do
           max_stage_video_channel_users: integer() | nil,
           approximate_member_count: integer() | nil,
           approximate_presence_count: integer() | nil,
-          welcome_screen: map() | nil,
+          welcome_screen: WelcomeScreen.t() | nil,
           nsfw_level: nsfw_level(),
           stickers: [Sticker.t()],
           premium_progress_bar_enabled: boolean(),
           safety_alerts_channel_id: String.t() | nil,
-          incidents_data: map() | nil,
+          incidents_data: IncidentsData.t() | nil,
           channels: [Channel.t()],
           members: [Lingo.Type.Member.t()],
           member_count: integer() | nil,
@@ -131,7 +141,9 @@ defmodule Lingo.Type.Guild do
       emojis: Parse.list(data["emojis"], &Emoji.new/1),
       stickers: Parse.list(data["stickers"], &Sticker.new/1),
       channels: Parse.list(data["channels"], &Channel.new/1),
-      joined_at: Parse.timestamp(data["joined_at"])
+      joined_at: Parse.timestamp(data["joined_at"]),
+      welcome_screen: WelcomeScreen.new(data["welcome_screen"]),
+      incidents_data: IncidentsData.new(data["incidents_data"])
     )
   end
 

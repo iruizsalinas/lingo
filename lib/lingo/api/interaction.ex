@@ -8,7 +8,7 @@ defmodule Lingo.Api.Interaction do
 
   alias Lingo.Api
   alias Lingo.Rest.{Body, Client}
-  alias Lingo.Type.Message
+  alias Lingo.Type.{Codes, Message}
 
   @response_types %{
     pong: 1,
@@ -20,14 +20,42 @@ defmodule Lingo.Api.Interaction do
     modal: 9,
     launch_activity: 12
   }
+  @response_names Map.new(@response_types, fn {name, code} -> {code, name} end)
+
+  @typedoc """
+  What an interaction response did, from `with_response: true`. `interaction`
+  holds the interaction's `id` and `type` (as in `Lingo.Type.Interaction`)
+  and the response's ids and state; `resource` what it created: its `type`
+  (as `create_response/5` takes it) and the `message` sent or the
+  `activity_instance` launched (`%{id: instance_id}`).
+  """
+  @type callback_response :: %{
+          interaction: %{
+            id: Api.id(),
+            type: Lingo.Type.Interaction.interaction_type() | integer(),
+            activity_instance_id: String.t() | nil,
+            response_message_id: Api.id() | nil,
+            response_message_loading: boolean() | nil,
+            response_message_ephemeral: boolean() | nil
+          },
+          resource:
+            %{
+              type: atom() | integer(),
+              activity_instance: %{id: String.t()} | nil,
+              message: Message.t() | nil
+            }
+            | nil
+        }
 
   @doc """
   Responds to an interaction. `type` is one of `:channel_message`,
   `:deferred_channel_message`, `:deferred_update_message`, `:update_message`,
-  `:autocomplete`, `:modal`, `:launch_activity` or `:pong`.
+  `:autocomplete`, `:modal`, `:launch_activity` or `:pong`. With
+  `with_response: true` it returns what the response did (see
+  `t:callback_response/0`).
   """
   @spec create_response(Api.id(), String.t(), atom(), map() | nil, keyword()) ::
-          Api.result() | {:ok, map()}
+          Api.result() | Api.result(callback_response())
   def create_response(interaction_id, interaction_token, type, data \\ nil, opts \\ []) do
     path = "/interactions/#{interaction_id}/#{interaction_token}/callback"
     type = Map.get(@response_types, type, type)
@@ -48,7 +76,31 @@ defmodule Lingo.Api.Interaction do
     result = Client.request(:post, path, [params: params] ++ body)
     # an interaction received over HTTP waits for this before answering 202
     Lingo.Endpoint.Pending.answered(Lingo.Instance.current(), interaction_id)
-    result
+    Client.into(result, &callback_response/1)
+  end
+
+  defp callback_response(data) do
+    interaction = data["interaction"] || %{}
+    resource = data["resource"]
+
+    %{
+      interaction: %{
+        id: interaction["id"],
+        type: Codes.name(:interaction_type, interaction["type"]),
+        activity_instance_id: interaction["activity_instance_id"],
+        response_message_id: interaction["response_message_id"],
+        response_message_loading: interaction["response_message_loading"],
+        response_message_ephemeral: interaction["response_message_ephemeral"]
+      },
+      resource:
+        resource &&
+          %{
+            type: Map.get(@response_names, resource["type"], resource["type"]),
+            activity_instance:
+              resource["activity_instance"] && %{id: resource["activity_instance"]["id"]},
+            message: Message.new(resource["message"])
+          }
+    }
   end
 
   @doc "Fetches the first response to an interaction."

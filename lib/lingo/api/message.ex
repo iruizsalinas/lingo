@@ -7,26 +7,9 @@ defmodule Lingo.Api.Message do
   """
 
   alias Lingo.Api
+  alias Lingo.Api.Message.Search
   alias Lingo.Rest.{Body, Client}
   alias Lingo.Type.Message
-
-  @search_index_retries 3
-  @search_index_short_delay 1_000
-  @search_array_params ~w(
-    channel_id
-    author_type
-    author_id
-    mentions
-    mentions_role_id
-    replied_to_user_id
-    replied_to_message_id
-    has
-    embed_type
-    embed_provider
-    link_hostname
-    attachment_filename
-    attachment_extension
-  )a
 
   @doc "Fetches a message."
   @spec get(Api.id(), Api.id()) :: Api.result(Message.t())
@@ -118,51 +101,27 @@ defmodule Lingo.Api.Message do
     create(channel_id, %{message_reference: reference})
   end
 
-  @doc "Searches a guild's messages. Retries while Discord is still indexing the guild."
-  @spec search(Api.id(), keyword()) :: Api.result(map())
-  def search(guild_id, opts \\ []) do
-    search_index_retries = Keyword.get(opts, :search_index_retries, @search_index_retries)
+  @typedoc """
+  A page of search results. `messages` nests each match in a list of its
+  own, as Discord sends them; `threads` are the threads they're in, and
+  `members` the bot's membership in those it has joined.
+  """
+  @type search_result :: %{
+          doing_deep_historical_index: boolean(),
+          documents_indexed: non_neg_integer() | nil,
+          total_results: non_neg_integer(),
+          messages: [[Message.t()]],
+          threads: [Lingo.Type.Channel.t()],
+          members: [Lingo.Type.ThreadMember.t()]
+        }
 
-    search_index_short_delay =
-      Keyword.get(opts, :search_index_short_delay, @search_index_short_delay)
-
-    params =
-      opts
-      |> Keyword.drop([:search_index_retries, :search_index_short_delay])
-      |> normalize_search_params()
-
-    do_search(guild_id, params, search_index_retries, search_index_short_delay)
-  end
-
-  defp do_search(guild_id, params, retries_left, short_delay) do
-    case Client.request(:get, "/guilds/#{guild_id}/messages/search", params: params) do
-      {:ok, %{"code" => 110_000} = body} when retries_left > 0 ->
-        Process.sleep(search_index_retry_after(body, short_delay))
-        do_search(guild_id, params, retries_left - 1, short_delay)
-
-      {:ok, %{"code" => 110_000} = body} ->
-        {:error, %Lingo.Error{reason: :index_not_ready, details: body}}
-
-      result ->
-        result
-    end
-  end
-
-  defp search_index_retry_after(%{"retry_after" => seconds}, short_delay)
-       when is_number(seconds) do
-    ms = trunc(seconds * 1000)
-    if ms > 0, do: ms, else: short_delay
-  end
-
-  defp search_index_retry_after(_body, short_delay), do: short_delay
-
-  defp normalize_search_params(params) do
-    Enum.flat_map(params, fn
-      {key, values} when key in @search_array_params and is_list(values) ->
-        Enum.map(values, &{key, &1})
-
-      param ->
-        [param]
-    end)
-  end
+  @doc """
+  Searches a guild's messages with Discord's search options (`content:`,
+  `author_id:`, `channel_id:`, `has:`, `limit:`, `offset:`...); options that
+  take several values take lists. Retries while Discord is still indexing
+  the guild: `:search_index_retries` times (3), waiting what Discord asks or
+  `:search_index_short_delay` ms (1000).
+  """
+  @spec search(Api.id(), keyword()) :: Api.result(search_result())
+  def search(guild_id, opts \\ []), do: Search.run(guild_id, opts)
 end

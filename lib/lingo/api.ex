@@ -8,6 +8,12 @@ defmodule Lingo.Api do
   They return `{:ok, result}`, `:ok` when Discord sends no body, or
   `{:error, %Lingo.Error{}}`, and go to the current bot (see `Lingo.with_bot/2`).
 
+  Results are parsed: a `Lingo.Type` struct or a list of them, a map with
+  atom keys for responses that hold several things (`t:Lingo.Api.Thread.archived/0`),
+  or the value itself when Discord wraps just one (`Lingo.Api.Guild.get_prune_count/2`
+  returns the count). Timestamps are `DateTime`s and Discord's numeric codes
+  atoms, as in the structs.
+
   Calls always contact Discord. Successful responses for cacheable resources
   refresh enabled caches under their policies; delayed responses are skipped
   when the cache changed during the request. Complete role lists also remove

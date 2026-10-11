@@ -57,7 +57,7 @@ defmodule Lingo.Integration.GuildTest do
   describe "list_voice_regions/1" do
     test "returns a list", %{guild_id: guild_id} do
       assert {:ok, regions} = Lingo.Api.Guild.list_voice_regions(guild_id)
-      assert is_list(regions)
+      assert Enum.all?(regions, &match?(%Lingo.Type.VoiceRegion{}, &1))
     end
   end
 
@@ -76,24 +76,25 @@ defmodule Lingo.Integration.GuildTest do
   end
 
   describe "get_widget_settings/1" do
-    test "returns a map", %{guild_id: guild_id} do
-      assert {:ok, settings} = Lingo.Api.Guild.get_widget_settings(guild_id)
-      assert is_map(settings)
+    test "returns whether the widget is enabled", %{guild_id: guild_id} do
+      assert {:ok, %{enabled: enabled, channel_id: _}} =
+               Lingo.Api.Guild.get_widget_settings(guild_id)
+
+      assert is_boolean(enabled)
     end
   end
 
   describe "get_prune_count/2" do
-    test "returns map with pruned key", %{guild_id: guild_id} do
-      assert {:ok, result} = Lingo.Api.Guild.get_prune_count(guild_id, days: 30)
-      assert is_map(result)
-      assert is_integer(result["pruned"])
+    test "returns how many members would be pruned", %{guild_id: guild_id} do
+      assert {:ok, pruned} = Lingo.Api.Guild.get_prune_count(guild_id, days: 30)
+      assert is_integer(pruned)
     end
   end
 
   describe "get_welcome_screen/1" do
     test "returns ok or 404 error", %{guild_id: guild_id} do
       case Lingo.Api.Guild.get_welcome_screen(guild_id) do
-        {:ok, screen} -> assert is_map(screen)
+        {:ok, screen} -> assert %Lingo.Type.WelcomeScreen{} = screen
         {:error, %Lingo.Error{status: status}} -> assert status in [404, 403]
       end
     end
@@ -102,7 +103,7 @@ defmodule Lingo.Integration.GuildTest do
   describe "get_onboarding/1" do
     test "returns ok or error", %{guild_id: guild_id} do
       case Lingo.Api.Guild.get_onboarding(guild_id) do
-        {:ok, data} -> assert is_map(data)
+        {:ok, onboarding} -> assert %Lingo.Type.Onboarding{guild_id: ^guild_id} = onboarding
         {:error, %Lingo.Error{status: status}} -> assert is_integer(status)
       end
     end

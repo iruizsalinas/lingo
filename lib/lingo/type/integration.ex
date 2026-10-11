@@ -4,7 +4,9 @@ defmodule Lingo.Type.Integration do
 
   `type` is Discord's string, such as `"discord"` or `"twitch"`. The sync
   fields (`syncing`, `role_id`, `expire_behavior` and so on) are `nil` for
-  bots. `account` and `application` are maps with atom keys.
+  bots. `account` and `application` are maps with atom keys. The partial
+  integrations in audit logs carry an `application_id` instead of the
+  `application`.
   """
 
   alias Lingo.Type.{Parse, User}
@@ -34,6 +36,7 @@ defmodule Lingo.Type.Integration do
           subscriber_count: integer() | nil,
           revoked: boolean() | nil,
           application: application() | nil,
+          application_id: String.t() | nil,
           scopes: [String.t()]
         }
 
@@ -53,6 +56,7 @@ defmodule Lingo.Type.Integration do
     :subscriber_count,
     :revoked,
     :application,
+    :application_id,
     enabled: false,
     scopes: []
   ]
@@ -81,6 +85,7 @@ defmodule Lingo.Type.Integration do
       subscriber_count: data["subscriber_count"],
       revoked: data["revoked"],
       application: application(data["application"]),
+      application_id: data["application_id"],
       scopes: data["scopes"] || []
     }
   end

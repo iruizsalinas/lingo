@@ -7,7 +7,19 @@ defmodule Lingo.Type.Message do
   `DateTime`s.
   """
 
-  alias Lingo.Type.{Attachment, Channel, Codes, Embed, Member, Parse, Reaction, User}
+  alias Lingo.Type.{
+    Application,
+    Attachment,
+    Channel,
+    Codes,
+    Embed,
+    Member,
+    Parse,
+    Poll,
+    Reaction,
+    Sticker,
+    User
+  }
 
   @type message_type :: atom() | integer()
 
@@ -35,7 +47,7 @@ defmodule Lingo.Type.Message do
           webhook_id: String.t() | nil,
           type: message_type(),
           activity: map() | nil,
-          application: map() | nil,
+          application: Application.t() | nil,
           application_id: String.t() | nil,
           flags: integer(),
           message_reference: map() | nil,
@@ -46,11 +58,11 @@ defmodule Lingo.Type.Message do
           thread: Channel.t() | nil,
           components: [map()],
           sticker_items: [map()],
-          stickers: [map()],
+          stickers: [Sticker.t()],
           position: integer() | nil,
           role_subscription_data: map() | nil,
           resolved: map() | nil,
-          poll: map() | nil,
+          poll: Poll.t() | nil,
           call: map() | nil,
           shared_client_theme: map() | nil
         }
@@ -119,6 +131,9 @@ defmodule Lingo.Type.Message do
       type: Codes.name(:message_type, data["type"], :default),
       referenced_message: new(data["referenced_message"]),
       thread: Channel.new(data["thread"]),
+      application: Application.new(data["application"]),
+      stickers: Parse.list(data["stickers"], &Sticker.new/1),
+      poll: Poll.new(data["poll"]),
       message_snapshots: Parse.list(data["message_snapshots"], &snapshot/1)
     )
   end

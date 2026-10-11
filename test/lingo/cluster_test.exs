@@ -83,6 +83,8 @@ defmodule Lingo.ClusterTest do
 
   test "payloads for the peer's shard reach it", %{name: name, node: node} do
     :erpc.call(node, Peer, :member, [name, {:shard, 2, 1}, self()])
+    # the peer's membership reaches this node's groups asynchronously
+    assert is_pid(wait_for(fn -> Groups.shard(name, 1, 2) end))
     state = %ShardManager{bot: name, current: %Pool{count: 2}}
 
     {:noreply, _} =

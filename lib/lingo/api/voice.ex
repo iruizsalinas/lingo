@@ -8,23 +8,24 @@ defmodule Lingo.Api.Voice do
 
   alias Lingo.Api
   alias Lingo.Rest.Client
+  alias Lingo.Type.{Parse, VoiceRegion, VoiceState}
 
   @doc "Lists Discord's voice regions."
-  @spec list_regions() :: Api.result([map()])
+  @spec list_regions() :: Api.result([VoiceRegion.t()])
   def list_regions do
-    Client.request(:get, "/voice/regions")
+    Client.request(:get, "/voice/regions") |> Client.into(&VoiceRegion.new/1)
   end
 
   @doc "Fetches the bot's voice state in a guild."
-  @spec get_current_state(Api.id()) :: Api.result(map())
+  @spec get_current_state(Api.id()) :: Api.result(VoiceState.t())
   def get_current_state(guild_id) do
-    Client.request(:get, "/guilds/#{guild_id}/voice-states/@me")
+    Client.request(:get, "/guilds/#{guild_id}/voice-states/@me") |> voice_state(guild_id)
   end
 
   @doc "Fetches a user's voice state in a guild."
-  @spec get_state(Api.id(), Api.id()) :: Api.result(map())
+  @spec get_state(Api.id(), Api.id()) :: Api.result(VoiceState.t())
   def get_state(guild_id, user_id) do
-    Client.request(:get, "/guilds/#{guild_id}/voice-states/#{user_id}")
+    Client.request(:get, "/guilds/#{guild_id}/voice-states/#{user_id}") |> voice_state(guild_id)
   end
 
   @doc "Edits the bot's voice state, e.g. to request to speak on a stage."
@@ -38,4 +39,7 @@ defmodule Lingo.Api.Voice do
   def update_state(guild_id, user_id, params) do
     Client.request(:patch, "/guilds/#{guild_id}/voice-states/#{user_id}", json: params)
   end
+
+  defp voice_state(result, guild_id),
+    do: Client.into(result, &VoiceState.new(Parse.put_guild_id(&1, guild_id)))
 end

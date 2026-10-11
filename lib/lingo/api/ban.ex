@@ -43,8 +43,13 @@ defmodule Lingo.Api.Ban do
     Client.request(:delete, "/guilds/#{guild_id}/bans/#{user_id}", reason: opts[:reason])
   end
 
-  @doc "Bans up to 200 users at once."
-  @spec bulk_create(Api.id(), [Api.id()], keyword()) :: Api.result(map())
+  @doc """
+  Bans up to 200 users at once. Returns the ids Discord banned and those it
+  couldn't, or that were already banned; Discord answers an error when it
+  could ban none.
+  """
+  @spec bulk_create(Api.id(), [Api.id()], keyword()) ::
+          Api.result(%{banned_users: [Api.id()], failed_users: [Api.id()]})
   def bulk_create(guild_id, user_ids, opts \\ []) when is_list(user_ids) do
     json = %{user_ids: user_ids}
 
@@ -55,5 +60,8 @@ defmodule Lingo.Api.Ban do
       end
 
     Client.request(:post, "/guilds/#{guild_id}/bulk-ban", json: json, reason: opts[:reason])
+    |> Client.into(fn data ->
+      %{banned_users: data["banned_users"] || [], failed_users: data["failed_users"] || []}
+    end)
   end
 end

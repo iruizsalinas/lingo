@@ -44,9 +44,10 @@ defmodule Lingo.Api.Template do
     |> Client.into(&GuildTemplate.new/1)
   end
 
-  @doc "Deletes a guild template."
-  @spec delete(Api.id(), String.t()) :: Api.result(map())
+  @doc "Deletes a guild template, returning it."
+  @spec delete(Api.id(), String.t()) :: Api.result(GuildTemplate.t())
   def delete(guild_id, template_code) do
     Client.request(:delete, "/guilds/#{guild_id}/templates/#{template_code}")
+    |> Client.into(&GuildTemplate.new/1)
   end
 end

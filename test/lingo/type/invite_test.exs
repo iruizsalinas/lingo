@@ -37,7 +37,7 @@ defmodule Lingo.Type.InviteTest do
       assert invite.guild_id == "guild1"
       assert invite.channel_id == "channel1"
       assert invite.role_ids == ["role1"]
-      assert invite.target_application["id"] == "app1"
+      assert %Lingo.Type.Application{id: "app1", name: "Activity"} = invite.target_application
       assert %ScheduledEvent{} = invite.guild_scheduled_event
       assert invite.guild_scheduled_event.id == "event1"
       assert [%Role{} = role] = invite.roles

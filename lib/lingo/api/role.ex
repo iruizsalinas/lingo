@@ -65,8 +65,8 @@ defmodule Lingo.Api.Role do
     end
   end
 
-  @doc "Counts the members in each of a guild's roles."
-  @spec get_member_counts(Api.id()) :: Api.result(map())
+  @doc "Counts the members in each of a guild's roles, by role id, leaving out @everyone."
+  @spec get_member_counts(Api.id()) :: Api.result(%{Api.id() => non_neg_integer()})
   def get_member_counts(guild_id) do
     Client.request(:get, "/guilds/#{guild_id}/roles/member-counts")
   end

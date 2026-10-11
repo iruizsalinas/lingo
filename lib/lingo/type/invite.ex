@@ -1,7 +1,7 @@
 defmodule Lingo.Type.Invite do
   @moduledoc "An invite to a guild or group DM."
 
-  alias Lingo.Type.{Channel, Guild, Role, ScheduledEvent, User}
+  alias Lingo.Type.{Application, Channel, Guild, Role, ScheduledEvent, User}
 
   @type t :: %__MODULE__{
           type: integer() | nil,
@@ -13,7 +13,7 @@ defmodule Lingo.Type.Invite do
           inviter: User.t() | nil,
           target_type: integer() | nil,
           target_user: User.t() | nil,
-          target_application: map() | nil,
+          target_application: Application.t() | nil,
           approximate_presence_count: integer() | nil,
           approximate_member_count: integer() | nil,
           expires_at: DateTime.t() | nil,
@@ -67,7 +67,7 @@ defmodule Lingo.Type.Invite do
       inviter: User.new(data["inviter"]),
       target_type: data["target_type"],
       target_user: User.new(data["target_user"]),
-      target_application: data["target_application"],
+      target_application: Application.new(data["target_application"]),
       approximate_presence_count: data["approximate_presence_count"],
       approximate_member_count: data["approximate_member_count"],
       expires_at: Lingo.Type.Parse.timestamp(data["expires_at"]),

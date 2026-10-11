@@ -193,7 +193,7 @@ defmodule Lingo.OAuth2Test do
 
       assert {:ok,
               %{
-                application: %{"id" => "200"},
+                application: %Lingo.Type.Application{id: "200"},
                 scopes: ["identify"],
                 expires: %DateTime{},
                 user: %Lingo.Type.User{id: "42"}

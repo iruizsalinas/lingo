@@ -1,7 +1,7 @@
 defmodule Lingo.Type.Attachment do
   @moduledoc "A file attached to a message."
 
-  alias Lingo.Type.User
+  alias Lingo.Type.{Application, User}
 
   @type t :: %__MODULE__{
           id: String.t(),
@@ -21,7 +21,7 @@ defmodule Lingo.Type.Attachment do
           placeholder_version: integer() | nil,
           clip_participants: [User.t()],
           clip_created_at: DateTime.t() | nil,
-          application: map() | nil,
+          application: Application.t() | nil,
           flags: integer()
         }
 
@@ -69,7 +69,7 @@ defmodule Lingo.Type.Attachment do
       placeholder_version: data["placeholder_version"],
       clip_participants: Enum.map(data["clip_participants"] || [], &User.new/1),
       clip_created_at: Lingo.Type.Parse.timestamp(data["clip_created_at"]),
-      application: data["application"],
+      application: Application.new(data["application"]),
       flags: data["flags"] || 0
     }
   end

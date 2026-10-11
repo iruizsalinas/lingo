@@ -18,6 +18,7 @@ defmodule Lingo.Bot.ChecksTest do
     command("custom", "Custom", checks: [&GuardedBot.even_user?/1])
     command("slow", "Cooldown", checks: [:guild_only], cooldown: {1, 60_000})
     command("owner", "Owners", checks: [:owner_only])
+    command("adult", "NSFW only", checks: [:nsfw])
     user_command("Inspect", checks: [:guild_only])
     command("okcheck", "Passes with :ok", checks: [&GuardedBot.ok_check/1])
     command("badcheck", "Returns nonsense", checks: [&GuardedBot.bad_check/1])
@@ -128,7 +129,10 @@ defmodule Lingo.Bot.ChecksTest do
           }),
         else: Map.put(base, "user", user)
 
-    Interaction.new(payload)
+    case Keyword.fetch(opts, :channel) do
+      {:ok, channel} -> payload |> Map.put("channel", channel) |> Interaction.new()
+      :error -> Interaction.new(payload)
+    end
   end
 
   test "commands that pass their checks run" do
@@ -198,6 +202,18 @@ defmodule Lingo.Bot.ChecksTest do
 
     Lingo.Bot.Runner.interaction(command("slow", user_id: "7"))
     assert_receive {:ran, "slow"}
+  end
+
+  test "nsfw passes only in channels Discord marks age-restricted" do
+    start(GuardedBot)
+
+    Lingo.Bot.Runner.interaction(command("adult", channel: %{"id" => "50", "nsfw" => true}))
+    assert_receive {:ran, "adult"}
+
+    for channel <- [%{"id" => "50", "nsfw" => false}, %{"id" => "50"}, nil] do
+      Lingo.Bot.Runner.interaction(command("adult", channel: channel))
+      assert_receive {:error, %CheckError{reason: :nsfw}, _}
+    end
   end
 
   test "owner_only allows the team's owner, admins and developers" do

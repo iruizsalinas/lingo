@@ -44,7 +44,7 @@ defmodule Lingo.Bot.Checks do
   defp passes(:dm_only, ctx), do: ok_if(ctx.guild_id == nil, :dm_only)
 
   defp passes(:nsfw, ctx),
-    do: ok_if(get_in(ctx.interaction.channel || %{}, ["nsfw"]) == true, :nsfw)
+    do: ok_if(match?(%{nsfw: true}, ctx.interaction.channel), :nsfw)
 
   defp passes(:owner_only, ctx), do: ok_if(ctx.user_id in owner_ids(ctx.bot), :owner_only)
 
@@ -132,16 +132,16 @@ defmodule Lingo.Bot.Checks do
   defp fetch_owner_ids(bot) do
     Instance.with_current(bot, fn ->
       case Lingo.Api.Application.get_current() do
-        {:ok, %{"team" => %{"members" => members} = team}} when is_list(members) ->
+        {:ok, %Lingo.Type.Application{team: %{members: members} = team}} ->
           # members from before team roles have none; they were all owners then
           maintainers =
-            for member <- members,
-                Map.get(member, "role", "admin") in @owner_roles,
-                do: get_in(member, ["user", "id"])
+            for %{role: role, user: user} <- members,
+                (role || "admin") in @owner_roles,
+                do: user && user.id
 
-          Enum.uniq(Enum.reject([team["owner_user_id"] | maintainers], &is_nil/1))
+          Enum.uniq(Enum.reject([team.owner_user_id | maintainers], &is_nil/1))
 
-        {:ok, %{"owner" => %{"id" => id}}} ->
+        {:ok, %Lingo.Type.Application{owner: %{id: id}}} ->
           [id]
 
         _error ->

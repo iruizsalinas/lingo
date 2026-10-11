@@ -23,7 +23,7 @@ defmodule Lingo.OAuth2 do
 
   alias Lingo.Api
   alias Lingo.OAuth2.HTTP
-  alias Lingo.Type.{AccessToken, Connection, Guild, Member, User}
+  alias Lingo.Type.{AccessToken, Application, Connection, Guild, Member, User}
 
   @authorize "https://discord.com/oauth2/authorize"
 
@@ -100,12 +100,12 @@ defmodule Lingo.OAuth2 do
   defp hint(_token), do: nil
 
   @doc """
-  The token's authorization: `:application` (Discord's application object),
+  The token's authorization: `:application` (partial),
   `:scopes`, `:expires` and, with the `identify` scope, `:user`.
   """
   @spec get_authorization(token()) ::
           Api.result(%{
-            application: map(),
+            application: Application.t(),
             scopes: [String.t()],
             expires: DateTime.t() | nil,
             user: User.t() | nil
@@ -114,7 +114,7 @@ defmodule Lingo.OAuth2 do
     with {:ok, data} <- HTTP.as_user(token, :get, "/oauth2/@me") do
       {:ok,
        %{
-         application: data["application"],
+         application: Application.new(data["application"]),
          scopes: data["scopes"] || [],
          expires: Lingo.Type.Parse.timestamp(data["expires"]),
          user: User.new(data["user"])

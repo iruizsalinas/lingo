@@ -21,14 +21,14 @@ defmodule Lingo.Integration.MiscApiTest do
 
   describe "application" do
     test "get_current returns application with id and name" do
-      assert {:ok, data} = Lingo.Api.Application.get_current()
-      assert is_binary(data["id"])
-      assert is_binary(data["name"])
+      assert {:ok, %Lingo.Type.Application{} = app} = Lingo.Api.Application.get_current()
+      assert is_binary(app.id)
+      assert is_binary(app.name)
     end
 
     test "get_role_connection_metadata returns a list" do
       assert {:ok, list} = Lingo.Api.Application.get_role_connection_metadata()
-      assert is_list(list)
+      assert Enum.all?(list, &match?(%Lingo.Type.RoleConnectionMetadata{}, &1))
     end
   end
 
@@ -69,9 +69,9 @@ defmodule Lingo.Integration.MiscApiTest do
       assert is_list(list)
       assert length(list) > 0
 
-      region = hd(list)
-      assert is_binary(region["id"])
-      assert is_binary(region["name"])
+      assert %Lingo.Type.VoiceRegion{id: id, name: name} = hd(list)
+      assert is_binary(id)
+      assert is_binary(name)
     end
   end
 
@@ -93,8 +93,8 @@ defmodule Lingo.Integration.MiscApiTest do
 
   describe "stickers" do
     test "list_packs returns sticker packs" do
-      assert {:ok, data} = Lingo.Api.Sticker.list_packs()
-      assert is_list(data) or is_map(data)
+      assert {:ok, packs} = Lingo.Api.Sticker.list_packs()
+      assert Enum.all?(packs, &match?(%Lingo.Type.StickerPack{}, &1))
     end
 
     test "list_guild returns guild stickers (may be empty)", %{guild_id: guild_id} do
@@ -149,8 +149,10 @@ defmodule Lingo.Integration.MiscApiTest do
           }
         })
 
-      assert {:ok, expired} = Lingo.Api.Poll.expire(channel_id, msg.id)
-      assert is_map(expired)
+      assert {:ok, %Lingo.Type.Message{poll: %Lingo.Type.Poll{}} = expired} =
+               Lingo.Api.Poll.expire(channel_id, msg.id)
+
+      assert expired.id == msg.id
     end
 
     test "list_answer_voters returns voters for answer 1", %{channel_id: channel_id} do
@@ -169,8 +171,8 @@ defmodule Lingo.Integration.MiscApiTest do
       # Expire so the poll is finalized
       Lingo.Api.Poll.expire(channel_id, msg.id)
 
-      assert {:ok, data} = Lingo.Api.Poll.list_answer_voters(channel_id, msg.id, 1)
-      assert is_map(data)
+      assert {:ok, voters} = Lingo.Api.Poll.list_answer_voters(channel_id, msg.id, 1)
+      assert Enum.all?(voters, &match?(%Lingo.Type.User{}, &1))
     end
   end
 

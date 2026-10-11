@@ -71,30 +71,29 @@ defmodule Lingo.Api.Webhook do
     Client.request(:delete, "/webhooks/#{webhook_id}/#{webhook_token}")
   end
 
-  @doc "Sends a Slack-formatted message through a webhook."
-  @spec execute_slack(Api.id(), String.t(), Api.params(), keyword()) ::
-          Api.result() | {:ok, map()}
-  def execute_slack(webhook_id, webhook_token, params, opts \\ []) do
-    query_params =
-      Client.params(opts)
+  @doc """
+  Sends a Slack-formatted message through a webhook. Options: `:thread_id`
+  and `:wait`.
+  """
+  @spec execute_slack(Api.id(), String.t(), Api.params(), keyword()) :: Api.result()
+  def execute_slack(webhook_id, webhook_token, params, opts \\ []),
+    do: execute_compatible(webhook_id, webhook_token, "slack", params, opts)
 
-    Client.request(:post, "/webhooks/#{webhook_id}/#{webhook_token}/slack",
-      json: params,
-      params: query_params
-    )
-  end
+  @doc """
+  Sends a GitHub event through a webhook. Options: `:thread_id` and `:wait`.
+  """
+  @spec execute_github(Api.id(), String.t(), Api.params(), keyword()) :: Api.result()
+  def execute_github(webhook_id, webhook_token, params, opts \\ []),
+    do: execute_compatible(webhook_id, webhook_token, "github", params, opts)
 
-  @doc "Sends a GitHub event through a webhook."
-  @spec execute_github(Api.id(), String.t(), Api.params(), keyword()) ::
-          Api.result() | {:ok, map()}
-  def execute_github(webhook_id, webhook_token, params, opts \\ []) do
-    query_params =
-      Client.params(opts)
-
-    Client.request(:post, "/webhooks/#{webhook_id}/#{webhook_token}/github",
-      json: params,
-      params: query_params
-    )
+  # Discord documents no body for these, only success
+  defp execute_compatible(webhook_id, webhook_token, kind, params, opts) do
+    with {:ok, _body} <-
+           Client.request(:post, "/webhooks/#{webhook_id}/#{webhook_token}/#{kind}",
+             json: params,
+             params: Client.params(opts)
+           ),
+         do: :ok
   end
 
   @doc "Sends a message through a webhook. Pass `wait: true` to get the message back."

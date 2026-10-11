@@ -68,14 +68,34 @@ defmodule Lingo.Type.GuildTest do
           "id" => "1",
           "name" => "G",
           "owner_id" => "2",
-          "welcome_screen" => %{"description" => "Welcome"},
+          "welcome_screen" => %{
+            "description" => "Welcome",
+            "welcome_channels" => [
+              %{
+                "channel_id" => "c1",
+                "description" => "Rules",
+                "emoji_id" => nil,
+                "emoji_name" => "📜"
+              }
+            ]
+          },
           "safety_alerts_channel_id" => "alerts",
-          "incidents_data" => %{"invites_disabled_until" => nil}
+          "incidents_data" => %{
+            "invites_disabled_until" => nil,
+            "raid_detected_at" => "2026-10-09T11:30:00+00:00"
+          }
         })
 
-      assert guild.welcome_screen["description"] == "Welcome"
+      assert %Lingo.Type.WelcomeScreen{description: "Welcome", welcome_channels: [channel]} =
+               guild.welcome_screen
+
+      assert channel == %{channel_id: "c1", description: "Rules", emoji_id: nil, emoji_name: "📜"}
       assert guild.safety_alerts_channel_id == "alerts"
-      assert guild.incidents_data["invites_disabled_until"] == nil
+
+      assert %Lingo.Type.IncidentsData{invites_disabled_until: nil, raid_detected_at: raid} =
+               guild.incidents_data
+
+      assert raid == ~U[2026-10-09 11:30:00Z]
     end
   end
 end

@@ -108,7 +108,7 @@ defmodule Lingo.Instance do
 
     case get(name, :application_id, nil) do
       nil ->
-        with {:ok, %{"id" => id}} <- Lingo.Api.Application.get_current() do
+        with {:ok, %Lingo.Type.Application{id: id}} <- Lingo.Api.Application.get_current() do
           put(name, :application_id, id)
           {:ok, id}
         end

@@ -7,6 +7,7 @@ defmodule Lingo.Api.Invite do
   """
 
   alias Lingo.Api
+  alias Lingo.Api.Invite.TargetUsers
   alias Lingo.Rest.Client
   alias Lingo.Type.Invite
 
@@ -30,28 +31,16 @@ defmodule Lingo.Api.Invite do
   @spec list_target_users(String.t()) :: Api.result([Api.id()])
   def list_target_users(invite_code) do
     with {:ok, body} when is_binary(body) <-
-           Client.request(:get, "/invites/#{invite_code}/target-users") do
-      ids =
-        body
-        |> String.split(~r/\r?\n/, trim: true)
-        |> Enum.drop(1)
-        |> Enum.map(&String.trim/1)
-        |> Enum.reject(&(&1 == ""))
-
-      {:ok, ids}
-    end
+           Client.request(:get, "/invites/#{invite_code}/target-users"),
+         do: {:ok, TargetUsers.ids(body)}
   end
 
   @doc "Restricts an invite to the given users."
   @spec set_target_users(String.t(), [Api.id()]) :: Api.result()
   def set_target_users(invite_code, user_ids) when is_list(user_ids) do
-    csv = "user_id\n" <> Enum.join(user_ids, "\n")
-
-    multipart = [
-      {"target_users_file", {csv, filename: "target_users.csv", content_type: "text/csv"}}
-    ]
-
-    Client.request(:put, "/invites/#{invite_code}/target-users", multipart: multipart)
+    Client.request(:put, "/invites/#{invite_code}/target-users",
+      multipart: [TargetUsers.file(user_ids)]
+    )
   end
 
   @doc "Adds a user to an invite's allowed users."
@@ -66,26 +55,41 @@ defmodule Lingo.Api.Invite do
     Client.request(:delete, "/invites/#{invite_code}/target-users/#{user_id}")
   end
 
-  @doc "Adds several users to an invite's allowed users."
-  @spec bulk_add_target_users(String.t(), [Api.id()]) :: Api.result() | {:ok, map()}
+  @doc "Adds up to 1000 users to an invite's allowed users."
+  @spec bulk_add_target_users(String.t(), [Api.id()]) :: Api.result()
   def bulk_add_target_users(invite_code, user_ids) when is_list(user_ids) do
     Client.request(:post, "/invites/#{invite_code}/target-users/bulk-add",
       json: %{user_ids: user_ids}
     )
   end
 
-  @doc "Removes several users from an invite's allowed users."
-  @spec bulk_delete_target_users(String.t(), [Api.id()]) :: Api.result() | {:ok, map()}
+  @doc "Removes up to 1000 users from an invite's allowed users."
+  @spec bulk_delete_target_users(String.t(), [Api.id()]) :: Api.result()
   def bulk_delete_target_users(invite_code, user_ids) when is_list(user_ids) do
     Client.request(:post, "/invites/#{invite_code}/target-users/bulk-delete",
       json: %{user_ids: user_ids}
     )
   end
 
-  @doc "Fetches the status of an invite's pending target user changes."
-  @spec get_target_users_status(String.t()) :: Api.result(map())
+  @typedoc """
+  The progress of processing an invite's target users file. `status` is
+  `:unspecified`, `:processing`, `:completed` or `:failed` (see
+  `error_message`).
+  """
+  @type target_users_job :: %{
+          status: :unspecified | :processing | :completed | :failed | integer(),
+          total_users: non_neg_integer(),
+          processed_users: non_neg_integer(),
+          created_at: DateTime.t() | nil,
+          completed_at: DateTime.t() | nil,
+          error_message: String.t() | nil
+        }
+
+  @doc "Fetches the progress of processing an invite's target users file."
+  @spec get_target_users_status(String.t()) :: Api.result(target_users_job())
   def get_target_users_status(invite_code) do
     Client.request(:get, "/invites/#{invite_code}/target-users/job-status")
+    |> Client.into(&TargetUsers.job/1)
   end
 
   @doc "Lists a channel's invites."
@@ -100,33 +104,11 @@ defmodule Lingo.Api.Invite do
   """
   @spec create(Api.id(), Api.params(), keyword()) :: Api.result(Invite.t())
   def create(channel_id, params \\ %{}, opts \\ []) do
-    request_opts = [reason: opts[:reason]] ++ body(Map.new(params))
+    request_opts = [reason: opts[:reason]] ++ TargetUsers.invite_body(Map.new(params))
 
     Client.request(:post, "/channels/#{channel_id}/invites", request_opts)
     |> Client.into(&Invite.new/1)
   end
-
-  # a target users file goes up as CSV next to the JSON payload
-  defp body(params) do
-    {file, params} = Map.pop(params, :target_users_file)
-    {file, json} = if file, do: {file, params}, else: Map.pop(params, "target_users_file")
-
-    if file do
-      payload = {"payload_json", {JSON.encode!(json), content_type: "application/json"}}
-      [multipart: [payload, users_file(file)]]
-    else
-      [json: json]
-    end
-  end
-
-  defp users_file(user_ids) when is_list(user_ids),
-    do: users_file("user_id\n" <> Enum.join(user_ids, "\n"))
-
-  defp users_file({filename, csv}) when is_binary(filename),
-    do: {"target_users_file", {csv, filename: filename, content_type: "text/csv"}}
-
-  defp users_file(csv) when is_binary(csv),
-    do: {"target_users_file", {csv, filename: "target_users.csv", content_type: "text/csv"}}
 
   @doc "Lists a guild's invites."
   @spec list_guild(Api.id()) :: Api.result([Invite.t()])

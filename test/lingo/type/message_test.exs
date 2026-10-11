@@ -101,7 +101,8 @@ defmodule Lingo.Type.MessageTest do
           "poll" => %{"question" => %{"text" => "Question?"}},
           "call" => %{"participants" => ["u1"], "ended_timestamp" => nil},
           "shared_client_theme" => %{"primary_color" => 123},
-          "stickers" => [%{"id" => "s1"}],
+          "stickers" => [%{"id" => "s1", "name" => "wave", "format_type" => 1}],
+          "application" => %{"id" => "app1", "name" => "Game"},
           "message_snapshots" => [
             %{"message" => %{"id" => "snapshot1", "channel_id" => "c1", "content" => "snap"}},
             %{"unexpected" => true}
@@ -111,10 +112,11 @@ defmodule Lingo.Type.MessageTest do
       assert msg.interaction["id"] == "i1"
       assert msg.role_subscription_data["role_subscription_listing_id"] == "listing1"
       assert msg.resolved["users"] == %{}
-      assert msg.poll["question"]["text"] == "Question?"
+      assert %Lingo.Type.Poll{question: %{text: "Question?", emoji: nil}} = msg.poll
       assert msg.call["participants"] == ["u1"]
       assert msg.shared_client_theme["primary_color"] == 123
-      assert [%{"id" => "s1"}] = msg.stickers
+      assert [%Lingo.Type.Sticker{id: "s1", name: "wave", format_type: :png}] = msg.stickers
+      assert %Lingo.Type.Application{id: "app1", name: "Game"} = msg.application
 
       assert [%{"message" => %Message{} = snapshot}, %{"unexpected" => true}] =
                msg.message_snapshots

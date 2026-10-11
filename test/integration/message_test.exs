@@ -102,7 +102,11 @@ defmodule Lingo.Integration.MessageTest do
       # Discord needs time to index the message for search
       Process.sleep(2_000)
 
-      assert {:ok, _result} = Lingo.Api.Message.search(guild_id, content: term)
+      assert {:ok, %{total_results: total, messages: messages}} =
+               Lingo.Api.Message.search(guild_id, content: term)
+
+      assert is_integer(total)
+      assert Enum.all?(List.flatten(messages), &match?(%Lingo.Type.Message{}, &1))
     end
   end
 end

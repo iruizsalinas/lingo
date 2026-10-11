@@ -35,7 +35,11 @@ defmodule Lingo.Rest.Request do
   end
 
   defp query_string(params) when params in [nil, [], %{}], do: ""
-  defp query_string(params), do: "?" <> URI.encode_query(params)
+  defp query_string(params), do: "?" <> URI.encode_query(Enum.map(params, &query_param/1))
+
+  # timestamps go back as Discord sends them, e.g. a pin's pinned_at as `before`
+  defp query_param({key, %DateTime{} = value}), do: {key, DateTime.to_iso8601(value)}
+  defp query_param(param), do: param
 
   defp encode_body(opts) do
     cond do

@@ -114,8 +114,7 @@ defmodule Lingo.Integration.RestTest do
 
       # check job status, should exist now
       assert {:ok, status} = Lingo.Api.Invite.get_target_users_status(code)
-      assert is_map(status)
-      assert is_integer(status["status"])
+      assert status.status in [:unspecified, :processing, :completed, :failed]
 
       # wait for async processing
       Process.sleep(3_000)
@@ -141,8 +140,7 @@ defmodule Lingo.Integration.RestTest do
       assert is_binary(invite.code)
 
       assert {:ok, status} = Lingo.Api.Invite.get_target_users_status(invite.code)
-      assert is_map(status)
-      assert is_integer(status["status"])
+      assert status.status in [:unspecified, :processing, :completed, :failed]
 
       Process.sleep(3_000)
 

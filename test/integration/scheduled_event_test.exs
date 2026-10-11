@@ -70,7 +70,7 @@ defmodule Lingo.Integration.ScheduledEventTest do
       {:ok, event} = Lingo.Api.ScheduledEvent.create(guild_id, event_params())
 
       assert {:ok, users} = Lingo.Api.ScheduledEvent.list_users(guild_id, event.id)
-      assert is_list(users)
+      assert Enum.all?(users, &match?(%{user: %Lingo.Type.User{}}, &1))
 
       Lingo.Api.ScheduledEvent.delete(guild_id, event.id)
     end

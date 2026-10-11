@@ -8,7 +8,7 @@ defmodule Lingo.Api.Channel do
 
   alias Lingo.Api
   alias Lingo.Rest.Client
-  alias Lingo.Type.{Channel, Message}
+  alias Lingo.Type.{Channel, Message, Parse}
 
   @doc "Fetches a channel or thread."
   @spec get(Api.id()) :: Api.result(Channel.t())
@@ -69,13 +69,18 @@ defmodule Lingo.Api.Channel do
     )
   end
 
-  @doc "Follows an announcement channel into another channel."
-  @spec follow_announcement(Api.id(), Api.id(), keyword()) :: Api.result(map())
+  @doc """
+  Follows an announcement channel into another channel. Returns the
+  followed channel's id and the id of the webhook posting its messages.
+  """
+  @spec follow_announcement(Api.id(), Api.id(), keyword()) ::
+          Api.result(%{channel_id: Api.id(), webhook_id: Api.id()})
   def follow_announcement(channel_id, webhook_channel_id, opts \\ []) do
     Client.request(:post, "/channels/#{channel_id}/followers",
       json: %{webhook_channel_id: webhook_channel_id},
       reason: opts[:reason]
     )
+    |> Client.into(&%{channel_id: &1["channel_id"], webhook_id: &1["webhook_id"]})
   end
 
   @doc "Shows the bot as typing in a channel for a few seconds."
@@ -93,10 +98,13 @@ defmodule Lingo.Api.Channel do
     )
   end
 
-  @doc "Lists a channel's pinned messages."
+  @doc """
+  Lists a channel's pinned messages, up to 50 at a time. Options: `:limit`,
+  and `:before` to page on from the last pin's `pinned_at`.
+  """
   @spec list_pins(Api.id(), keyword()) ::
           Api.result(%{
-            items: [%{pinned_at: String.t(), message: Message.t()}],
+            items: [%{pinned_at: DateTime.t(), message: Message.t()}],
             has_more: boolean()
           })
   def list_pins(channel_id, opts \\ []) do
@@ -115,7 +123,7 @@ defmodule Lingo.Api.Channel do
 
   defp new_pin(item) do
     %{
-      pinned_at: item["pinned_at"],
+      pinned_at: Parse.timestamp(item["pinned_at"]),
       message: Message.new(item["message"])
     }
   end

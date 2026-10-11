@@ -20,7 +20,7 @@ defmodule Lingo.Type.AttachmentTest do
     assert attachment.placeholder_version == 1
     assert [%Lingo.Type.User{id: "42"}] = attachment.clip_participants
     assert %DateTime{year: 2026} = attachment.clip_created_at
-    assert attachment.application == %{"id" => "9"}
+    assert %Lingo.Type.Application{id: "9"} = attachment.application
     assert Lingo.Flags.has?(:attachment, attachment.flags, :is_clip)
     refute Attachment.spoiler?(attachment)
   end

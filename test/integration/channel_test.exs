@@ -141,7 +141,7 @@ defmodule Lingo.Integration.ChannelTest do
       assert length(pins.items) == 1
 
       [pin] = pins.items
-      assert is_binary(pin.pinned_at)
+      assert %DateTime{} = pin.pinned_at
       assert %Lingo.Type.Message{} = pin.message
       assert pin.message.id == message.id
       assert pin.message.pinned == true

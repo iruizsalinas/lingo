@@ -59,6 +59,13 @@ defmodule Lingo.Type.Codes do
       44 => :purchase_notification,
       46 => :poll_result
     },
+    interaction_type: %{
+      1 => :ping,
+      2 => :application_command,
+      3 => :message_component,
+      4 => :autocomplete,
+      5 => :modal_submit
+    },
     verification_level: %{0 => :none, 1 => :low, 2 => :medium, 3 => :high, 4 => :very_high},
     default_message_notifications: %{0 => :all_messages, 1 => :only_mentions},
     explicit_content_filter: %{0 => :disabled, 1 => :members_without_roles, 2 => :all_members},

@@ -8,7 +8,7 @@ defmodule Lingo.Api.Sticker do
 
   alias Lingo.Api
   alias Lingo.Rest.Client
-  alias Lingo.Type.Sticker
+  alias Lingo.Type.{Sticker, StickerPack}
 
   @doc "Fetches a sticker."
   @spec get(Api.id()) :: Api.result(Sticker.t())
@@ -17,15 +17,16 @@ defmodule Lingo.Api.Sticker do
   end
 
   @doc "Lists Discord's sticker packs."
-  @spec list_packs() :: Api.result(map())
+  @spec list_packs() :: Api.result([StickerPack.t()])
   def list_packs do
     Client.request(:get, "/sticker-packs")
+    |> Client.into(&Enum.map(&1["sticker_packs"] || [], fn pack -> StickerPack.new(pack) end))
   end
 
   @doc "Fetches a sticker pack."
-  @spec get_pack(Api.id()) :: Api.result(map())
+  @spec get_pack(Api.id()) :: Api.result(StickerPack.t())
   def get_pack(pack_id) do
-    Client.request(:get, "/sticker-packs/#{pack_id}")
+    Client.request(:get, "/sticker-packs/#{pack_id}") |> Client.into(&StickerPack.new/1)
   end
 
   @doc "Lists a guild's stickers."

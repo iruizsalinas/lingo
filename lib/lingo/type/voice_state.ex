@@ -1,7 +1,7 @@
 defmodule Lingo.Type.VoiceState do
   @moduledoc "A user's voice connection state in a guild."
 
-  alias Lingo.Type.Member
+  alias Lingo.Type.{Member, Parse}
 
   @type t :: %__MODULE__{
           guild_id: String.t() | nil,
@@ -43,7 +43,7 @@ defmodule Lingo.Type.VoiceState do
       guild_id: data["guild_id"],
       channel_id: data["channel_id"],
       user_id: data["user_id"],
-      member: Member.new(data["member"]),
+      member: member(data["member"], data["guild_id"]),
       session_id: data["session_id"],
       deaf: data["deaf"] || false,
       mute: data["mute"] || false,
@@ -52,7 +52,10 @@ defmodule Lingo.Type.VoiceState do
       self_stream: data["self_stream"] || false,
       self_video: data["self_video"] || false,
       suppress: data["suppress"] || false,
-      request_to_speak_timestamp: Lingo.Type.Parse.timestamp(data["request_to_speak_timestamp"])
+      request_to_speak_timestamp: Parse.timestamp(data["request_to_speak_timestamp"])
     }
   end
+
+  defp member(nil, _guild_id), do: nil
+  defp member(data, guild_id), do: data |> Parse.put_guild_id(guild_id) |> Member.new()
 end
