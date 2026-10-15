@@ -25,7 +25,7 @@ Check out the [docs](https://hexdocs.pm/lingo/) for the API reference.
 ## Install
 
 ```elixir
-{:lingo, "~> 0.4.1"}
+{:lingo, "~> 0.4.2"}
 ```
 
 ## Quick start
