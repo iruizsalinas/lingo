@@ -37,10 +37,11 @@ defmodule Lingo.Voice.Manager do
   @spec connection(String.t()) :: pid() | nil
   def connection(guild_id), do: GenServer.call(server(), {:connection, to_string(guild_id)})
 
-  @doc "Called by the dispatcher for every voice event; a no-op when voice isn't running."
+  @doc "Called by the dispatcher for voice events and guild removals; a no-op when voice isn't running."
   @spec dispatch(atom(), map()) :: :ok
-  def dispatch(event, data) when event in [:voice_state_update, :voice_server_update],
-    do: GenServer.cast(server(), {event, data})
+  def dispatch(event, data)
+      when event in [:voice_state_update, :voice_server_update, :guild_delete],
+      do: GenServer.cast(server(), {event, data})
 
   def dispatch(_event, _data), do: :ok
 
@@ -68,7 +69,10 @@ defmodule Lingo.Voice.Manager do
       )
 
       guild =
-        guild |> Map.update(:waiters, [from], &[from | &1]) |> Map.put(:channel_id, channel_id)
+        guild
+        |> Map.update(:waiters, [from], &[from | &1])
+        |> Map.put(:channel_id, channel_id)
+        |> Map.put(:ready, false)
 
       {:noreply, Map.put(guilds, guild_id, guild)}
     end
@@ -96,6 +100,12 @@ defmodule Lingo.Voice.Manager do
       |> Map.merge(%{token: data["token"], endpoint: data["endpoint"]})
 
     {:noreply, Map.put(guilds, guild_id, maybe_connect(guild_id, guild))}
+  end
+
+  def handle_cast({:guild_delete, %{"id" => guild_id} = data}, guilds) do
+    if data["unavailable"] == true,
+      do: {:noreply, guilds},
+      else: {:noreply, remove_guild(guilds, guild_id)}
   end
 
   def handle_cast(_message, guilds), do: {:noreply, guilds}
@@ -145,7 +155,7 @@ defmodule Lingo.Voice.Manager do
         session_id: session_id,
         token: token,
         endpoint: endpoint,
-        subscriber: self()
+        manager: self()
       ]
 
       supervisor = Lingo.Instance.process_name(Lingo.Voice.Supervisor)
@@ -165,6 +175,12 @@ defmodule Lingo.Voice.Manager do
     end
   end
 
+  # A null endpoint means the old allocation is gone; wait for a new server.
+  defp maybe_connect(_guild_id, %{endpoint: nil} = guild) do
+    stop_connection(guild)
+    Map.merge(guild, %{connection: nil, ready: false})
+  end
+
   defp maybe_connect(_guild_id, guild), do: guild
 
   defp stop_connection(%{connection: pid}) when is_pid(pid) do
@@ -181,16 +197,17 @@ defmodule Lingo.Voice.Manager do
   end
 
   @impl true
-  def handle_info({:lingo_voice, guild_id, :ready}, guilds) do
+  def handle_info({:lingo_voice_ready, pid, guild_id}, guilds) do
     guild_id = to_string(guild_id)
 
     case guilds do
-      %{^guild_id => %{connection: pid, waiters: waiters} = guild} ->
-        Enum.each(waiters, &GenServer.reply(&1, {:ok, pid}))
-        {:noreply, Map.put(guilds, guild_id, %{guild | waiters: [], ready: true})}
-
-      %{^guild_id => guild} ->
-        {:noreply, Map.put(guilds, guild_id, Map.put(guild, :ready, true))}
+      %{
+        ^guild_id =>
+          %{connection: ^pid, channel_id: channel_id, key: {_, _, _, channel_id}} = guild
+      }
+      when is_pid(pid) ->
+        Enum.each(Map.get(guild, :waiters, []), &GenServer.reply(&1, {:ok, pid}))
+        {:noreply, Map.put(guilds, guild_id, Map.merge(guild, %{waiters: [], ready: true}))}
 
       _unknown ->
         {:noreply, guilds}

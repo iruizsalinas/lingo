@@ -38,6 +38,8 @@ defmodule Lingo.Voice.Connection do
     :session_id,
     :token,
     :endpoint,
+    :manager,
+    :manager_ref,
     :ws,
     :connect_task,
     :heartbeat_timer,
@@ -110,11 +112,16 @@ defmodule Lingo.Voice.Connection do
       session_id: Keyword.fetch!(opts, :session_id),
       token: Keyword.fetch!(opts, :token),
       endpoint: Keyword.fetch!(opts, :endpoint),
+      manager: opts[:manager],
       sequence: :rand.uniform(0xFFFF),
       timestamp: :rand.uniform(0xFFFFFFFF)
     }
 
     state = %{state | dave: Dave.new(state.user_id, state.channel_id)}
+
+    state =
+      if state.manager, do: %{state | manager_ref: Process.monitor(state.manager)}, else: state
+
     state = if pid = opts[:subscriber], do: add_subscriber(state, pid), else: state
 
     send(self(), :connect)
@@ -124,6 +131,7 @@ defmodule Lingo.Voice.Connection do
   @impl true
   def terminate(_reason, state) do
     Playback.stop_player(state)
+    if state.connect_task, do: Task.shutdown(state.connect_task, :brutal_kill)
     if state.ws, do: WebSocket.close(state.ws)
     if state.udp, do: :gen_udp.close(state.udp)
     :ok
@@ -193,6 +201,10 @@ defmodule Lingo.Voice.Connection do
   def handle_info({:EXIT, player, reason}, %{player: player} = state) when reason != :normal,
     do: {:noreply, Playback.finished(state, reason)}
 
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, %{manager_ref: ref} = state)
+      when is_reference(ref),
+      do: {:stop, {:shutdown, :manager_down}, state}
+
   def handle_info({:DOWN, _ref, :process, pid, _reason}, state),
     do: {:noreply, %{state | subscribers: Map.delete(state.subscribers, pid)}}
 
@@ -205,6 +217,12 @@ defmodule Lingo.Voice.Connection do
   end
 
   def handle_info(_message, state), do: {:noreply, state}
+
+  @doc false
+  def notify_ready(state) do
+    if state.manager, do: send(state.manager, {:lingo_voice_ready, self(), state.guild_id})
+    notify(state, :ready)
+  end
 
   @doc false
   def notify(state, event),

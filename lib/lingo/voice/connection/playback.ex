@@ -20,7 +20,7 @@ defmodule Lingo.Voice.Connection.Playback do
   # ready once the transport is up; with DAVE on, media still waits for the
   # group keys, which a lone member never gets until someone else joins
   def check_ready(%{ready?: false, status: :connected} = state) do
-    Connection.notify(state, :ready)
+    Connection.notify_ready(state)
     start_pending(%{state | ready?: true})
   end
 

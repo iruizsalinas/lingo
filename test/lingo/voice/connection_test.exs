@@ -63,4 +63,42 @@ defmodule Lingo.Voice.ConnectionTest do
     assert :ok = Connection.disconnect(connection)
     assert_receive {:DOWN, ^ref, :process, ^player, _reason}
   end
+
+  test "disconnecting cancels an in-flight connection task" do
+    connection =
+      start_supervised!(
+        {Connection,
+         guild_id: "100",
+         channel_id: "200",
+         user_id: "42",
+         session_id: "session",
+         token: "token",
+         endpoint: "127.0.0.1:1"}
+      )
+
+    # Replace the real task with a handshake that remains blocked. The task
+    # is created by the connection, preserving Task.async's links and owner.
+    test_pid = self()
+
+    :sys.replace_state(connection, fn state ->
+      if state.connect_task, do: Task.shutdown(state.connect_task, :brutal_kill)
+
+      task =
+        Task.async(fn ->
+          send(test_pid, {:connecting, self()})
+
+          receive do
+            :complete -> {:error, :closed}
+          end
+        end)
+
+      %{state | connect_task: task}
+    end)
+
+    assert_receive {:connecting, task}
+    on_exit(fn -> Process.exit(task, :kill) end)
+    ref = Process.monitor(task)
+    Connection.disconnect(connection)
+    assert_receive {:DOWN, ^ref, :process, ^task, _reason}
+  end
 end
