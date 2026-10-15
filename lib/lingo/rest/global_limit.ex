@@ -10,10 +10,27 @@ defmodule Lingo.Rest.GlobalLimit do
   def pause(ms) do
     if table = Buckets.table(:global) do
       resume_at = System.system_time(:millisecond) + ms
-      :ets.insert(table, {:paused_until, max(resume_at, paused_until())})
+      extend_pause(table, resume_at)
     end
 
     :ok
+  end
+
+  defp extend_pause(table, resume_at) do
+    case :ets.lookup(table, :paused_until) do
+      [] ->
+        unless :ets.insert_new(table, {:paused_until, resume_at}),
+          do: extend_pause(table, resume_at)
+
+      [{:paused_until, current}] when current >= resume_at ->
+        :ok
+
+      [{:paused_until, current}] ->
+        spec = [{{:paused_until, current}, [], [{{:paused_until, resume_at}}]}]
+
+        # Another pause, or expiry cleanup, can change the record in between.
+        if :ets.select_replace(table, spec) == 0, do: extend_pause(table, resume_at)
+    end
   end
 
   @doc "When the pause ends, in system ms; 0 when not paused."
