@@ -158,6 +158,26 @@ defmodule Lingo.Voice.ContainersTest do
       end
     end
 
+    test "an unused surround track does not prevent playback of the first stereo track", %{
+      packets: packets
+    } do
+      surround = <<"OpusHead", 1, 6, 0::64, 1, 4, 2, 0, 4, 1, 2, 3, 5>>
+      blocks = Enum.map(packets, &{:none, [&1]})
+      tracks = [{1, 2, "A_OPUS", @head}, {2, 2, "A_OPUS", surround}]
+      data = WebMWriter.file(@head, blocks, tracks: tracks)
+
+      for size <- [65_536, 1] do
+        assert WebM.packets(chunks(data, size)) |> Enum.to_list() == packets
+      end
+
+      selected_surround = [{1, 2, "A_OPUS", surround}, {2, 2, "A_OPUS", @head}]
+      data = WebMWriter.file(surround, blocks, tracks: selected_surround)
+
+      assert_raise ArgumentError, ~r/6-channel Opus/, fn ->
+        WebM.packets(chunks(data, 1)) |> Enum.to_list()
+      end
+    end
+
     test "a live stream restarting mid-way starts over cleanly", %{packets: packets} do
       file = WebMWriter.file(@head, Enum.map(packets, &{:none, [&1]}), unknown_sizes: true)
       assert WebM.packets([file, file]) |> Enum.to_list() == packets ++ packets

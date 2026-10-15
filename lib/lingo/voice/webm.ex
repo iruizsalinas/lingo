@@ -104,7 +104,6 @@ defmodule Lingo.Voice.WebM do
   defp put_track_field(%{tracks: [track | tracks]} = state, field, data) do
     value = if field == :number, do: :binary.decode_unsigned(data), else: data
     track = Map.put(track, field, value)
-    if match?(%{codec: "A_OPUS", head: _}, track), do: check_head!(track.head)
 
     # the first Opus track is the one we play
     opus =
@@ -112,6 +111,11 @@ defmodule Lingo.Voice.WebM do
         %{codec: "A_OPUS", number: number} when state.opus == nil -> number
         _other -> state.opus
       end
+
+    case track do
+      %{codec: "A_OPUS", number: ^opus, head: head} -> check_head!(head)
+      _other -> :ok
+    end
 
     %{state | tracks: [track | tracks], opus: opus}
   end

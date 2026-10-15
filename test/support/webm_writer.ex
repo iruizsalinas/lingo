@@ -14,8 +14,15 @@ defmodule Lingo.Test.WebMWriter do
       [element(0xE7, <<0>>) | Enum.map(blocks, &block(&1, opts))]
       |> IO.iodata_to_binary()
 
+    tracks = Keyword.get(opts, :tracks, [{1, 2, "A_OPUS", head}, {2, 0x11, "S_TEXT/UTF8", ""}])
+
     segment =
-      element(0x1654AE6B, [track(1, 2, "A_OPUS", head), track(2, 0x11, "S_TEXT/UTF8", "")]) <>
+      element(
+        0x1654AE6B,
+        Enum.map(tracks, fn {number, type, codec, private} ->
+          track(number, type, codec, private)
+        end)
+      ) <>
         container(0x1F43B675, cluster, opts[:unknown_sizes])
 
     element(0x1A45DFA3, element(0x4282, "webm")) <>
