@@ -31,6 +31,9 @@ defmodule Lingo.Rest.Deadline do
 
   @doc "Whether waiting `wait_ms` from now would run past the deadline."
   @spec past?(non_neg_integer(), integer() | :infinity) :: boolean()
+  # max_wait limits rate limit waits, so an immediately available request
+  # is allowed even if processing has already used up the budget.
+  def past?(0, _deadline), do: false
   def past?(_wait_ms, :infinity), do: false
   def past?(wait_ms, deadline), do: now() + wait_ms > deadline
 

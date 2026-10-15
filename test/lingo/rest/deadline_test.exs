@@ -1,7 +1,7 @@
 defmodule Lingo.Rest.DeadlineTest do
   use ExUnit.Case, async: true
 
-  alias Lingo.Rest.{Client, RateLimiter}
+  alias Lingo.Rest.{Client, Deadline, RateLimiter}
 
   setup do
     %{bot: Lingo.TestBot.start(start: [:rate_limiter])}
@@ -42,6 +42,13 @@ defmodule Lingo.Rest.DeadlineTest do
   end
 
   describe "max_wait" do
+    test "an expired deadline permits requests that need no rate limit wait" do
+      deadline = System.system_time(:millisecond) - 1_000
+
+      refute Deadline.past?(0, deadline)
+      assert Deadline.past?(1, deadline)
+    end
+
     test "returns instead of sleeping through a long retry_after" do
       stub(fn -> rate_limited(30) end)
 
