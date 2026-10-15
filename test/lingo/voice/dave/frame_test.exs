@@ -84,6 +84,21 @@ defmodule Lingo.Voice.Dave.FrameTest do
   end
 
   describe "encryptor and decryptor" do
+    test "plaintext is rejected by default regardless of the monotonic clock origin" do
+      for now <- [-120_000, 0, 120_000] do
+        decryptor = Decryptor.new()
+        assert {:error, :not_encrypted, _} = Decryptor.decrypt(decryptor, "plain", now)
+
+        disabled = Decryptor.passthrough(decryptor, false, now, 100)
+        assert {:error, :not_encrypted, _} = Decryptor.decrypt(disabled, "plain", now)
+
+        enabled = Decryptor.passthrough(decryptor, true, now)
+        expiring = Decryptor.passthrough(enabled, false, now, 100)
+        assert {:ok, "plain", _} = Decryptor.decrypt(expiring, "plain", now + 99)
+        assert {:error, :not_encrypted, _} = Decryptor.decrypt(expiring, "plain", now + 100)
+      end
+    end
+
     setup do
       ratchet = KeyRatchet.from_secret(:crypto.strong_rand_bytes(16))
 

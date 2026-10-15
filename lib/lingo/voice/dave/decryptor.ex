@@ -15,7 +15,7 @@ defmodule Lingo.Voice.Dave.Decryptor do
 
   @expiry 10_000
 
-  defstruct managers: [], passthrough_until: 0
+  defstruct managers: [], passthrough_until: nil
 
   @type t :: %__MODULE__{}
 
@@ -41,6 +41,8 @@ defmodule Lingo.Voice.Dave.Decryptor do
   def passthrough(decryptor, allow?, now, expiry \\ @expiry)
   def passthrough(decryptor, true, _now, _expiry), do: %{decryptor | passthrough_until: :infinity}
 
+  def passthrough(%{passthrough_until: nil} = decryptor, false, _now, _expiry), do: decryptor
+
   def passthrough(decryptor, false, now, expiry),
     do: %{decryptor | passthrough_until: min(decryptor.passthrough_until, now + expiry)}
 
@@ -55,9 +57,16 @@ defmodule Lingo.Voice.Dave.Decryptor do
 
       true ->
         case Frame.parse(frame) do
-          {:ok, parsed} -> decrypt_parsed(decryptor, parsed, now)
-          :error when decryptor.passthrough_until > now -> {:ok, frame, decryptor}
-          :error -> {:error, :not_encrypted, decryptor}
+          {:ok, parsed} ->
+            decrypt_parsed(decryptor, parsed, now)
+
+          :error
+          when decryptor.passthrough_until == :infinity or
+                 (is_integer(decryptor.passthrough_until) and decryptor.passthrough_until > now) ->
+            {:ok, frame, decryptor}
+
+          :error ->
+            {:error, :not_encrypted, decryptor}
         end
     end
   end
