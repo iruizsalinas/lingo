@@ -137,6 +137,27 @@ defmodule Lingo.Helper.MemberTest do
     test "returns false for unknown member" do
       refute Lingo.Helper.Member.manageable?("guild1", "nobody")
     end
+
+    test "missing roles do not make a member appear below the bot" do
+      Lingo.Cache.Store.put_member("guild1", %Member{
+        user: %User{id: "user1"},
+        roles: ["role_mid", "uncached_role"]
+      })
+
+      refute Lingo.Helper.Member.manageable?("guild1", "user1")
+      refute Lingo.Helper.Member.kickable?("guild1", "user1")
+      refute Lingo.Helper.Member.bannable?("guild1", "user1")
+    end
+
+    test "missing bot roles do not allow hierarchy checks using only its cached roles" do
+      Lingo.Cache.Store.put_member("guild1", %Member{
+        user: %User{id: "bot1"},
+        roles: ["role_high", "uncached_role"]
+      })
+
+      refute Lingo.Helper.Member.manageable?("guild1", "user1")
+      refute Lingo.Helper.Role.editable?("guild1", "role_mid")
+    end
   end
 
   describe "member_kickable?" do

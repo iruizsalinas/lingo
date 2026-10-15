@@ -21,12 +21,24 @@ defmodule Lingo.Helper.Role do
     me = Cache.User.get_current()
 
     cond do
-      is_nil(role) or is_nil(guild) or is_nil(me) -> false
-      role.managed -> false
-      role.id == guild_id -> false
-      guild.owner_id == me.id -> true
-      not Data.bot_has_permission?(guild_id, :manage_roles) -> false
-      true -> Data.highest_position(guild_id, Data.bot_member(guild_id)) > role.position
+      is_nil(role) or is_nil(guild) or is_nil(me) ->
+        false
+
+      role.managed ->
+        false
+
+      role.id == guild_id ->
+        false
+
+      guild.owner_id == me.id ->
+        true
+
+      not Data.bot_has_permission?(guild_id, :manage_roles) ->
+        false
+
+      true ->
+        Data.compare_roles(guild_id, Data.highest_role(guild_id, Data.bot_member(guild_id)), role) ==
+          :gt
     end
   end
 
@@ -37,11 +49,7 @@ defmodule Lingo.Helper.Role do
 
     cond do
       is_nil(a) or is_nil(b) -> nil
-      a.position > b.position -> :gt
-      a.position < b.position -> :lt
-      a.id > b.id -> :gt
-      a.id < b.id -> :lt
-      true -> :eq
+      true -> Data.compare_roles(guild_id, a, b)
     end
   end
 end

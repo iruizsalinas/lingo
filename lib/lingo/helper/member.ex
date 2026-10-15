@@ -29,14 +29,11 @@ defmodule Lingo.Helper.Member do
         true
 
       true ->
-        bot_member = Data.bot_member(guild_id)
-        target = Cache.Member.get(guild_id, user_id)
-
-        if bot_member && target do
-          Data.highest_position(guild_id, bot_member) >
-            Data.highest_position(guild_id, target)
+        with %{} = bot_role <- Data.highest_role(guild_id, Data.bot_member(guild_id)),
+             %{} = target_role <- Data.highest_role(guild_id, Cache.Member.get(guild_id, user_id)) do
+          Data.compare_roles(guild_id, bot_role, target_role) == :gt
         else
-          false
+          _missing -> false
         end
     end
   end
@@ -86,14 +83,18 @@ defmodule Lingo.Helper.Member do
       role_ids = MapSet.new(member.roles)
 
       roles
-      |> Enum.reduce({-1, 0}, fn role, {best_position, best_color} ->
-        if role.color > 0 and role.id in role_ids and role.position > best_position do
-          {role.position, role.color}
+      |> Enum.reduce(nil, fn role, highest ->
+        if role.color > 0 and role.id in role_ids and
+             Data.compare_roles(guild_id, role, highest) == :gt do
+          role
         else
-          {best_position, best_color}
+          highest
         end
       end)
-      |> elem(1)
+      |> case do
+        nil -> 0
+        role -> role.color
+      end
     else
       0
     end

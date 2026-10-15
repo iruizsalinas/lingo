@@ -71,17 +71,40 @@ defmodule Lingo.Helper.PermissionData do
     end
   end
 
-  # the position of a member's highest role, 0 for none
-  def highest_position(_guild_id, nil), do: 0
+  def highest_role(_guild_id, nil), do: nil
 
-  def highest_position(guild_id, member) do
-    ids = MapSet.new(member.roles)
+  def highest_role(guild_id, member) do
+    case roles(guild_id, member.roles) do
+      {:ok, roles} ->
+        Enum.reduce(roles, nil, fn role, highest ->
+          if compare_roles(guild_id, role, highest) == :gt, do: role, else: highest
+        end)
 
-    guild_id
-    |> Cache.Role.list()
-    |> Enum.filter(&(&1.id in ids))
-    |> Enum.map(& &1.position)
-    |> Enum.max(fn -> 0 end)
+      {:error, _missing} ->
+        nil
+    end
+  end
+
+  def compare_roles(_guild_id, nil, nil), do: :eq
+  def compare_roles(_guild_id, nil, _role), do: :lt
+  def compare_roles(_guild_id, _role, nil), do: :gt
+
+  def compare_roles(guild_id, a, b) do
+    # Snowflakes are decimal strings: length then lexical order compares
+    # their numeric values without losing precision. Older roles rank higher
+    # when positions tie; @everyone always comes last.
+    a_id = {byte_size(a.id), a.id}
+    b_id = {byte_size(b.id), b.id}
+
+    cond do
+      a.id == b.id -> :eq
+      a.id == guild_id -> :lt
+      b.id == guild_id -> :gt
+      a.position > b.position -> :gt
+      a.position < b.position -> :lt
+      a_id < b_id -> :gt
+      true -> :lt
+    end
   end
 
   defp roles(guild_id, ids) do
