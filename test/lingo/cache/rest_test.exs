@@ -161,6 +161,35 @@ defmodule Lingo.Cache.RestTest do
     assert Cache.Message.get("c", "m") == nil
   end
 
+  test "explicit nulls clear an embedded member user's profile fields without a user cache" do
+    start([members: true, users: false], fn _, _, _ ->
+      {200,
+       %{
+         "user" => %{"id" => "u", "username" => "alice", "avatar" => nil, "global_name" => nil},
+         "roles" => []
+       }}
+    end)
+
+    Store.put_member("g", %Member{
+      user: %User{
+        id: "u",
+        username: "alice",
+        avatar: "old_avatar",
+        global_name: "Old Name",
+        banner: "keep"
+      },
+      roles: []
+    })
+
+    assert {:ok, %Member{user: %User{avatar: nil, global_name: nil}}} =
+             Lingo.Api.Member.get("g", "u")
+
+    cached = Cache.Member.get("g", "u")
+    assert cached.user.avatar == nil
+    assert cached.user.global_name == nil
+    assert cached.user.banner == "keep"
+  end
+
   test "bulk deletions, role changes and voice state responses update only relevant caches" do
     start([messages: true, members: true, voice_states: true], fn method, _, _ ->
       if method == :get,

@@ -126,16 +126,16 @@ defmodule Lingo.Cache.Rest.Response do
         do: Map.put(acc, field, Map.get(parsed, field)),
         else: acc
     end)
-    |> merge_member_user(old, parsed)
+    |> merge_member_user(old, raw)
   end
 
   defp merge_member_user(
          %Type.Member{user: user} = member,
          %Type.Member{user: old},
-         %Type.Member{}
+         %{"user" => raw_user}
        )
-       when user != nil and old != nil,
-       do: %{member | user: Merge.user(old, user)}
+       when user != nil and old != nil and is_map(raw_user),
+       do: %{member | user: merge(old, Type.User, raw_user)}
 
   defp merge_member_user(value, _, _), do: value
 end
