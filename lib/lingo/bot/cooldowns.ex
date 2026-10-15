@@ -96,7 +96,7 @@ defmodule Lingo.Bot.Cooldowns do
         # another use may have opened the window just now
         if :ets.insert_new(table, {key, 1, now, per}), do: :ok, else: count(table, key, uses, now)
 
-      [{^key, _count, start, ^per}] when now - start >= per ->
+      [{^key, _count, start, window_per}] when now - start >= window_per ->
         :ets.insert(table, {key, 1, now, per})
         :ok
 
