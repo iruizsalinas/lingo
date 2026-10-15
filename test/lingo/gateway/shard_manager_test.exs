@@ -127,6 +127,10 @@ defmodule Lingo.Gateway.ShardManagerTest do
     end
 
     for encoding <- [:json, :etf], compression <- [:zlib, :zstd, :none] do
+      if compression == :zstd and not Lingo.Gateway.Compression.zstd_available?() do
+        @tag skip: "zstd requires OTP 28 or later"
+      end
+
       test "delivers events over #{encoding} with #{compression} compression", ctx do
         start_bot(ctx, gateway: [encoding: unquote(encoding), compression: unquote(compression)])
 
