@@ -112,6 +112,111 @@ defmodule Lingo.Gateway.Dispatcher.CacheTest do
     assert Cache.Guild.get("g") == nil
   end
 
+  for policy <- [true, [max_entries: 100, ttl: 60_000, keep: :all, compressed: true]] do
+    @snapshot_policy policy
+
+    test "guild recovery reconciles complete collections with policy #{inspect(policy)}" do
+      start(
+        guilds: true,
+        channels: @snapshot_policy,
+        roles: @snapshot_policy,
+        voice_states: @snapshot_policy,
+        members: true,
+        messages: true
+      )
+
+      initial =
+        Map.merge(guild(), %{
+          "threads" => [
+            %{
+              "id" => "active",
+              "parent_id" => "c",
+              "type" => 11,
+              "thread_metadata" => %{"archived" => false}
+            }
+          ],
+          "voice_states" => [%{"user_id" => "me", "channel_id" => "c", "session_id" => "old"}]
+        })
+
+      Dispatcher.payload(:guild_create, initial)
+
+      Store.put_channel(%Channel{
+        id: "archived",
+        guild_id: "g",
+        parent_id: "c",
+        type: :public_thread,
+        thread_metadata: %{"archived" => true}
+      })
+
+      Store.put_member("g", %Member{user: %User{id: "not_in_partial_members"}})
+      Store.put_message(%Message{id: "m", channel_id: "history", guild_id: "g"})
+      Store.put_channel(%Channel{id: "other_channel", guild_id: "other", type: :guild_text})
+      Store.put_role("other", %Role{id: "r"})
+      Store.put_voice_state("other", %VoiceState{user_id: "me", channel_id: "other_channel"})
+      Dispatcher.payload(:guild_delete, %{"id" => "g", "unavailable" => true})
+
+      replacement =
+        Map.merge(guild(), %{
+          "channels" => [%{"id" => "new_channel", "type" => 0}],
+          "roles" => [%{"id" => "g", "permissions" => "1024", "position" => 0}],
+          "threads" => [],
+          "voice_states" => []
+        })
+
+      Dispatcher.payload(:guild_create, replacement)
+
+      assert %{
+               channel_removed: Cache.Channel.get("c") == nil,
+               role_removed: Cache.Role.get("g", "r") == nil,
+               thread_removed: Cache.Channel.get("active") == nil,
+               voice_removed: Cache.VoiceState.get("g", "me") == nil
+             } == %{
+               channel_removed: true,
+               role_removed: true,
+               thread_removed: true,
+               voice_removed: true
+             }
+
+      assert Cache.Channel.get("new_channel").guild_id == "g"
+      assert Cache.Role.get("g", "g")
+      assert Cache.Channel.get("archived")
+      assert Cache.Member.get("g", "not_in_partial_members")
+      assert Cache.Message.get("history", "m")
+      assert Cache.Channel.get("other_channel")
+      assert Cache.Role.get("other", "r")
+      assert Cache.VoiceState.get("other", "me")
+    end
+  end
+
+  test "guild updates reconcile supplied role lists and preserve roles when the list is omitted" do
+    start(roles: true)
+    Store.put_role("g", %Role{id: "stale"})
+    Store.put_role("other", %Role{id: "stale"})
+    Dispatcher.payload(:guild_update, %{"id" => "g", "name" => "renamed"})
+    assert Cache.Role.get("g", "stale")
+    Dispatcher.payload(:guild_update, %{"id" => "g", "roles" => []})
+    assert Cache.Role.get("g", "stale") == nil
+    assert Cache.Role.get("other", "stale")
+  end
+
+  test "an unavailable guild-create stub preserves cached metadata and collections" do
+    start(guilds: true, roles: true, channels: true)
+    Dispatcher.payload(:guild_create, guild())
+    cached = Cache.Guild.get("g")
+
+    assert %Guild{unavailable: true} =
+             Dispatcher.payload(:guild_create, %{"id" => "g", "unavailable" => true})
+
+    assert Cache.Guild.get("g") == %{cached | unavailable: true}
+    assert Cache.Role.get("g", "r")
+    assert Cache.Channel.get("c")
+
+    assert %Guild{unavailable: true} =
+             Dispatcher.payload(:guild_create, %{"id" => "unknown", "unavailable" => true})
+
+    assert %Guild{id: "unknown", unavailable: true} = Cache.Guild.get("unknown")
+  end
+
   test "user-only self caching skips full cache-only presence parsing" do
     start(only: [:users], users: :self)
 
