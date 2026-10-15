@@ -75,7 +75,8 @@ defmodule Lingo.Voice.Dave.Session.Proposals do
            Message.decode(commit, &Message.decode_mls_message/1),
          :ok <- Util.check(content.group_id == Setup.group_id(session), :wrong_group),
          {:commit, %{proposals: proposals}} <- content.content,
-         :ok <- Util.check(Enum.all?(proposals, &match?({:reference, _}, &1)), :proposal_by_value),
+         :ok <-
+           Util.check(Enum.all?(proposals, &match?({:reference, _}, &1)), :proposal_by_value),
          {:ok, group} <- Group.handle_commit(session.staged, commit, session.outbound),
          :ok <- Util.check(Util.unique_users?(group), :duplicate_user) do
       {:ok, group}

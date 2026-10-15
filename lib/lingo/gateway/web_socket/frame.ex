@@ -72,7 +72,8 @@ defmodule Lingo.Gateway.WebSocket.Frame do
          :ok <-
            check(length <= @max_control_size or not control?(opcode), :control_frame_too_large),
          {:ok, length, rest} <- decode_length(length, rest),
-         :ok <- check(length <= Keyword.get(opts, :max_size, @default_max_size), :frame_too_large),
+         :ok <-
+           check(length <= Keyword.get(opts, :max_size, @default_max_size), :frame_too_large),
          {:ok, payload, rest} <- decode_payload(length, masked?, rest) do
       {:ok, {opcode, fin == 1, payload}, rest}
     end

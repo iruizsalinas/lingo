@@ -97,7 +97,8 @@ defmodule Lingo.Cache.Policy do
   def scope(:messages, {channel_id, _}, _), do: channel_id
 
   def scope(resource, {guild_id, _}, _)
-      when resource in [:members, :roles, :presences, :voice_states], do: guild_id
+      when resource in [:members, :roles, :presences, :voice_states],
+      do: guild_id
 
   def scope(:channels, _, value), do: Map.get(value, :guild_id)
   def scope(_, _, _), do: nil
