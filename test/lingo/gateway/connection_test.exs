@@ -140,6 +140,33 @@ defmodule Lingo.Gateway.ConnectionTest do
       assert state.state == :disconnected
     end
 
+    test "delivers payloads when the zlib flush marker spans WebSocket messages", %{
+      state: state,
+      server: server
+    } do
+      encoder = :zlib.open()
+      :ok = :zlib.deflateInit(encoder)
+      inflate = Lingo.Gateway.Compression.new()
+
+      try do
+        state = %{state | inflate: inflate}
+
+        Enum.reduce(1..3, state, fn seq, state ->
+          payload = %{"op" => 0, "t" => "TYPING_START", "s" => seq, "d" => %{}}
+          compressed = IO.iodata_to_binary(:zlib.deflate(encoder, JSON.encode!(payload), :sync))
+          {first, last} = :erlang.split_binary(compressed, byte_size(compressed) - seq)
+          {:noreply, state} = deliver(state, server, frame(:binary, first))
+          assert state.seq == if(seq == 1, do: nil, else: seq - 1)
+          {:noreply, state} = deliver(state, server, frame(:binary, last))
+          assert state.seq == seq
+          state
+        end)
+      after
+        :zlib.close(encoder)
+        Lingo.Gateway.Compression.close(inflate)
+      end
+    end
+
     test "drops frames that follow a reconnect request", %{state: state, server: server} do
       dispatch = %{"op" => 0, "t" => "TYPING_START", "s" => 9, "d" => %{}}
 

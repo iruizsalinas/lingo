@@ -15,10 +15,11 @@ defmodule Lingo.Gateway.Compression do
   @type t :: %__MODULE__{
           type: type(),
           context: :zlib.zstream() | reference(),
-          buffer: iodata()
+          buffer: iodata(),
+          tail: binary()
         }
 
-  defstruct [:context, type: :zlib, buffer: []]
+  defstruct [:context, type: :zlib, buffer: [], tail: <<>>]
 
   @doc "Whether this node can decompress zstd-stream (OTP 28 or later)."
   @spec zstd_available?() :: boolean()
@@ -45,20 +46,23 @@ defmodule Lingo.Gateway.Compression do
 
   def push(%__MODULE__{} = state, data) when is_binary(data) do
     buffer = [state.buffer, data]
+    tail = if byte_size(data) >= 4, do: suffix(data), else: suffix(state.tail <> data)
 
-    if byte_size(data) >= 4 and binary_part(data, byte_size(data) - 4, 4) == @zlib_suffix do
+    if tail == @zlib_suffix do
       decompressed =
         state.context
         |> :zlib.inflate(IO.iodata_to_binary(buffer))
         |> IO.iodata_to_binary()
 
-      {%{state | buffer: []}, decompressed}
+      {%{state | buffer: [], tail: <<>>}, decompressed}
     else
-      {%{state | buffer: buffer}, nil}
+      {%{state | buffer: buffer, tail: tail}, nil}
     end
   end
 
   def push(%__MODULE__{} = state, data), do: push(state, IO.iodata_to_binary(data))
+
+  defp suffix(data), do: binary_part(data, byte_size(data), -min(byte_size(data), 4))
 
   # :zstd.stream/2 hands back what it couldn't take yet as a remainder
   defp zstd_stream(context, data, acc) do

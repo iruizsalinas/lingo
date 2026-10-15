@@ -81,6 +81,44 @@ defmodule Lingo.Gateway.CompressionTest do
 
       Compression.close(ctx)
     end
+
+    test "recognizes a sync-flush marker split across input messages" do
+      original = ~s({"op":10,"d":{"heartbeat_interval":45000}})
+      compressed = gateway_compress(original)
+
+      for trailing_size <- 1..3 do
+        split_at = byte_size(compressed) - trailing_size
+        <<first::binary-size(^split_at), last::binary>> = compressed
+        ctx = Compression.new()
+
+        try do
+          {ctx, nil} = Compression.push(ctx, first)
+          {ctx, result} = Compression.push(ctx, last)
+          assert result == original
+          assert ctx.buffer == []
+        after
+          Compression.close(ctx)
+        end
+      end
+    end
+
+    test "accepts a compressed payload delivered one byte at a time" do
+      original = ~s({"op":11})
+      compressed = gateway_compress(original)
+      ctx = Compression.new()
+
+      try do
+        {outputs, _ctx} =
+          Enum.map_reduce(for(<<byte <- compressed>>, do: <<byte>>), ctx, fn chunk, ctx ->
+            {ctx, result} = Compression.push(ctx, chunk)
+            {result, ctx}
+          end)
+
+        assert Enum.reject(outputs, &is_nil/1) == [original]
+      after
+        Compression.close(ctx)
+      end
+    end
   end
 
   describe "close/1" do
