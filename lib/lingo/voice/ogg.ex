@@ -24,7 +24,7 @@ defmodule Lingo.Voice.Ogg do
   def packets(chunks) do
     Stream.transform(
       chunks,
-      %{buffer: <<>>, partial: {[], 0}, serial: nil, tags?: false},
+      %{buffer: <<>>, partial: {[], 0}, serial: nil, sequence: nil, tags?: false},
       &parse/2
     )
   end
@@ -54,8 +54,12 @@ defmodule Lingo.Voice.Ogg do
          packets
        ) do
     case Opus.check_head(head) do
-      :ok -> {%{state | serial: page.serial, partial: {[], 0}, tags?: true}, packets}
-      {:error, reason} -> raise ArgumentError, reason
+      :ok ->
+        {%{state | serial: page.serial, sequence: page.sequence, partial: {[], 0}, tags?: true},
+         packets}
+
+      {:error, reason} ->
+        raise ArgumentError, reason
     end
   end
 
@@ -68,6 +72,8 @@ defmodule Lingo.Voice.Ogg do
     partial =
       cond do
         not page.continued? -> {[], 0}
+        # A lost or checksum-rejected page leaves a hole in this packet.
+        state.sequence != nil and page.sequence != rem(state.sequence + 1, 0x100000000) -> :drop
         state.partial != {[], 0} -> state.partial
         # the rest of a packet whose beginning we never saw (we started mid-stream)
         true -> :drop
@@ -76,7 +82,8 @@ defmodule Lingo.Voice.Ogg do
     {partial, tags?, packets} =
       Enum.reduce(page.segments, {partial, state.tags?, packets}, &segment/2)
 
-    {%{state | partial: partial, serial: page.serial, tags?: tags?}, packets}
+    {%{state | partial: partial, serial: page.serial, sequence: page.sequence, tags?: tags?},
+     packets}
   end
 
   # the OpusTags packet, cover art and all, is dropped as it goes by

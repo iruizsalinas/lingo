@@ -15,8 +15,8 @@ defmodule Lingo.Voice.Ogg.Page do
              |> List.to_tuple()
 
   def next_page(
-        <<"OggS", 0, header_type, _granule::64, serial::32-little, _sequence::32, crc::32-little,
-          count, rest::binary>> = buffer
+        <<"OggS", 0, header_type, _granule::64, serial::32-little, sequence::32-little,
+          crc::32-little, count, rest::binary>> = buffer
       ) do
     with <<lacing::binary-size(^count), body::binary>> <- rest,
          body_size = lacing |> :binary.bin_to_list() |> Enum.sum(),
@@ -28,7 +28,14 @@ defmodule Lingo.Voice.Ogg.Page do
 
       if crc([head, <<0::32>>, tail]) == crc do
         segments = split_segments(:binary.bin_to_list(lacing), data, [])
-        {:page, %{serial: serial, continued?: (header_type &&& 1) == 1, segments: segments}, rest}
+
+        {:page,
+         %{
+           serial: serial,
+           sequence: sequence,
+           continued?: (header_type &&& 1) == 1,
+           segments: segments
+         }, rest}
       else
         {:skip, binary_part(buffer, 4, byte_size(buffer) - 4)}
       end
