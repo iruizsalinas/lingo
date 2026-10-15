@@ -48,6 +48,56 @@ defmodule Lingo.Gateway.Dispatcher.MemberTest do
     assert role.name == "Admin"
   end
 
+  test "member updates preserve omitted state and apply explicit resets" do
+    timeout = ~U[2026-10-16 00:00:00Z]
+
+    Lingo.Cache.Store.put_member("guild1", %Member{
+      guild_id: "guild1",
+      user: %Lingo.Type.User{id: "user1", username: "alice"},
+      nick: "Before",
+      flags: 128,
+      mute: true,
+      deaf: true,
+      pending: true,
+      communication_disabled_until: timeout
+    })
+
+    update = %{
+      "guild_id" => "guild1",
+      "user" => %{"id" => "user1", "username" => "alice"},
+      "roles" => ["role1"],
+      "avatar" => nil,
+      "banner" => nil,
+      "joined_at" => "2026-01-01T00:00:00Z",
+      "nick" => nil
+    }
+
+    Dispatcher.dispatch(:guild_member_update, update)
+    assert_receive {:guild_member_update, %{old: %Member{nick: "Before"}, new: member}}
+    assert member.nick == nil
+    assert member.roles == ["role1"]
+    assert member.flags == 128
+    assert member.mute and member.deaf and member.pending
+    assert member.communication_disabled_until == timeout
+    assert Lingo.Cache.Member.get("guild1", "user1") == member
+
+    Dispatcher.dispatch(
+      :guild_member_update,
+      Map.merge(update, %{
+        "mute" => false,
+        "deaf" => false,
+        "pending" => false,
+        "communication_disabled_until" => nil
+      })
+    )
+
+    assert_receive {:guild_member_update, %{new: member}}
+    refute member.mute or member.deaf or member.pending
+    assert member.communication_disabled_until == nil
+    assert member.flags == 128
+    assert Lingo.Cache.Member.get("guild1", "user1") == member
+  end
+
   test "dispatches guild role update with guild_id intact" do
     Dispatcher.dispatch(:guild_role_update, %{
       "guild_id" => "guild1",

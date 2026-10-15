@@ -17,8 +17,8 @@ defmodule Lingo.Gateway.Dispatcher.Member do
   end
 
   def parse(:guild_member_update, data) do
-    m = Member.new(data)
     old = Cache.Member.get(data["guild_id"], get_in(data, ["user", "id"]))
+    m = if old, do: Cache.Merge.member(old, data), else: Member.new(data)
     Store.put_member(data["guild_id"], m)
     %{old: old, new: m}
   end

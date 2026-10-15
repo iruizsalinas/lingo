@@ -3,7 +3,18 @@ defmodule Lingo.Cache.Merge do
 
   # Folds partial updates into cached structs.
 
-  alias Lingo.Type.Message
+  alias Lingo.Type.{Member, Message}
+
+  @spec member(Member.t(), map()) :: Member.t()
+  def member(%Member{} = existing, data) when is_map(data) do
+    parsed = Member.new(data)
+
+    Enum.reduce(Map.keys(Map.from_struct(existing)), existing, fn field, acc ->
+      if Map.has_key?(data, Atom.to_string(field)),
+        do: Map.put(acc, field, Map.get(parsed, field)),
+        else: acc
+    end)
+  end
 
   # only the fields the update carries change
   @spec message(Message.t(), map()) :: Message.t()
