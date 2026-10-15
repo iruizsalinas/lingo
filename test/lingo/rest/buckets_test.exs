@@ -131,6 +131,54 @@ defmodule Lingo.Rest.BucketsTest do
   end
 
   describe "wait/1" do
+    test "expiry cleanup cannot delete a concurrently refreshed bucket" do
+      route = "GET:/channels/500/refresh"
+      buckets = table(:buckets)
+      parent = self()
+
+      for round <- 1..1_000 do
+        :ets.insert(buckets, {route, 0, System.system_time(:millisecond) - 1, 1})
+
+        readers =
+          for _ <- 1..32 do
+            Task.async(fn ->
+              send(parent, {:waiting, self()})
+
+              receive do
+                :go -> Lingo.Rest.Buckets.wait(route, 0)
+              end
+            end)
+          end
+
+        updater =
+          Task.async(fn ->
+            send(parent, {:waiting, self()})
+
+            receive do
+              :go ->
+                expected = System.system_time(:millisecond) + 60_000
+
+                Lingo.Rest.Buckets.update(route, [
+                  {"x-ratelimit-remaining", "0"},
+                  {"x-ratelimit-reset-after", "60"},
+                  {"x-ratelimit-limit", "1"}
+                ])
+
+                expected
+            end
+          end)
+
+        workers = Enum.shuffle([updater | readers])
+        for _ <- workers, do: assert_receive({:waiting, _pid})
+        Enum.each(workers, &send(&1.pid, :go))
+        Enum.each(readers, &Task.await/1)
+        expected = Task.await(updater)
+        assert :ets.member(buckets, route), "refreshed bucket lost in round #{round}"
+        assert [{^route, 0, reset, 1}] = :ets.lookup(buckets, route)
+        assert reset >= expected
+      end
+    end
+
     test "passes immediately when no bucket exists" do
       assert Lingo.Rest.Buckets.wait("GET:/unknown/route") == :ok
     end

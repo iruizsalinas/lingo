@@ -88,13 +88,13 @@ defmodule Lingo.Rest.Buckets do
 
   defp wait_bucket(bucket_key, deadline) do
     case lookup(bucket_key) do
-      [{^bucket_key, remaining, reset_at, _limit}] when remaining <= 0 ->
+      [{^bucket_key, remaining, reset_at, _limit} = bucket] when remaining <= 0 ->
         now = System.system_time(:millisecond)
 
         cond do
           reset_at <= now ->
-            :ets.delete(table(:buckets), bucket_key)
-            :ok
+            :ets.delete_object(table(:buckets), bucket)
+            wait_bucket(bucket_key, deadline)
 
           deadline != :infinity and reset_at > deadline ->
             {:error, {:rate_limited, reset_at - now}}
