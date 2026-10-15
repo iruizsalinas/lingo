@@ -122,6 +122,51 @@ defmodule Lingo.Helper.ChannelTest do
   end
 
   describe "permissions" do
+    test "thread permissions apply the parent channel's overwrites" do
+      Lingo.Cache.Store.put_role("guild1", %Role{
+        id: "role_mid",
+        position: 5,
+        permissions: "1024"
+      })
+
+      Lingo.Cache.Store.put_channel(%Channel{
+        id: "parent",
+        guild_id: "guild1",
+        type: :guild_text,
+        permission_overwrites: [%{id: "user1", type: :member, allow: "0", deny: "1024"}]
+      })
+
+      for type <- [:public_thread, :private_thread, :announcement_thread] do
+        Lingo.Cache.Store.put_channel(%Channel{
+          id: "thread",
+          guild_id: "guild1",
+          parent_id: "parent",
+          type: type
+        })
+
+        perms = Lingo.Helper.Channel.permissions("thread", "user1")
+        refute Lingo.Permissions.has?(perms, :view_channel)
+      end
+    end
+
+    test "thread permissions require the parent in cache for ordinary members" do
+      Lingo.Cache.Store.put_channel(%Channel{
+        id: "thread",
+        guild_id: "guild1",
+        parent_id: "missing",
+        type: :public_thread
+      })
+
+      assert {:error, {:missing_cache, :channel}} =
+               Lingo.Helper.Channel.fetch_permissions("thread", "user1")
+
+      # Administrators and the guild owner bypass overwrites.
+      assert {:ok, admin} = Lingo.Helper.Channel.fetch_permissions("thread", "bot1")
+      assert Lingo.Permissions.has?(admin, :administrator)
+      assert {:ok, owner} = Lingo.Helper.Channel.fetch_permissions("thread", "owner1")
+      assert Lingo.Permissions.has?(owner, :administrator)
+    end
+
     test "computes effective permissions in a channel" do
       perms = Lingo.Helper.Channel.permissions("ch1", "user1")
       # user1 has role_mid which is allowed view_channel (1024) in ch1

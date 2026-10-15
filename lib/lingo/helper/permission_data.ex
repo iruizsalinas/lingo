@@ -29,19 +29,34 @@ defmodule Lingo.Helper.PermissionData do
       else
         with {:ok, roles} <- roles(guild.id, member.roles) do
           everyone = Enum.find(roles, &(&1.id == guild.id))
+          base = Permissions.compute(everyone.permissions, member.roles, roles)
 
-          {:ok,
-           Permissions.compute(
-             everyone.permissions,
-             member.roles,
-             roles,
-             channel.permission_overwrites || [],
-             user_id
-           )}
+          if Permissions.has?(base, :administrator) do
+            {:ok, base}
+          else
+            with {:ok, overwrites} <- channel_overwrites(channel) do
+              {:ok,
+               Permissions.compute(
+                 everyone.permissions,
+                 member.roles,
+                 roles,
+                 overwrites,
+                 user_id
+               )}
+            end
+          end
         end
       end
     end
   end
+
+  defp channel_overwrites(%{type: type, parent_id: parent_id})
+       when type in [:announcement_thread, :public_thread, :private_thread] do
+    with {:ok, parent} <- cached(Cache.Channel.get(parent_id), :channel),
+         do: {:ok, parent.permission_overwrites || []}
+  end
+
+  defp channel_overwrites(channel), do: {:ok, channel.permission_overwrites || []}
 
   def bot_member(guild_id) do
     if me = Cache.User.get_current(), do: Cache.Member.get(guild_id, me.id)
