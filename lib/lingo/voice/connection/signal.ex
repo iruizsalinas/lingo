@@ -70,9 +70,12 @@ defmodule Lingo.Voice.Connection.Signal do
   def handle_frames([], state), do: {:noreply, state}
 
   def handle_frames([frame | rest], state) do
+    ws = state.ws
+
     case handle_frame(frame, state) do
-      {:noreply, state} -> handle_frames(rest, state)
-      stop -> stop
+      # Frames already decoded from a socket that just closed are stale.
+      {:noreply, %{ws: ^ws} = state} -> handle_frames(rest, state)
+      result -> result
     end
   end
 

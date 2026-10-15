@@ -123,6 +123,7 @@ defmodule Lingo.Voice.Connection do
 
   @impl true
   def terminate(_reason, state) do
+    Playback.stop_player(state)
     if state.ws, do: WebSocket.close(state.ws)
     if state.udp, do: :gen_udp.close(state.udp)
     :ok
