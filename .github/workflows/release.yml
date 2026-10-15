@@ -1,0 +1,148 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump (current retries an unpublished or incomplete release)'
+        type: choice
+        required: true
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+          - current
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare release commit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      commit: ${{ steps.commit.outputs.sha }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      should_release: ${{ steps.check.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+      - name: Check release branch
+        run: |
+          if [ "$GITHUB_REF" != 'refs/heads/main' ]; then
+            echo 'Releases must run from main.'
+            exit 1
+          fi
+          git fetch origin main
+          if [ "$(git rev-parse FETCH_HEAD)" != "$GITHUB_SHA" ]; then
+            echo 'main has advanced; start a new release run.'
+            exit 1
+          fi
+      - name: Bump version
+        id: version
+        env:
+          VERSION_BUMP: ${{ inputs.bump }}
+        run: python .github/scripts/release_version.py "$VERSION_BUMP"
+      - name: Check existing tags and Hex versions
+        id: check
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          VERSION_BUMP: ${{ inputs.bump }}
+        run: |
+          existing_tag=$(git tag --list "$RELEASE_TAG")
+          if [ -n "$existing_tag" ]; then
+            echo 'Version tag already exists; skipping.'
+            echo 'should_release=false' >> "$GITHUB_OUTPUT"
+          else
+            python .github/scripts/hex_release.py check "$VERSION" --bump "$VERSION_BUMP"
+          fi
+      - name: Commit release version
+        id: commit
+        if: steps.check.outputs.should_release == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git add -- mix.exs README.md
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "chore: bump version to $VERSION"
+            git push origin HEAD:refs/heads/main
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    uses: ./.github/workflows/ci.yml
+    with:
+      release_commit: ${{ needs.prepare.outputs.commit }}
+
+  publish:
+    name: Publish tested package and HexDocs
+    needs: [prepare, test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: hex-package
+          path: .release
+      - name: Publish using Hex API key
+        env:
+          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: python .github/scripts/hex_release.py publish "$VERSION"
+
+  tag:
+    name: Tag the published commit
+    needs: [prepare, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Create version tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: |
+          existing_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$RELEASE_TAG" \
+            --jq '.[] | select(.ref == ("refs/tags/" + env.RELEASE_TAG)) | .object.sha')
+          if [ -n "$existing_sha" ]; then
+            if [ "$existing_sha" = "$RELEASE_COMMIT" ]; then
+              echo "Tag $RELEASE_TAG already points to the published commit; skipping."
+              exit 0
+            fi
+            echo "Tag $RELEASE_TAG already points to another commit."
+            exit 1
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f "ref=refs/tags/$RELEASE_TAG" \
+            -f "sha=$RELEASE_COMMIT"

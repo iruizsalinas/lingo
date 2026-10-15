@@ -6,3 +6,6 @@ doc
 
 # ExUnit tmp_dir
 /tmp
+
+.release/
+__pycache__/

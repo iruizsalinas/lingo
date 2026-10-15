@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      release_commit:
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.release_commit || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+      - run: python .github/scripts/test_release.py
+
+  test:
+    name: Elixir ${{ matrix.elixir }} / OTP ${{ matrix.otp }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { elixir: '1.18', otp: '27' }
+          - { elixir: '1.19', otp: '28' }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.release_commit || github.sha }}
+          persist-credentials: false
+      - uses: erlef/setup-beam@0f75c29430f34bb5af4cce5e3b7f6a8860fca236 # v1
+        with:
+          elixir-version: ${{ matrix.elixir }}
+          otp-version: ${{ matrix.otp }}
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: mix local.hex --force && mix local.rebar --force
+      - run: mix deps.get
+      - run: git diff --exit-code -- mix.lock
+      - run: mix format --check-formatted
+      - run: mix compile --warnings-as-errors
+        env:
+          MIX_ENV: test
+      - run: epmd -daemon && mix test
+
+  package:
+    needs: [release-tests, test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.release_commit || github.sha }}
+          persist-credentials: false
+      - uses: erlef/setup-beam@0f75c29430f34bb5af4cce5e3b7f6a8860fca236 # v1
+        with:
+          elixir-version: '1.18'
+          otp-version: '27'
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+      - run: mix local.hex --force && mix local.rebar --force
+      - run: mix deps.get
+      - run: git diff --exit-code -- mix.lock
+      - run: mix compile --warnings-as-errors
+      - run: mix docs --warnings-as-errors
+      - run: mkdir -p .release && mix hex.build --output .release/package.tar
+      - run: python .github/scripts/package_release.py
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: hex-package
+          path: .release/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7

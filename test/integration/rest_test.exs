@@ -6,7 +6,8 @@ defmodule Lingo.Integration.RestTest do
   defp get(path) do
     headers = [
       {"authorization", "Bot #{Lingo.Instance.get(:token)}"},
-      {"user-agent", "DiscordBot (https://github.com/iruizsalinas/lingo, 0.4.0)"}
+      {"user-agent",
+       "DiscordBot (https://github.com/iruizsalinas/lingo, #{Mix.Project.config()[:version]})"}
     ]
 
     {:ok, response} =
