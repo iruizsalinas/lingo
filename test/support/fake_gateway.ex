@@ -142,7 +142,7 @@ defmodule Lingo.Test.FakeGateway do
   defp decode(data), do: JSON.decode!(data)
 
   defp compress(%{zlib: nil, zstd: false}, data), do: data
-  defp compress(%{zstd: true}, data), do: IO.iodata_to_binary(:zstd.compress(data))
+  defp compress(%{zstd: true}, data), do: IO.iodata_to_binary(apply(:zstd, :compress, [data]))
   defp compress(%{zlib: z}, data), do: IO.iodata_to_binary(:zlib.deflate(z, data, :sync))
 
   defp deflate do
