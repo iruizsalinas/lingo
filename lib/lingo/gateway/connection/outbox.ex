@@ -8,12 +8,12 @@ defmodule Lingo.Gateway.Connection.Outbox do
   @limit 115
   @window_ms 60_000
 
-  defstruct queue: :queue.new(), count: 0, window_start: 0
+  defstruct queue: :queue.new(), count: 0, window_start: nil
 
   @type t :: %__MODULE__{
           queue: :queue.queue(Lingo.Gateway.Codec.frame()),
           count: non_neg_integer(),
-          window_start: integer()
+          window_start: integer() | nil
         }
 
   @spec push(t(), Lingo.Gateway.Codec.frame()) :: t()
@@ -26,7 +26,7 @@ defmodule Lingo.Gateway.Connection.Outbox do
   @spec take(t(), integer()) :: {[Lingo.Gateway.Codec.frame()], t(), non_neg_integer() | nil}
   def take(%__MODULE__{} = outbox, now) do
     outbox =
-      if now - outbox.window_start >= @window_ms,
+      if outbox.window_start == nil or now - outbox.window_start >= @window_ms,
         do: %{outbox | count: 0, window_start: now},
         else: outbox
 
