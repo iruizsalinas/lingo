@@ -35,7 +35,9 @@ defmodule Lingo.Context.Response do
 
   @spec update(Context.t(), content()) :: result()
   def update(%Context{deferred: true} = ctx, content) do
-    in_bot(ctx, fn -> Api.update_original_response(ctx.interaction_token, data(content)) end)
+    in_bot(ctx, fn ->
+      Api.update_original_response(ctx.interaction_token, drop_ephemeral(data(content)))
+    end)
     |> answered(%{ctx | deferred: false, replied: true})
   end
 
@@ -109,8 +111,14 @@ defmodule Lingo.Context.Response do
   defp unwrap!({:error, error}) when is_exception(error), do: raise(error)
 
   defp data(content) when is_binary(content), do: %{content: content}
-  defp data(content) when is_list(content), do: Map.new(content)
-  defp data(content) when is_map(content), do: content
+  defp data(content) when is_list(content), do: content |> Map.new() |> data()
+
+  defp data(content) when is_map(content) do
+    case Map.fetch(content, "flags") do
+      {:ok, flags} -> content |> Map.delete("flags") |> Map.put_new(:flags, flags)
+      :error -> content
+    end
+  end
 
   defp drop_ephemeral(%{flags: flags} = data) when is_integer(flags) do
     case band(flags, bnot(@ephemeral)) do

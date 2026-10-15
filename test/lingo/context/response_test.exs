@@ -55,6 +55,26 @@ defmodule Lingo.Context.ResponseTest do
     assert body["data"]["flags"] == (1 <<< 15 ||| 1 <<< 6)
   end
 
+  test "ephemeral preserves the components v2 flag from string-keyed maps", %{ctx: ctx} do
+    data = %{"components" => [%{"type" => 10, "content" => "private"}], "flags" => 1 <<< 15}
+    assert {:ok, _} = Context.ephemeral(ctx, data)
+    assert_receive {:request, :post, "/api/v10/interactions/i1/tok/callback", body}
+    assert body["data"]["flags"] == (1 <<< 15 ||| 1 <<< 6)
+  end
+
+  test "reply edits remove ephemeral from string-keyed flags too", %{ctx: ctx} do
+    ctx = %{ctx | deferred: true}
+
+    data = %{
+      "components" => [%{"type" => 10, "content" => "done"}],
+      "flags" => 1 <<< 15 ||| 1 <<< 6
+    }
+
+    assert {:ok, _} = Context.reply(ctx, data)
+    assert_receive {:request, :patch, "/api/v10/webhooks/app/tok/messages/@original", body}
+    assert body["flags"] == 1 <<< 15
+  end
+
   test "replying after a defer does not send the EPHEMERAL flag on the edit", %{ctx: ctx} do
     ctx = %{ctx | deferred: true}
     assert {:ok, ctx} = Lingo.Context.ephemeral(ctx, "hi")
@@ -62,6 +82,20 @@ defmodule Lingo.Context.ResponseTest do
 
     assert_receive {:request, :patch, "/api/v10/webhooks/app/tok/messages/@original", body}
     assert body == %{"content" => "hi"}
+  end
+
+  test "component updates after a defer remove the ephemeral flag", %{ctx: ctx} do
+    ctx = %{ctx | deferred: true}
+    components = [%{"type" => 10, "content" => "updated"}]
+
+    for data <- [
+          %{components: components, flags: 1 <<< 15 ||| 1 <<< 6},
+          %{"components" => components, "flags" => 1 <<< 15 ||| 1 <<< 6}
+        ] do
+      assert {:ok, _} = Context.update(ctx, data)
+      assert_receive {:request, :patch, "/api/v10/webhooks/app/tok/messages/@original", body}
+      assert body["flags"] == 1 <<< 15
+    end
   end
 
   test "get_reply, update_reply and delete_reply act on the response message", %{ctx: ctx} do
