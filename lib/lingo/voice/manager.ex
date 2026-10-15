@@ -76,9 +76,7 @@ defmodule Lingo.Voice.Manager do
 
   def handle_call({:leave, guild_id}, _from, guilds) do
     send_voice_state(guild_id, nil, [])
-    {guild, guilds} = Map.pop(guilds, guild_id)
-    if guild, do: stop_connection(guild)
-    {:reply, :ok, guilds}
+    {:reply, :ok, remove_guild(guilds, guild_id)}
   end
 
   def handle_call({:connection, guild_id}, _from, guilds),
@@ -104,9 +102,7 @@ defmodule Lingo.Voice.Manager do
 
   # we left or were disconnected from voice
   defp own_voice_state(guilds, %{"guild_id" => guild_id, "channel_id" => nil}) do
-    {guild, guilds} = Map.pop(guilds, guild_id)
-    if guild, do: stop_connection(guild)
-    guilds
+    remove_guild(guilds, guild_id)
   end
 
   defp own_voice_state(guilds, %{"guild_id" => guild_id} = data) do
@@ -116,6 +112,17 @@ defmodule Lingo.Voice.Manager do
       |> Map.merge(%{session_id: data["session_id"], channel_id: data["channel_id"]})
 
     Map.put(guilds, guild_id, maybe_connect(guild_id, guild))
+  end
+
+  defp remove_guild(guilds, guild_id) do
+    {guild, guilds} = Map.pop(guilds, guild_id)
+
+    if guild do
+      stop_connection(guild)
+      Enum.each(Map.get(guild, :waiters, []), &GenServer.reply(&1, {:error, :disconnected}))
+    end
+
+    guilds
   end
 
   # starts a connection once both halves are known, replacing a stale one

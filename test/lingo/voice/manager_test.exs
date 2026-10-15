@@ -68,4 +68,24 @@ defmodule Lingo.Voice.ManagerTest do
     assert {:error, :not_connected} = Lingo.Voice.play("100", [])
     assert {:error, :not_connected} = Lingo.Voice.listen("100")
   end
+
+  test "leaving during a pending join answers the caller" do
+    request = pending_join()
+    assert :ok = Manager.leave("100")
+    assert {:reply, {:error, :disconnected}} = :gen_server.wait_response(request, 1_000)
+  end
+
+  test "being disconnected during a pending join answers the caller" do
+    request = pending_join()
+    Manager.dispatch(:voice_state_update, voice_state("42", nil))
+    assert connection() == nil
+    assert {:reply, {:error, :disconnected}} = :gen_server.wait_response(request, 1_000)
+  end
+
+  defp pending_join do
+    :gen_server.send_request(
+      Lingo.Instance.process_name(Manager),
+      {:join, "100", "200", [timeout: 60_000]}
+    )
+  end
 end
