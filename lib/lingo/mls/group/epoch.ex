@@ -15,7 +15,12 @@ defmodule Lingo.MLS.Group.Epoch do
     adds = for {{:add, key_package}, _sender} <- proposals, do: key_package
 
     signature_keys =
-      MapSet.new(Tree.leaves(group.tree), fn {_index, leaf} -> leaf.signature_key end)
+      group.tree
+      |> Tree.leaves()
+      |> Enum.reject(fn {index, _leaf} -> index in removes end)
+      |> MapSet.new(fn {_index, leaf} -> leaf.signature_key end)
+
+    added_signature_keys = Enum.map(adds, & &1.leaf_node.signature_key)
 
     cond do
       length(Enum.uniq(removes)) != length(removes) or committer in removes ->
@@ -24,7 +29,8 @@ defmodule Lingo.MLS.Group.Epoch do
       Enum.any?(removes, &(Tree.leaf(group.tree, &1) == nil)) ->
         {:error, :invalid_remove}
 
-      Enum.any?(adds, &MapSet.member?(signature_keys, &1.leaf_node.signature_key)) ->
+      length(Enum.uniq(added_signature_keys)) != length(added_signature_keys) or
+          Enum.any?(added_signature_keys, &MapSet.member?(signature_keys, &1)) ->
         {:error, :duplicate_member}
 
       true ->

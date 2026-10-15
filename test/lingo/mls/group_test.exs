@@ -68,6 +68,28 @@ defmodule Lingo.MLS.GroupTest do
     )
   end
 
+  defp refresh_member(member) do
+    {encryption_key, encryption_private_key} = HPKE.generate_key_pair()
+    {init_key, init_private_key} = HPKE.generate_key_pair()
+
+    leaf =
+      %{member.key_package.leaf_node | encryption_key: encryption_key}
+      |> LeafNode.sign(member.signature_private_key)
+
+    key_package =
+      KeyPackage.sign(
+        %KeyPackage{init_key: init_key, leaf_node: leaf},
+        member.signature_private_key
+      )
+
+    %{
+      member
+      | key_package: key_package,
+        encryption_private_key: encryption_private_key,
+        init_private_key: init_private_key
+    }
+  end
+
   # an external-sender proposal, as the voice gateway would send it
   defp propose(group, sender, proposal) do
     content = %{
@@ -226,6 +248,22 @@ defmodule Lingo.MLS.GroupTest do
                Group.handle_proposal(group, propose(group, sender, {:add, key_package}))
     end
 
+    test "two distinct Add proposals for the same signature key", %{
+      group: group,
+      sender: sender,
+      bob: bob
+    } do
+      replacement = refresh_member(bob)
+
+      {:ok, group, _} =
+        Group.handle_proposal(group, propose(group, sender, {:add, bob.key_package}))
+
+      {:ok, group, _} =
+        Group.handle_proposal(group, propose(group, sender, {:add, replacement.key_package}))
+
+      assert {:error, :duplicate_member} = Group.commit(group)
+    end
+
     test "commits for unknown proposals and tampered commits", %{
       group: group,
       sender: sender,
@@ -248,5 +286,37 @@ defmodule Lingo.MLS.GroupTest do
       assert {:error, :malformed} = Group.handle_proposal(group, <<1, 2, 3>>)
       assert {:error, :malformed} = Group.handle_commit(group, <<0, 1, 0, 1>>)
     end
+  end
+
+  test "a commit can replace a removed client's key package while keeping its signature identity" do
+    sender = external_sender()
+    [alice, bob, carol] = Enum.map([1, 2, 3], &member/1)
+    group = create(alice, sender)
+
+    {:ok, group, _} =
+      Group.handle_proposal(group, propose(group, sender, {:add, bob.key_package}))
+
+    {:ok, group, _} =
+      Group.handle_proposal(group, propose(group, sender, {:add, carol.key_package}))
+
+    {:ok, _, initial_welcome, group} = Group.commit(group)
+    {:ok, carol_group} = join_member(initial_welcome, carol)
+    replacement = refresh_member(bob)
+    remove = propose(group, sender, {:remove, 1})
+    add = propose(group, sender, {:add, replacement.key_package})
+
+    [group, carol_group] =
+      for receiver <- [group, carol_group] do
+        {:ok, receiver, _} = Group.handle_proposal(receiver, remove)
+        {:ok, receiver, _} = Group.handle_proposal(receiver, add)
+        receiver
+      end
+
+    assert {:ok, commit, welcome, next} = Group.commit(group)
+    assert {:ok, carol_next} = Group.handle_commit(carol_group, commit)
+    assert {:ok, joined} = join_member(welcome, replacement)
+    assert Group.epoch_authenticator(joined) == Group.epoch_authenticator(next)
+    assert Group.epoch_authenticator(carol_next) == Group.epoch_authenticator(next)
+    assert identities(next) == [<<1::64>>, <<2::64>>, <<3::64>>]
   end
 end
