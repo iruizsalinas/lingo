@@ -6,6 +6,7 @@ defmodule Lingo.Gateway.Dispatcher.Channel do
 
   alias Lingo.Cache
   alias Lingo.Cache.Store
+  alias Lingo.Cache.Tables
   alias Lingo.Event.{ThreadDelete, ThreadListSync}
   alias Lingo.Type.Channel
 
@@ -38,9 +39,35 @@ defmodule Lingo.Gateway.Dispatcher.Channel do
 
   def parse(:thread_list_sync, data) do
     sync = ThreadListSync.new(data)
+    prune_threads(sync)
     Store.put_all(:channels, sync.threads, &Store.put_channel/1)
     sync
   end
 
   def parse(_event, _data), do: :skip
+
+  defp prune_threads(sync) do
+    ids = Map.new(sync.threads, &{&1.id, true})
+    parents = Map.new(sync.channel_ids || [], &{&1, true})
+
+    scope =
+      if sync.channel_ids == nil,
+        do: [],
+        else: [{:is_map_key, :"$2", {:const, parents}}]
+
+    # Only active threads are authoritative here; archived threads can have
+    # been cached separately through REST and are absent from this event.
+    spec =
+      for type <- [:public_thread, :private_thread, :announcement_thread] do
+        {{:"$1",
+          %{
+            guild_id: sync.guild_id,
+            parent_id: :"$2",
+            type: type,
+            thread_metadata: %{"archived" => false}
+          }}, scope ++ [{:not, {:is_map_key, :"$1", {:const, ids}}}], [true]}
+      end
+
+    Tables.select_delete(:channels, spec)
+  end
 end
